@@ -1,0 +1,22 @@
+JARVIS V10.2 — MICROPHONE INDICATOR / IDLE SESSION TUNING
+
+Changes from V10.1:
+1. Increased SpeechRecognizer silence completion window from 1.8s to 8s.
+2. Increased possible-complete silence window from 1.0s to 6s.
+3. Increased no-match / speech-timeout retry gap from 350ms to 1200ms.
+4. Version 10.2 / versionCode 20.
+
+Why:
+V10.1 repeatedly ends a SpeechRecognizer session after short silence and starts another.
+Android's microphone privacy indicator can therefore blink as the recognizer releases and
+reacquires microphone access. These changes reduce how often idle sessions cycle.
+
+IMPORTANT:
+This is a mitigation, NOT a true always-open microphone fix. Android SpeechRecognizer is
+session-based and may still stop/restart the mic. A stable continuous mic stream requires
+a different audio-capture + on-device wake-word architecture (for example AudioRecord plus
+a compatible local keyword model). No such keyword model is included in this project.
+
+Verification:
+- Source edits only; Android Gradle build and POCO F5 / Android 15 / HyperOS test not run here.
+- Please build via the included GitHub Actions workflow and test on device.

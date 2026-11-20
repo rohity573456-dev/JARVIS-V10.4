@@ -1,0 +1,14 @@
+JARVIS V10.3.1 — WAKE PATH ROLLBACK
+
+Base: V10.3 development source.
+
+Correction:
+- Restored MainActivity.startWakeListening() and stopWakeListening() to the V10.2 behavior.
+- Re-enabled the original in-Activity SpeechRecognizer wake listener.
+- Removed the V10.3 change that forced wake standby to rely only on WakeWordService.
+
+Important:
+- This is a rollback of the wake-path regression, not a microphone flicker fix.
+- WakeWordService still uses Android SpeechRecognizer restart sessions.
+- Continuous AudioRecord + offline keyword spotting is NOT integrated.
+- Build and POCO F5 / Android 15 device testing have NOT been run.

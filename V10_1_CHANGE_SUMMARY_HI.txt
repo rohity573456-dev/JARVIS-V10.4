@@ -1,0 +1,20 @@
+JARVIS V10.1 PATCH SUMMARY
+
+Addressed in source:
+1. Removed normal-cycle SpeechRecognizer cancel/destroy/create loop in WakeWordService.
+2. Reuse recognizer after results, no-match and timeout.
+3. Recreate recognizer on speech server disconnect / failed start.
+4. English + Hindi wake phrase matching across recognition alternatives.
+5. Service-owned TTS for wake acknowledgement, independent of Activity receiver.
+6. Route recognized command to MainActivity when its receiver is registered.
+7. Spoken fallback when Activity has been destroyed; full app command execution in that state remains unsupported.
+8. Added service running-state tracking and queued service TTS startup phrase.
+
+Not verified:
+- Android APK compilation.
+- Actual POCO F5 / Android 15 / HyperOS behavior.
+- Microphone stability over long durations.
+- Recognition accuracy in noisy environments.
+- AI command execution when Activity has been destroyed or process killed.
+
+Important: Android SpeechRecognizer is not a continuous always-on hotword engine. This source patch improves the existing session loop; it does not turn it into a DSP-level wake-word engine.

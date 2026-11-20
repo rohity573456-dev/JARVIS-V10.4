@@ -1,0 +1,27 @@
+JARVIS V10.4 — CONTINUOUS OFFLINE WAKE DETECTION
+
+Source changes:
+- WakeWordService owns standby mic capture through one AudioRecord instance.
+- AudioRecord feeds 100 ms PCM frames to Sherpa-ONNX streaming KeywordSpotter.
+- SpeechRecognizer is opened only after offline Hey Jarvis detection, then the mic returns to AudioRecord standby.
+- MainActivity no longer contains a second wake-only SpeechRecognizer loop; tap-to-speak remains available.
+- Existing AI command handler, receiver action and foreground microphone service are retained.
+
+GitHub Actions setup:
+- Downloads the official Sherpa-ONNX Android AAR v2.0.1.
+- Downloads the English GigaSpeech KWS model and creates a custom HEY JARVIS keyword file with the matching CLI.
+- Builds the debug APK.
+
+Validation status (must read):
+- This environment has no network access or Android SDK/Gradle build environment. The APK has NOT been compiled or tested here.
+- GitHub Actions must pass before installing.
+- Exact phrase accuracy, false activations, lock-screen operation and Android 15/POCO F5 behaviour still require device testing.
+- During command capture after wake, SpeechRecognizer temporarily takes the mic; AudioRecord is resumed after the command session. Standby itself does not cycle SpeechRecognizer sessions.
+
+
+MICROPHONE STABILITY PATCH (20 Nov 2026):
+- AudioRecord negative read errors now detach and release the failed recorder, reset the KWS stream, and schedule a guarded restart after 1.2 seconds.
+- A stale recovery callback cannot replace a recorder after wake handoff or service stop.
+- KWS keyword threshold raised from 0.25 to 0.40 and wake debounce from 1.8 to 6 seconds to reduce borderline false activations that repeatedly hand the microphone to SpeechRecognizer.
+- After a command session, standby capture restarts only when the service is active and no recorder is already attached.
+- This is a source patch only. Android compilation, false-trigger rate, microphone indicator behaviour, and POCO F5 / Android 15 behaviour still require GitHub Actions and physical-device testing.

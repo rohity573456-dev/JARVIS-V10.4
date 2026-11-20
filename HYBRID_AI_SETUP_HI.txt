@@ -1,0 +1,31 @@
+JARVIS V9.2 — HYBRID AI FOUNDATION
+
+WHAT IS INCLUDED
+- LiteRT-LM Android runtime integration for on-device .litertlm models.
+- Model file picker; selected model is copied into app-private storage.
+- OpenAI-compatible online chat-completions client.
+- Hybrid routing: use local model when loaded; otherwise use online provider when endpoint + API key are configured; otherwise retain safe command fallback.
+- Shared local preferences remain on device.
+
+OFFLINE MODEL SETUP
+1. Obtain a compatible .litertlm text model from the official LiteRT Community/Hugging Face model collection.
+2. In JARVIS, open AI BRAIN / MODEL and select that .litertlm file.
+3. Wait for model initialization. The model is NOT bundled in this source ZIP or APK.
+4. Model sizes vary; check available storage and device compatibility before downloading. CPU backend is selected for widest compatibility; performance depends on device.
+
+ONLINE AI SETUP
+1. Open ONLINE AI SETUP.
+2. Enter an OpenAI-compatible base endpoint and API key from a provider you trust.
+3. This client appends /v1/chat/completions and sends model=auto. Some providers require a specific model name or endpoint path; those providers may need a small provider-specific adapter.
+4. No API key is bundled. Provider access may be paid, rate-limited, or unavailable.
+
+IMPORTANT LIMITATIONS
+- Online AI cannot be activated without a compatible provider endpoint and credentials.
+- Offline AI cannot answer until a compatible .litertlm model has been imported.
+- This milestone does not implement always-on wake word, background microphone, camera vision, or the final HUD.
+- The project has not been compiled in this environment. Verify Gradle sync/build in Code On The Go; the LiteRT-LM dependency may require a newer Kotlin/Gradle toolchain than an older mobile IDE provides.
+- Android API 24 is now the minimum because the current LiteRT-LM Android runtime requires API 24+.
+
+OFFICIAL REFERENCES
+https://developers.google.com/edge/litert-lm/android
+https://huggingface.co/litert-community

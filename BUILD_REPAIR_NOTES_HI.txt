@@ -1,0 +1,40 @@
+V9.6 KOTLIN COMPATIBILITY REPAIR NOTES
+
+0. Kotlin compiler 2.3.0 aur Android Gradle Plugin 8.13.2 par upgrade kiya, kyunki LiteRT-LM 0.16.1 Kotlin metadata 2.3.0 use karta hai. GitHub Actions Gradle 9.6.1 use karta hai. Version 9.6 / versionCode 15.
+
+1. app/build.gradle mein compileOptions ko defaultConfig ke bahar android block mein move kiya.
+2. versionName 9.5 aur versionCode 14.
+3. MainActivity mein runtime RECORD_AUDIO permission flow add kiya.
+4. SpeechRecognizer ke liye per-session listener, readable error mapping, locale fallback aur retry flow add kiya.
+5. Wake phrase detection add ki: "Jarvis" / "Jarvis, <command>".
+6. Wake listening in-app foreground mode tak limited hai; background always-on engine nahi.
+7. Search/typed command field add kiya.
+8. Hindi script responses ke liye Hindi TTS locale, otherwise English India locale.
+9. Android manifest mein microphone feature optional aur speech recognition service query add ki.
+
+Manual QA checklist:
+- First launch: microphone permission prompt appears.
+- Deny permission: clear explanation appears; allow from Android App Info and retry.
+- Tap to Speak: speak a short English command; verify text appears in conversation.
+- Tap to Speak: speak a Hindi command; if English recognition fails, Hindi locale retry runs.
+- Wake listening: keep app open, say "Jarvis", then say a command.
+- Wake listening: say "Jarvis, open YouTube".
+- Type "search weather" or another query in search field and press RUN.
+- Check Gemini/Groq keys and optional LiteRT-LM model separately.
+
+No APK build or physical-device test was performed in the packaging environment.
+
+
+Build note: Code On The Go ke bundled Gradle 9.6.1 par AGP 9.4.0 compatibility environment ke hisaab se vary kar sakti hai. Agar next build mein AGP/Gradle compatibility error aaye, poora naya log bhejo. Is ZIP ko yahan Android SDK ke saath compile karke verify nahi kiya gaya.
+
+
+V9.8 BUILD FIX (20 Nov 2026): AGP 9.4.0 ke built-in Kotlin support ka use kiya gaya hai. App aur root build files se org.jetbrains.kotlin.android plugin hata diya gaya hai; AGP 9 par ye plugin apply karna error deta hai. Kotlin JVM target ab android.compileOptions ke Java 17 target se inherit hota hai. Code On The Go Gradle 9.6.1 par actual device build abhi user ke environment mein verify hona baaki hai.
+
+
+V9.9 VOICE SERVICE REPAIR (20 Nov 2026)
+1. Android SpeechRecognizer error 11 ko ERROR_SERVER_DISCONNECTED ke roop mein map kiya.
+2. Error 11 par controlled single reconnect retry add ki; callback ke andar immediate recognizer restart nahi hota.
+3. Hindi locale fallback ab NO_MATCH / SPEECH_TIMEOUT par hota hai, service-disconnect par nahi.
+4. Recognition success par reconnect retry counter reset hota hai.
+5. Language preference ke redundant extras hataaye aur speech silence timeout ko explicit kiya.
+6. Physical POCO F5 test abhi required hai; source patch ko device par build/install karke verify karna hoga.

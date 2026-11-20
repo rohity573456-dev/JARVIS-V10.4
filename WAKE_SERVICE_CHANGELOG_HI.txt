@@ -1,0 +1,27 @@
+JARVIS V10.0 — BACKGROUND WAKE + APP REPAIR
+
+- Runtime POST_NOTIFICATIONS permission request (Android 13+).
+- Microphone permission checked before foreground service startup.
+- Foreground service startup exceptions handled; service stops cleanly if Android rejects mic FGS start.
+- Repeated ERROR_SERVER_DISCONNECTED / ERROR_RECOGNIZER_BUSY retries use bounded backoff (max 8 seconds); successful recognition resets backoff.
+- CPU wake lock acquired only after successful foreground promotion and released on service destroy.
+- MainActivity typed command field restored (previous helper method existed but UI did not expose it).
+- MainActivity resumes wake service if permission exists and service is no longer running.
+- Offline engine is no longer closed merely because Activity is destroyed/recreated.
+
+LIMITS:
+SpeechRecognizer is not a dedicated always-on keyword engine. Android/HyperOS may stop microphone service or process. This source still needs actual Gradle build and POCO F5 Android 15 testing.
+
+
+JARVIS V10.1 — RECOGNITION / BACKGROUND SPEECH REPAIR
+- Reuse one SpeechRecognizer instance between recognition sessions; no cancel/destroy/create on every normal loop.
+- Recreate only on ERROR_SERVER_DISCONNECTED or failed start.
+- Controlled no-match/timeout retry and en-IN / hi-IN fallback.
+- Search all recognition hypotheses for English and Hindi wake phrase variants.
+- Foreground service owns a TextToSpeech engine for wake acknowledgement, independent of Activity receiver lifecycle.
+- Activity receiver routes commands to the existing command handler when Activity is alive.
+- If Activity has been destroyed, service gives a spoken limitation message rather than silently dropping the command.
+- TTS initialization speech queue and a pause after speaking reduce missed acknowledgements/self-trigger.
+LIMITATIONS / TEST STATUS:
+- Full existing AI command execution after Activity destruction is not implemented.
+- Android 15 / POCO HyperOS device test and APK build are still required; do not treat source checks as device verification.
