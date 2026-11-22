@@ -17,6 +17,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -24,6 +25,8 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Locale;
 
 public class WakeWordService extends Service {
@@ -64,6 +67,11 @@ public class WakeWordService extends Service {
     private volatile short[] lastWakePreRoll = new short[0];
     private volatile long lastMetricsLogAtMs = 0L;
     private int serviceStartBatteryPercent = -1;
+    private volatile boolean commandAudioRunning = false;
+    private volatile AudioRecord commandAudioRecord;
+    private volatile ParcelFileDescriptor commandAudioReadFd;
+    private volatile ParcelFileDescriptor commandAudioWriteFd;
+    private volatile OutputStream commandAudioOutput;
     private final Runnable healthCheck = new Runnable() {
         @Override public void run() {
             if (!running) return;
@@ -372,8 +380,9 @@ public class WakeWordService extends Service {
                 @Override public void onBeginningOfSpeech() {}
                 @Override public void onRmsChanged(float rmsdB) {}
                 @Override public void onBufferReceived(byte[] buffer) {}
-                @Override public void onEndOfSpeech() {}
+                @Override public void onEndOfSpeech() { stopInjectedCommandAudio(); }
                 @Override public void onError(int error) {
+                    stopInjectedCommandAudio();
                     finishCommandCapture();
                 }
                 @Override public void onResults(android.os.Bundle results) {
@@ -385,6 +394,7 @@ public class WakeWordService extends Service {
                             ? Float.NaN : confidenceScores[0];
                     if (CommandResultGuard.isUsable(command, confidence)) dispatchCommand(command);
                     else android.util.Log.i("JARVIS-ASR", "Rejected low-confidence, empty, or wake-only transcript");
+                    stopInjectedCommandAudio();
                     finishCommandCapture();
                 }
                 @Override public void onPartialResults(android.os.Bundle partialResults) {}
@@ -422,10 +432,125 @@ public class WakeWordService extends Service {
             return;
         }
         try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                try {
+                    ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+                    commandAudioReadFd = pipe[0];
+                    commandAudioWriteFd = pipe[1];
+                    speech.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, commandAudioReadFd);
+                    speech.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1);
+                    speech.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,
+                            AudioFormat.ENCODING_PCM_16BIT);
+                    speech.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, SAMPLE_RATE);
+                    commandRecognizer.startListening(speech);
+                    startInjectedCommandAudio();
+                    android.util.Log.i("JARVIS-ASR", "Started PCM audio-source injection with wake pre-roll");
+                    return;
+                } catch (Exception injectionError) {
+                    android.util.Log.w("JARVIS-ASR", "PCM injection unavailable; falling back to recognizer microphone", injectionError);
+                    stopInjectedCommandAudio();
+                    speech.removeExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE);
+                }
+            }
             commandRecognizer.startListening(speech);
         } catch (Exception e) {
             android.util.Log.w("JARVIS-ASR", "Command recognizer start failed", e);
             finishCommandCapture();
+        }
+    }
+
+    /**
+     * Android 13+ audio-source injection: stream the wake pre-roll first, then
+     * continue with live 16 kHz mono PCM for the command utterance.
+     */
+    private void startInjectedCommandAudio() {
+        final ParcelFileDescriptor writeFd = commandAudioWriteFd;
+        if (writeFd == null) return;
+        commandAudioRunning = true;
+        new Thread(() -> {
+            AudioRecord source = null;
+            try (OutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(writeFd)) {
+                commandAudioOutput = output;
+                short[] preRoll = lastWakePreRoll;
+                if (preRoll != null && preRoll.length > 0) {
+                    byte[] preRollBytes = new byte[preRoll.length * 2];
+                    for (int i = 0; i < preRoll.length; i++) {
+                        preRollBytes[i * 2] = (byte) (preRoll[i] & 0xff);
+                        preRollBytes[i * 2 + 1] = (byte) ((preRoll[i] >>> 8) & 0xff);
+                    }
+                    output.write(preRollBytes);
+                    output.flush();
+                    android.util.Log.i("JARVIS-ASR", "Injected pre-roll samples=" + preRoll.length);
+                }
+                int minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE,
+                        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+                if (minBuffer <= 0) throw new IOException("Invalid command audio buffer");
+                source = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
+                        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                        Math.max(minBuffer * 2, FRAME_SAMPLES * 4));
+                if (source.getState() != AudioRecord.STATE_INITIALIZED) {
+                    throw new IOException("Command AudioRecord initialization failed");
+                }
+                commandAudioRecord = source;
+                source.startRecording();
+                short[] pcm = new short[FRAME_SAMPLES];
+                byte[] bytes = new byte[FRAME_SAMPLES * 2];
+                while (commandAudioRunning && running && !commandCaptureFinished) {
+                    int count = source.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
+                    if (count < 0) throw new IOException("Command audio read error " + count);
+                    if (count == 0) {
+                        SystemClock.sleep(5L);
+                        continue;
+                    }
+                    for (int i = 0; i < count; i++) {
+                        bytes[i * 2] = (byte) (pcm[i] & 0xff);
+                        bytes[i * 2 + 1] = (byte) ((pcm[i] >>> 8) & 0xff);
+                    }
+                    output.write(bytes, 0, count * 2);
+                    output.flush();
+                }
+            } catch (Exception e) {
+                if (commandAudioRunning && running && !commandCaptureFinished) {
+                    android.util.Log.w("JARVIS-ASR", "PCM injection stream stopped", e);
+                }
+            } finally {
+                commandAudioRunning = false;
+                commandAudioOutput = null;
+                commandAudioRecord = null;
+                if (source != null) {
+                    try { if (source.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) source.stop(); }
+                    catch (Exception ignored) {}
+                    try { source.release(); } catch (Exception ignored) {}
+                }
+                closeCommandAudioDescriptors();
+            }
+        }, "Jarvis-ASR-PCM-Source").start();
+    }
+
+    private void stopInjectedCommandAudio() {
+        commandAudioRunning = false;
+        AudioRecord source = commandAudioRecord;
+        if (source != null) {
+            try { if (source.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) source.stop(); }
+            catch (Exception ignored) {}
+        }
+        OutputStream output = commandAudioOutput;
+        if (output != null) {
+            try { output.close(); } catch (Exception ignored) {}
+        }
+        closeCommandAudioDescriptors();
+    }
+
+    private synchronized void closeCommandAudioDescriptors() {
+        ParcelFileDescriptor readFd = commandAudioReadFd;
+        ParcelFileDescriptor writeFd = commandAudioWriteFd;
+        commandAudioReadFd = null;
+        commandAudioWriteFd = null;
+        if (readFd != null) {
+            try { readFd.close(); } catch (Exception ignored) {}
+        }
+        if (writeFd != null) {
+            try { writeFd.close(); } catch (Exception ignored) {}
         }
     }
 
@@ -435,6 +560,7 @@ public class WakeWordService extends Service {
         if (commandCaptureFinished) return;
         commandCaptureFinished = true;
         pendingCommandSpeechIntent = null;
+        stopInjectedCommandAudio();
         if (commandRecognizer != null) {
             try { commandRecognizer.cancel(); } catch (Exception ignored) {}
             try { commandRecognizer.destroy(); } catch (Exception ignored) {}
