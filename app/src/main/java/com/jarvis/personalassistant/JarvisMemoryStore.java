@@ -691,11 +691,39 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         int summaries = count(db, "SELECT COUNT(*) FROM memory_summaries");
         int turns = count(db, "SELECT COUNT(*) FROM conversations");
         int tasks = count(db, "SELECT COUNT(*) FROM tasks WHERE done=0");
+        int orphanCloud = count(db, "SELECT COUNT(*) FROM memory_embeddings e LEFT JOIN memories m ON m.id=e.memory_id WHERE m.id IS NULL");
+        int orphanLocal = count(db, "SELECT COUNT(*) FROM memory_local_vectors v LEFT JOIN memories m ON m.id=v.memory_id WHERE m.id IS NULL");
+        int orphanFeedback = count(db, "SELECT COUNT(*) FROM memory_feedback f LEFT JOIN memories m ON m.id=f.memory_id WHERE m.id IS NULL");
+        int orphanEdges = count(db, "SELECT COUNT(*) FROM knowledge_edges e LEFT JOIN memories m ON m.id=e.memory_id WHERE e.memory_id>0 AND m.id IS NULL");
+        int orphanSessions = count(db, "SELECT COUNT(*) FROM memory_sessions s LEFT JOIN conversations c ON c.session_id=s.session_id WHERE c.session_id IS NULL");
         return "JARVIS MEMORY HEALTH\nActive facts: "+active+"\nHistorical facts: "+historical+
             "\nPinned core facts: "+pinned+"\nCloud neural vectors: "+vectors+"\nOffline feature vectors (not neural): "+localVectors+
             "\nConversation turns: "+turns+"\nSessions: "+sessions+"\nSession digests: "+summaries+
             "\nOpen tasks/reminders: "+tasks+"\nTotal stored fact versions: "+total+
+            "\\nOrphan indexes (cloud/local/feedback/edges): "+orphanCloud+"/"+orphanLocal+"/"+orphanFeedback+"/"+orphanEdges+
+            "\\nSessions without conversation turns: "+orphanSessions+
             "\nStorage: on-device SQLite (offline-first)";
+    }
+
+    /** Safe repair for derived rows whose source records no longer exist. */
+    public synchronized int cleanupMemoryOrphans() {
+        expireTransientMemories();
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        int removed=0;
+        try{
+            removed+=db.delete("memory_embeddings","memory_id NOT IN (SELECT id FROM memories)",null);
+            removed+=db.delete("memory_local_vectors","memory_id NOT IN (SELECT id FROM memories)",null);
+            removed+=db.delete("memory_feedback","memory_id NOT IN (SELECT id FROM memories)",null);
+            removed+=db.delete(EDGES,"memory_id>0 AND memory_id NOT IN (SELECT id FROM memories)",null);
+            int before=count(db,"SELECT COUNT(*) FROM memory_sessions");
+            pruneOrphanSessions(db);
+            int after=count(db,"SELECT COUNT(*) FROM memory_sessions");
+            removed+=Math.max(0,before-after);
+            pruneOrphanKnowledgeNodes(db);
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+        return removed;
     }
 
     private int count(SQLiteDatabase db, String sql) {
