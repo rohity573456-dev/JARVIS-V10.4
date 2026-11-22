@@ -354,7 +354,7 @@ public class MainActivity extends Activity {
 
     private void refreshUiStatus() {
         if(status==null)return;
-        boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty());
+        boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty()||!secureStore.get("openai_key").isEmpty());
         status.setText("● "+(WakeWordService.isRunning?"VOICE ACTIVE":"SYSTEM READY")+(cloudReady?"  ·  AI CONNECTED":""));
     }
 
@@ -571,6 +571,7 @@ public class MainActivity extends Activity {
             }
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
+            String openAiKey = secureStore.get("openai_key");
             if (!geminiKey.isEmpty() || !groqKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
                 status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
@@ -584,7 +585,7 @@ public class MainActivity extends Activity {
                         "\\nPrevious response: " + lastResponse + "\\nCommander says: " + raw;
                     JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
-                        localModelPath, prompt, raw, result -> runOnUiThread(() -> respond(result)));
+                        localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> respond(result)));
                 }, "Jarvis-HybridBrain").start();
                 return;
             }
@@ -831,13 +832,13 @@ public class MainActivity extends Activity {
         if(memory.getBoolean("memory_ai_learning",false))
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-                memory.getString("groq_model","openai/gpt-oss-120b"),raw);
+                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),raw);
     }
     private void runAiMemoryReflectionIfEnabled(){
         if(longTermMemory==null||memory.getBoolean("memory_private_mode",false)||!memory.getBoolean("memory_ai_learning",false))return;
         JarvisMemoryAiWorker.reflectPendingAsync(longTermMemory,secureStore.get("gemini_key"),
             memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-            memory.getString("groq_model","openai/gpt-oss-120b"));
+            memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"));
     }
     private String buildOfflineMemoryPrompt(String raw){
         if(memory==null||memory.getBoolean("memory_private_mode",false)||longTermMemory==null)return raw;
@@ -850,11 +851,11 @@ public class MainActivity extends Activity {
             respond("AI memory extraction and cloud reflection OFF. Local learning remains available.");
             return;
         }
-        if(secureStore.get("gemini_key").isEmpty()&&secureStore.get("groq_key").isEmpty()){
+        if(secureStore.get("gemini_key").isEmpty()&&secureStore.get("groq_key").isEmpty()&&secureStore.get("openai_key").isEmpty()){
             respond("Pehle ONLINE AI SETUP mein Gemini ya Groq API key add karo.");return;
         }
         new AlertDialog.Builder(this).setTitle("ENABLE AI MEMORY LEARNING?")
-            .setMessage("When enabled, new user messages and eligible past conversation sessions will be sent to your configured Gemini/Groq provider to extract durable facts and create summaries. Sensitive categories are filtered, but cloud processing is still involved. Local memory remains available. Enable only if you agree.")
+            .setMessage("When enabled, new user messages and eligible past conversation sessions may be sent to your configured Gemini, Groq or OpenAI provider to extract durable facts and create summaries. Sensitive categories are filtered, but cloud processing is still involved. Local memory remains available. Enable only if you agree.")
             .setPositiveButton("ENABLE",(d,w)->{
                 memory.edit().putBoolean("memory_ai_learning",true).apply();
                 runAiMemoryReflectionIfEnabled();
@@ -891,19 +892,21 @@ public class MainActivity extends Activity {
         EditText geminiModel = new EditText(this); geminiModel.setSingleLine(true); geminiModel.setHint("Gemini model"); geminiModel.setText(memory.getString("gemini_model", "gemini-2.5-flash"));
         EditText groqKey = new EditText(this); groqKey.setSingleLine(true); groqKey.setHint("Groq API key"); groqKey.setInputType(129); groqKey.setText(secureStore.get("groq_key"));
         EditText groqModel = new EditText(this); groqModel.setSingleLine(true); groqModel.setHint("Groq model"); groqModel.setText(memory.getString("groq_model", "openai/gpt-oss-120b"));
-        box.addView(geminiKey); box.addView(geminiModel); box.addView(groqKey); box.addView(groqModel);
-        new AlertDialog.Builder(this).setTitle("JARVIS GEMINI + GROQ HYBRID")
-            .setMessage("Gemini primary, Groq automatic backup. Keys are encrypted at rest with Android Keystore. Free quotas and model access depend on your provider account.")
+        EditText openAiKey = new EditText(this); openAiKey.setSingleLine(true); openAiKey.setHint("Optional OpenAI API key (GPT-6.2 Astra; paid API)"); openAiKey.setInputType(129); openAiKey.setText(secureStore.get("openai_key"));
+        box.addView(geminiKey); box.addView(geminiModel); box.addView(groqKey); box.addView(groqModel); box.addView(openAiKey);
+        new AlertDialog.Builder(this).setTitle("JARVIS MULTI-BRAIN PROVIDERS")
+            .setMessage("Gemini/Groq handle everyday and fallback requests. Optional GPT-6.2 Astra is used for complex coding, research and analysis tasks. OpenAI API usage is billed separately; a ChatGPT subscription does not include API credits. Keys are encrypted at rest with Android Keystore.")
             .setView(scroll).setPositiveButton("SAVE", (d,w) -> {
                 try {
                     secureStore.put("gemini_key", geminiKey.getText().toString().trim());
                     secureStore.put("groq_key", groqKey.getText().toString().trim());
+                    secureStore.put("openai_key", openAiKey.getText().toString().trim());
                     String gm = geminiModel.getText().toString().trim(); String gr = groqModel.getText().toString().trim();
                     memory.edit().putString("gemini_model", gm.isEmpty()?"gemini-2.5-flash":gm)
                         .putString("groq_model", gr.isEmpty()?"openai/gpt-oss-120b":gr).apply();
-                    refreshUiStatus(); respond("Hybrid AI settings saved. Gemini primary, Groq backup.");
+                    refreshUiStatus(); respond("AI provider settings saved. Astra is optional for complex tasks; Gemini/Groq remain fallback providers.");
                 } catch (Exception e) { respond("Secure key storage failed: " + e.getMessage()); }
-            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); refreshUiStatus(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
+            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); secureStore.put("openai_key", ""); refreshUiStatus(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
             .setNegativeButton("CANCEL", null).show();
     }
 
