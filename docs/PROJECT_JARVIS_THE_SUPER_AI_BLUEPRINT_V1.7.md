@@ -405,3 +405,27 @@ Every project report must label each capability as:
 **Verification**
 - Source committed to the active feature branch. Fresh GitHub Actions result is not yet available/confirmed.
 - Runtime race testing (turn private mode on while a cloud request is queued/in flight) remains a required device/integration test.
+
+### Audit pass 4 — memory deletion, retention and index integrity
+
+**Issues found**
+- Deleting one memory removed its cloud embedding and feedback but left its local vector row behind.
+- Expiring temporary memories did not remove feedback rows and did not wrap the full cleanup in a transaction.
+- Clearing conversation history and clearing all saved facts were multi-table operations without transaction boundaries.
+- Conversation retention capped turns but did not prune sessions, AI reflection markers and session summaries whose turns had been evicted.
+- Background embedding requests could finish after a memory was deleted and recreate an orphan embedding row.
+
+**Corrections committed**
+- Single-memory deletion now atomically removes graph edges, cloud embeddings, local vectors, feedback and the memory row, then prunes orphan graph nodes.
+- Temporary-memory expiry now atomically removes all dependent indexes and feedback.
+- Cloud and local vector writes now verify inside the write transaction that the source memory still exists and is active. Late results for deleted/inactive memories are discarded.
+- Conversation insertion, session bookkeeping, 3,000-turn retention and orphan-session pruning now run in one transaction.
+- Session pruning removes stale reflection markers and both extractive/AI session summaries after the source session is removed.
+- Clear-history and clear-all-facts operations now use transactions and remove their dependent summary/reflection data consistently. Chat history and saved facts remain separate user controls.
+- Added memory integrity diagnostics for orphan cloud/local vectors, feedback, graph edges and sessions; added a user-invokable Memory Center repair action.
+- Clearing history, clearing all facts, or enabling Private Mode increments a memory-generation token. Queued AI extraction/reflection callbacks compare their captured generation before provider requests and writes, preventing old queued work from repopulating cleared data.
+
+**Verification state**
+- Source changes committed to the active feature branch.
+- Automated Android SQLite lifecycle tests and fresh CI are still required. The repository currently has only plain JUnit configured; SQLite runtime tests cannot be honestly claimed from source inspection alone.
+- Real-device tests remain pending: delete memory during embedding request, clear history during AI reflection, turn Private Mode on with queued jobs, expire transient note, and inspect Memory Health before/after repair.
