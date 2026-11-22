@@ -9,17 +9,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Bounded plan/execute/verify orchestrator. Planning is injected so model providers
- * remain replaceable; all side effects must pass through JarvisToolRegistry.
- */
+/** Bounded plan/execute/verify agent with verified tool-result feedback between turns. */
 public final class JarvisAgentEngine {
     public static final int MAX_STEPS = 8;
     public static final int MAX_RETRIES_PER_STEP = 1;
 
     public enum State { PLANNING, AWAITING_APPROVAL, RUNNING, VERIFYING, COMPLETED, FAILED, CANCELLED }
 
-    public interface Planner { AgentPlan createPlan(String objective) throws Exception; }
+    public interface Planner {
+        AgentPlan createPlan(String objective) throws Exception;
+        /** A fresh bounded planning turn receives only locally verified prior tool results. */
+        default AgentPlan createFollowUpPlan(String objective, List<StepReport> verifiedHistory) throws Exception {
+            return new AgentPlan(objective, Collections.<AgentStep>emptyList());
+        }
+    }
     public interface ApprovalGate { boolean approve(AgentStep step); }
     public interface Listener {
         void onState(State state, String detail);
@@ -27,15 +30,11 @@ public final class JarvisAgentEngine {
     }
 
     public static final class AgentStep {
-        public final String id;
-        public final String toolName;
+        public final String id, toolName, purpose;
         public final Map<String, String> arguments;
-        public final String purpose;
-
         public AgentStep(String id, String toolName, Map<String, String> arguments, String purpose) {
             if (blank(id) || blank(toolName)) throw new IllegalArgumentException("Step id and tool name are required");
-            this.id = id;
-            this.toolName = toolName;
+            this.id = id; this.toolName = toolName;
             this.arguments = Collections.unmodifiableMap(new LinkedHashMap<>(
                 arguments == null ? Collections.<String, String>emptyMap() : arguments));
             this.purpose = purpose == null ? "" : purpose;
@@ -99,9 +98,13 @@ public final class JarvisAgentEngine {
         notifyState(listener, state, "Creating a bounded execution plan");
         try {
             AgentPlan plan = planner.createPlan(objective);
-            if (plan == null || plan.steps.size() > MAX_STEPS) throw new IllegalStateException("Planner returned an invalid plan");
-            for (AgentStep step : plan.steps) {
+            if (plan == null) throw new IllegalStateException("Planner returned a null plan");
+            int planned = 0;
+            while (plan.steps.size() > 0 && planned < MAX_STEPS) {
                 if (handle.cancelled.get()) { state = State.CANCELLED; break; }
+                // Execute one model-proposed action, then return its verified result to a new planning turn.
+                AgentStep step = plan.steps.get(0);
+                planned++;
                 JarvisToolRegistry.ToolSpec spec = registry.get(step.toolName);
                 if (spec == null) throw new IllegalStateException("Plan requested an unregistered tool: " + step.toolName);
                 List<String> errors = spec.argumentErrors(step.arguments);
@@ -123,13 +126,21 @@ public final class JarvisAgentEngine {
                 }
                 state = State.VERIFYING;
                 notifyState(listener, state, "Checking tool result");
-                reports.add(new StepReport(step, result, attempts));
+                StepReport report = new StepReport(step, result, attempts);
+                reports.add(report);
                 if (!result.success) { state = State.FAILED; break; }
                 if (!result.verified) {
                     state = State.FAILED;
                     notifyState(listener, state, "Tool completed but result could not be verified; stopping safely");
                     break;
                 }
+                if (handle.cancelled.get()) { state = State.CANCELLED; break; }
+                if (planned >= MAX_STEPS) break;
+                state = State.PLANNING;
+                notifyState(listener, state, "Returning verified result to AI for the next decision");
+                List<StepReport> history = Collections.unmodifiableList(new ArrayList<>(reports));
+                plan = planner.createFollowUpPlan(objective, history);
+                if (plan == null) throw new IllegalStateException("Follow-up planner returned a null plan");
             }
             if (handle.cancelled.get()) state = State.CANCELLED;
             else if (state != State.FAILED && state != State.CANCELLED) state = State.COMPLETED;
@@ -138,8 +149,8 @@ public final class JarvisAgentEngine {
             reports.add(new StepReport(new AgentStep("planner", "planner_error", Collections.<String,String>emptyMap(), ""),
                 JarvisToolRegistry.ToolResult.failure(e.getClass().getSimpleName() + ": " + e.getMessage()), 1));
         }
-        String summary = state == State.COMPLETED ? "All planned steps completed and verified."
-            : state == State.CANCELLED ? "Execution cancelled; no further steps were started."
+        String summary = state == State.COMPLETED ? "Agent planning finished; every executed action was verified."
+            : state == State.CANCELLED ? "Execution cancelled or approval denied; no further steps were started."
             : "Execution stopped safely. Review the step report before retrying.";
         notifyState(listener, state, summary);
         if (listener != null) listener.onComplete(new AgentReport(objective, state, reports, summary));
