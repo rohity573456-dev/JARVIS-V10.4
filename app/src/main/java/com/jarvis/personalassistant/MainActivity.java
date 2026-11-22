@@ -934,7 +934,7 @@ public class MainActivity extends Activity {
     private void show(String who,String s) {
         if(conversationList==null)return;
         final float d=getResources().getDisplayMetrics().density;
-        boolean fromUser=who!=null&&who.equalsIgnoreCase("YOU");
+        boolean fromUser=who!=null&&(who.equalsIgnoreCase("YOU")||who.equalsIgnoreCase("COMMANDER"));
         LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL);
         row.setGravity(fromUser?Gravity.END:Gravity.START); row.setPadding(0,(int)(4*d),0,(int)(4*d));
         TextView label=new TextView(this); label.setText(fromUser?"YOU":"JARVIS");
