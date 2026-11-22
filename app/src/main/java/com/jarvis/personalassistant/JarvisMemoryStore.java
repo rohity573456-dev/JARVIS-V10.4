@@ -406,7 +406,6 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     /** Conversation turns are grouped into sessions (30-minute idle boundary). */
-    /** Conversation turns are grouped into sessions (30-minute idle boundary). */
     public synchronized void addConversation(String speaker, String content) {
         if (content == null || content.trim().isEmpty() || isSensitiveContent(content)) return;
         SQLiteDatabase db = getWritableDatabase();
