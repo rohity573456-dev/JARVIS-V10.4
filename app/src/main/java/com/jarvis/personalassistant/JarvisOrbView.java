@@ -43,8 +43,8 @@ public final class JarvisOrbView extends View {
         float radius=Math.min(w*0.29f,h*0.43f);
         float t=(SystemClock.uptimeMillis()-startedAt)/1000f;
         boolean active="LISTENING".equals(state) || "THINKING".equals(state);
-        int core= "SPEAKING".equals(state) ? Color.rgb(80,245,255) :
-            ("LISTENING".equals(state) ? Color.rgb(80,255,180) : Color.rgb(30,185,255));
+        int core= "SPEAKING".equals(state) ? Color.rgb(190,170,255) :
+            ("LISTENING".equals(state) ? Color.rgb(130,225,255) : Color.rgb(110,170,255));
 
         paint.setStyle(Paint.Style.FILL);
         paint.setShader(new RadialGradient(cx,cy,radius*1.55f,
@@ -102,7 +102,9 @@ public final class JarvisOrbView extends View {
             float py=cy+(float)Math.sin(a)*radius*0.70f;
             canvas.drawCircle(px,py,2.0f+(i%3)*0.65f,paint);
         }
-        if (isAttachedToWindow()) postInvalidateDelayed(32);
+        // Follow the display vsync instead of a fixed 32 ms timer (about 31 FPS).
+        // Android will schedule this at the supported panel cadence, including 90 Hz.
+        if (isAttachedToWindow()) postInvalidateOnAnimation();
     }
 
     @Override protected void onDetachedFromWindow() {
