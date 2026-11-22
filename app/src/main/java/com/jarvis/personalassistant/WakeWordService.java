@@ -655,6 +655,7 @@ public class WakeWordService extends Service {
             SecureStore keys = new SecureStore(getApplicationContext());
             String gemini = keys.get("gemini_key");
             String groq = keys.get("groq_key");
+            String openAi = keys.get("openai_key");
             String localPath = prefs.getString("local_model_path","");
             String memoryContext = "No saved memory context.";
             JarvisMemoryStore store = null;
@@ -670,7 +671,16 @@ public class WakeWordService extends Service {
             }
             final String prompt = memoryContext + "\n\nYou are JARVIS running in background voice mode. Answer naturally in Hindi/Hinglish or the language used. Be concise. Do not claim a phone action was performed unless confirmed. If a task requires opening an app or screen, explain that the user must open JARVIS.\nPratik Boss says: " + raw;
             String result = "ERROR: no online provider configured.";
-            if (!gemini.isEmpty()) {
+            JarvisHybridBrain.Specialist specialist = JarvisHybridBrain.classify(raw);
+            if (!openAi.isEmpty() && (specialist != JarvisHybridBrain.Specialist.GENERAL
+                    || raw.toLowerCase(java.util.Locale.ROOT).startsWith("astra "))) {
+                String effort = specialist == JarvisHybridBrain.Specialist.CODING
+                        || specialist == JarvisHybridBrain.Specialist.RESEARCH
+                        || specialist == JarvisHybridBrain.Specialist.DATA_ANALYSIS ? "high" : "medium";
+                result = OpenAiResponsesClient.ask(openAi, OpenAiResponsesClient.DEFAULT_MODEL,
+                    JarvisHybridBrain.systemDirective(raw), prompt, effort);
+            }
+            if (result.startsWith("ERROR") && !gemini.isEmpty()) {
                 result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gemini,
                     prefs.getString("gemini_model","gemini-2.5-flash"),prompt);
             }
