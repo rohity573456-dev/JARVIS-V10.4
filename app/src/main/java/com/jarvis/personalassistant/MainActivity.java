@@ -788,7 +788,7 @@ public class MainActivity extends Activity {
                 else if(which==12) show("PINNED CORE MEMORIES",longTermMemory==null?"Unavailable":longTermMemory.getPinnedMemoriesText(50));
                 else if(which==13){
                     boolean enabled=memory.getBoolean("memory_cloud_embeddings",false);
-                    if(enabled){memory.edit().putBoolean("memory_cloud_embeddings",false).apply();respond("Gemini semantic vectors OFF. Local memory recall remains active.");}
+                    if(enabled){invalidatePendingMemoryJobs();memory.edit().putBoolean("memory_cloud_embeddings",false).apply();respond("Gemini semantic vectors OFF. Local memory recall remains active.");}
                     else new AlertDialog.Builder(this).setTitle("ENABLE GEMINI SEMANTIC MEMORY?")
                         .setMessage("This optional feature sends saved memory snippets and future memory-search queries to Google Gemini Embeddings. Your memory database remains on this phone, and local search stays available as fallback. Enable only if you agree.")
                         .setPositiveButton("ENABLE",(x,y)->{memory.edit().putBoolean("memory_cloud_embeddings",true).apply();indexSemanticMemoryIfEnabled(300);respond("Gemini semantic vectors enabled. Existing memories will be indexed in the background.");})
@@ -877,8 +877,13 @@ public class MainActivity extends Activity {
             }).setNegativeButton("CANCEL",null).show();
     }
     private void indexSemanticMemoryIfEnabled(int maximum){
-        if(memory!=null && memory.getBoolean("memory_cloud_embeddings",false) && secureStore!=null)
-            JarvisEmbeddingWorker.indexPending(longTermMemory,secureStore,maximum);
+        if(memory==null||!memory.getBoolean("memory_cloud_embeddings",false)||
+                memory.getBoolean("memory_private_mode",false)||secureStore==null||longTermMemory==null)return;
+        final long generation=memory.getLong("memory_generation",0L);
+        JarvisEmbeddingWorker.indexPending(longTermMemory,secureStore,maximum,()->memory!=null &&
+            memory.getBoolean("memory_cloud_embeddings",false) &&
+            !memory.getBoolean("memory_private_mode",false) &&
+            memory.getLong("memory_generation",0L)==generation);
     }
     private void customCommandDialog() {
         LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(24,8,24,8);
