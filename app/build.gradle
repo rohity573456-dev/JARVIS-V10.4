@@ -11,7 +11,7 @@ android {
         minSdk 24
         targetSdk 35
         versionCode 22
-        versionName '10.4-continuous-kws'
+        versionName '10.4-onnx-wake-migration'
         ndk { abiFilters 'arm64-v8a' }
     }
 
@@ -19,12 +19,17 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-
 }
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+
+    // Temporary compatibility baseline. Remove only after ONNX cutover is validated.
     implementation files('libs/sherpa-onnx-2.0.1.aar')
+
+    // OpenWakeWord-compatible ONNX pipeline; custom Jarvis classifier is loaded from assets.
+    implementation 'com.github.msnilsen:openwakeword-android:0.1.0'
+
     implementation 'com.google.ai.edge.litertlm:litertlm-android:0.16.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 }
