@@ -75,15 +75,20 @@ public final class JarvisHybridBrain {
                 result = OpenAiResponsesClient.ask(openAiKey, OpenAiResponsesClient.DEFAULT_MODEL,
                         directive, contextPrompt, effort);
             }
-            if (isError(result) && !empty(geminiKey)) {
-                result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
-                    empty(geminiModel) ? "gemini-2.5-flash" : geminiModel,
-                    contextPrompt, directive);
-            }
-            if (isError(result) && !empty(groqKey)) {
+            String preferred = preferredCloudProvider(specialist, !empty(geminiKey), !empty(groqKey));
+            if (isError(result) && "GROQ".equals(preferred)) {
                 result = OnlineAiClient.ask(GROQ_ENDPOINT, groqKey,
-                    empty(groqModel) ? "openai/gpt-oss-120b" : groqModel,
-                    contextPrompt, directive);
+                    empty(groqModel) ? "openai/gpt-oss-120b" : groqModel, contextPrompt, directive);
+            } else if (isError(result) && "GEMINI".equals(preferred)) {
+                result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
+                    empty(geminiModel) ? "gemini-2.5-flash" : geminiModel, contextPrompt, directive);
+            }
+            if (isError(result) && "GROQ".equals(preferred) && !empty(geminiKey)) {
+                result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
+                    empty(geminiModel) ? "gemini-2.5-flash" : geminiModel, contextPrompt, directive);
+            } else if (isError(result) && "GEMINI".equals(preferred) && !empty(groqKey)) {
+                result = OnlineAiClient.ask(GROQ_ENDPOINT, groqKey,
+                    empty(groqModel) ? "openai/gpt-oss-120b" : groqModel, contextPrompt, directive);
             }
             if (!isError(result)) {
                 if (useAstra && shouldVerifyAstraAnswer(userText, true)) {
@@ -110,6 +115,16 @@ public final class JarvisHybridBrain {
         });
     }
 
+    /** Groq is preferred for code/analysis/planning; Gemini for general and research. */
+    static String preferredCloudProvider(Specialist specialist, boolean geminiConfigured, boolean groqConfigured) {
+        if (specialist == Specialist.CODING || specialist == Specialist.DATA_ANALYSIS
+                || specialist == Specialist.PLANNING) {
+            if (groqConfigured) return "GROQ";
+        }
+        if (geminiConfigured) return "GEMINI";
+        if (groqConfigured) return "GROQ";
+        return "NONE";
+    }
     static boolean shouldUseAstra(String userText, boolean configured) {
         if (!configured) return false;
         return classify(userText) != Specialist.GENERAL
