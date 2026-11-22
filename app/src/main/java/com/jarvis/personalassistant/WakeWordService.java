@@ -20,9 +20,6 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 
-import ai.picovoice.porcupine.Porcupine;
-import ai.picovoice.porcupine.PorcupineManager;
-
 import com.k2fsa.sherpa.onnx.FeatureConfig;
 import com.k2fsa.sherpa.onnx.KeywordSpotter;
 import com.k2fsa.sherpa.onnx.KeywordSpotterConfig;
@@ -68,8 +65,6 @@ public class WakeWordService extends Service {
     private Thread audioThread;
     private KeywordSpotter keywordSpotter;
     private OnlineStream keywordStream;
-    private PorcupineManager porcupineManager;
-    private volatile boolean porcupineListening = false;
     private SpeechRecognizer commandRecognizer;
     private PowerManager.WakeLock wakeLock;
     private TextToSpeech tts;
@@ -158,25 +153,6 @@ public class WakeWordService extends Service {
     }
 
     private void initializeAndStart() {
-        String picovoiceKey = new SecureStore(getApplicationContext()).get("picovoice_access_key");
-        if (!picovoiceKey.isEmpty()) {
-            try {
-                porcupineManager = new PorcupineManager.Builder()
-                        .setAccessKey(picovoiceKey)
-                        .setKeyword(Porcupine.BuiltInKeyword.JARVIS)
-                        .build(getApplicationContext(), keywordIndex ->
-                                handler.post(this::onPorcupineWakeDetected));
-                handler.post(() -> {
-                    if (running && !speechPlaying) startAudioCapture();
-                });
-                android.util.Log.i("JARVIS-KWS", "Picovoice Porcupine initialized with built-in JARVIS keyword");
-                return;
-            } catch (Exception picovoiceError) {
-                android.util.Log.e("JARVIS-KWS", "Picovoice initialization failed; trying Sherpa fallback", picovoiceError);
-                porcupineManager = null;
-            }
-        }
-
         try {
             File dir = new File(getFilesDir(), MODEL_DIR);
             if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create KWS model folder");
@@ -250,40 +226,8 @@ public class WakeWordService extends Service {
         }
     }
 
-    private void onPorcupineWakeDetected() {
-        if (!running || wakeDetected) return;
-        wakeDetected = true;
-        stopPorcupineListening();
-        android.util.Log.i("JARVIS-KWS", "Porcupine detected JARVIS");
-        handler.postDelayed(this::beginCommandCapture, 250);
-    }
-
-    private void stopPorcupineListening() {
-        if (porcupineManager == null || !porcupineListening) return;
-        try {
-            porcupineManager.stop();
-        } catch (Exception e) {
-            android.util.Log.w("JARVIS-KWS", "Porcupine stop warning", e);
-        } finally {
-            porcupineListening = false;
-        }
-    }
-
     private void startAudioCapture() {
         if (!running || recording || wakeDetected || speechPlaying) return;
-        if (porcupineManager != null) {
-            if (!porcupineListening) {
-                try {
-                    porcupineManager.start();
-                    porcupineListening = true;
-                    android.util.Log.i("JARVIS-KWS", "Porcupine listening started");
-                } catch (Exception e) {
-                    android.util.Log.e("JARVIS-KWS", "Porcupine microphone start failed", e);
-                    handler.post(() -> speak("Wake engine start nahi hua. Picovoice key aur microphone permission check karein."));
-                }
-            }
-            return;
-        }
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             stopSelf();
@@ -573,7 +517,6 @@ public class WakeWordService extends Service {
 
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
-        stopPorcupineListening();
         if (!ttsReady || tts == null) {
             pendingSpeech = text;
             return;
@@ -609,11 +552,6 @@ public class WakeWordService extends Service {
         }
 
         releaseAudioRecord();
-        stopPorcupineListening();
-        if (porcupineManager != null) {
-            try { porcupineManager.delete(); } catch (Exception ignored) {}
-            porcupineManager = null;
-        }
         if (keywordStream != null) {
             try { keywordStream.release(); } catch (Exception ignored) {}
             keywordStream = null;

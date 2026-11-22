@@ -260,42 +260,8 @@ public class MainActivity extends Activity {
         addSmall(row4,"SYSTEM STATUS",v->systemReport());
         root.addView(row4);
 
-        LinearLayout row5 = new LinearLayout(this);
-        row5.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row5,"WAKE ENGINE / PICOVOICE",v->picovoiceDialog());
-        root.addView(row5);
-
         page.addView(root,new ScrollView.LayoutParams(-1,-2));
         setContentView(page);
-    }
-
-    private void picovoiceDialog() {
-        EditText accessKey = new EditText(this);
-        accessKey.setSingleLine(true);
-        accessKey.setInputType(129);
-        accessKey.setHint("Picovoice AccessKey");
-        accessKey.setText(secureStore.get("picovoice_access_key"));
-        new AlertDialog.Builder(this)
-            .setTitle("PICOVOICE WAKE ENGINE")
-            .setMessage("Picovoice Porcupine runs wake-word detection offline after initialization. Get your free AccessKey from console.picovoice.ai. The key is encrypted with Android Keystore and is never written to GitHub. Built-in keyword: JARVIS. After saving, restart the wake service.")
-            .setView(accessKey)
-            .setPositiveButton("SAVE & RESTART", (d,w) -> {
-                String key = accessKey.getText().toString().trim();
-                try {
-                    secureStore.put("picovoice_access_key", key);
-                    stopService(new Intent(this, WakeWordService.class));
-                    voiceHandler.postDelayed(this::startAlwaysOnWakeService, 700);
-                    respond(key.isEmpty()
-                        ? "Picovoice key cleared. Existing Sherpa wake engine will be used."
-                        : "Picovoice key saved securely. Wake service restarting with JARVIS keyword.");
-                } catch (Exception e) {
-                    respond("Picovoice key secure storage failed.");
-                }
-            })
-            .setNeutralButton("OPEN PICOVOICE CONSOLE", (d,w) ->
-                open("https://console.picovoice.ai/"))
-            .setNegativeButton("CANCEL", null)
-            .show();
     }
 
     private void pickImage() {
