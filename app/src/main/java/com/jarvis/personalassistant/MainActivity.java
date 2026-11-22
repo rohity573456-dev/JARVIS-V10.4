@@ -69,7 +69,7 @@ public class MainActivity extends Activity {
     private boolean serviceRetryUsed = false;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private EditText commandInput;
-    private String lastResponse = "I am ready, Commander.";
+    private String lastResponse = "I am ready, Pratik Boss.";
     private android.content.BroadcastReceiver wakeReceiver;
     private boolean wakeReceiverRegistered = false;
     private String pendingSpeech = null;
@@ -144,7 +144,7 @@ public class MainActivity extends Activity {
         });
         refreshDashboard();
         show("JARVIS CORE", "V9 foundation online. Voice, memory and command modules ready.");
-        speak("JARVIS systems online. At your service, Commander.");
+        speak("JARVIS systems online. At your service, Pratik Boss.");
     }
 
     private void buildUi() {
@@ -368,7 +368,7 @@ public class MainActivity extends Activity {
                 status.setText("● MICROPHONE READY");
                 requestNotificationPermissionIfNeeded();
                 startAlwaysOnWakeService();
-                respond("Microphone permission granted. I am ready, Commander.");
+                respond("Microphone permission granted. I am ready, Pratik Boss.");
             } else {
                 status.setText("● MICROPHONE PERMISSION NEEDED");
                 show("SYSTEM", "Android Settings mein JARVIS ke liye Microphone permission Allow karein.");
@@ -386,7 +386,7 @@ public class MainActivity extends Activity {
     private boolean hasMicPermission() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return true;
         ensureAudioPermission();
-        respond("Microphone permission allow karo, Commander.");
+        respond("Microphone permission allow karo, Pratik Boss.");
         return false;
     }
 
@@ -538,7 +538,7 @@ public class MainActivity extends Activity {
         else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
-        else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Commander. JARVIS systems are ready.";
+        else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Pratik Boss. JARVIS systems are ready.";
         else {
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
@@ -575,7 +575,7 @@ public class MainActivity extends Activity {
                 LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), result -> { runOnUiThread(() -> respond(result)); return kotlin.Unit.INSTANCE; });
                 return;
             }
-            answer="AI brain configure nahi hai, Commander. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
+            answer="AI brain configure nahi hai, Pratik Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
         }
         respond(answer);
     }
