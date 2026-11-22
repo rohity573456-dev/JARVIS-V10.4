@@ -48,8 +48,8 @@ public final class JarvisAgentEngine {
         public final List<AgentStep> steps;
         public AgentPlan(String objective, List<AgentStep> steps) {
             if (objective == null || objective.trim().isEmpty()) throw new IllegalArgumentException("Objective is required");
-            if (steps == null || steps.isEmpty() || steps.size() > MAX_STEPS)
-                throw new IllegalArgumentException("Plan must contain 1-" + MAX_STEPS + " steps");
+            if (steps == null || steps.size() > MAX_STEPS)
+                throw new IllegalArgumentException("Plan must contain 0-" + MAX_STEPS + " steps");
             this.objective = objective;
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
         }
