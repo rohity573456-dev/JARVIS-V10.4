@@ -311,7 +311,7 @@ public class WakeWordService extends Service {
 
     private void beginCommandCapture() {
         if (!running || !wakeDetected) return;
-        speak("Yes, Commander.");
+        speak("Yes, Pratik Boss.");
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             wakeDetected = false;
             restartStandby(1000);
