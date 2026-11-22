@@ -25,7 +25,7 @@ final class OpenWakeWordEngine implements AutoCloseable {
     private static final int CLASSIFIER_WINDOW = 16;
     private static final int RAW_HISTORY = SAMPLE_RATE * 10;
     private static final int MEL_HISTORY = 970;
-    private static final float THRESHOLD = 0.50f;
+    private static final float THRESHOLD = 0.35f;
 
     private final OrtEnvironment environment;
     private final OrtSession melSession;
