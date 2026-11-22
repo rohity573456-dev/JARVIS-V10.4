@@ -46,9 +46,9 @@ public class WakeWordService extends Service {
     private static final int SAMPLE_RATE = 16000;
     private static final int FRAME_SAMPLES = 1600; // 100 ms
     private static final String[] MODEL_FILES = {
-            "encoder-epoch-12-avg-2-chunk-16-left-64.onnx",
-            "decoder-epoch-12-avg-2-chunk-16-left-64.onnx",
-            "joiner-epoch-12-avg-2-chunk-16-left-64.onnx",
+            "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+            "decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
+            "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
             "tokens.txt",
             "keywords.txt"
     };
@@ -186,8 +186,8 @@ public class WakeWordService extends Service {
                     model,
                     4,
                     prefix + "keywords.txt",
-                    1.5f,
-                    0.40f,
+                    2.0f,
+                    0.25f,
                     2);
 
             // Null AssetManager selects file-path loading because model files
