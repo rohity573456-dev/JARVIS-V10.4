@@ -1,345 +1,59 @@
-package com.jarvis.personalassistant
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
-import android.os.Build
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
-import android.os.PowerManager
-import android.os.Process
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.os.Bundle
-import com.k2fsa.sherpa.onnx.KeywordSpotter
-import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
-import com.k2fsa.sherpa.onnx.OnlineStream
-import com.k2fsa.sherpa.onnx.FeatureConfig
-import com.k2fsa.sherpa.onnx.OnlineModelConfig
-import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
-import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.concurrent.thread
+name: Build JARVIS V10.4 APK
 
-/**
- * V10.4: one foreground service owns the microphone during standby.
- * AudioRecord feeds an offline Sherpa-ONNX keyword spotter continuously.
- * SpeechRecognizer is opened only after the wake phrase has been detected.
- */
-class WakeWordService : Service() {
-    companion object {
-        const val ACTION_WAKE_COMMAND = "com.jarvis.personalassistant.WAKE_COMMAND"
-        const val EXTRA_COMMAND = "command"
-        private const val CHANNEL_ID = "jarvis_wake_channel"
-        private const val NOTIFICATION_ID = 991
-        private const val TAG = "JARVIS-KWS"
-        private const val SAMPLE_RATE = 16000
-        private const val MODEL_DIR = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
-        @JvmField @Volatile var isRunning: Boolean = false
-    }
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val active = AtomicBoolean(false)
-    private val commandSessionFinished = AtomicBoolean(true)
-    @Volatile private var commandMode = false
-    private var audioRecord: AudioRecord? = null
-    private var recordThread: Thread? = null
-    private var spotter: KeywordSpotter? = null
-    private var stream: OnlineStream? = null
-    private var commandRecognizer: SpeechRecognizer? = null
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
-    private var pendingSpeech: String? = null
-    private var lastWakeAt = 0L
+permissions:
+  contents: read
 
-    override fun onCreate() {
-        super.onCreate()
-        createNotificationChannel()
-        tts = TextToSpeech(applicationContext) { result ->
-            if (result == TextToSpeech.SUCCESS) {
-                val t = tts ?: return@TextToSpeech
-                val lang = t.setLanguage(Locale("en", "IN"))
-                if (lang == TextToSpeech.LANG_MISSING_DATA || lang == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    t.setLanguage(Locale("hi", "IN"))
-                }
-                t.setPitch(0.78f)
-                t.setSpeechRate(0.90f)
-                ttsReady = true
-                pendingSpeech?.let { pendingSpeech = null; speak(it) }
-            }
-        }
-    }
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            stopSelf(); return START_NOT_STICKY
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-            } else startForeground(NOTIFICATION_ID, buildNotification())
-        } catch (_: Exception) { stopSelf(); return START_NOT_STICKY }
+    steps:
+      - uses: actions/checkout@v4
 
-        if (active.compareAndSet(false, true)) {
-            isRunning = true
-            val pm = getSystemService(POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JARVIS:ContinuousKws")
-            wakeLock?.setReferenceCounted(false)
-            wakeLock?.acquire(10 * 60 * 60 * 1000L)
-            thread(name = "JarvisKwsInit") { initializeKeywordSpotterAndStart() }
-        }
-        return START_STICKY
-    }
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
 
-    private fun buildNotification(): Notification {
-        val open = Intent(this, MainActivity::class.java)
-        val pi = PendingIntent.getActivity(this, 0, open,
-            PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
-        val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
-        return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("JARVIS voice standby")
-            .setContentText("Offline wake detection active — say Hey Jarvis")
-            .setContentIntent(pi).setOngoing(true).build()
-    }
+      - uses: android-actions/setup-android@v4
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel(CHANNEL_ID, "JARVIS Wake Listening", NotificationManager.IMPORTANCE_LOW)
-            channel.description = "Continuous offline wake-word detection"
-            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
-        }
-    }
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
 
-    private fun initializeKeywordSpotterAndStart() {
-        try {
-            // Upstream Sherpa KWS example model type 1 is the English GigaSpeech Zipformer model.
-            val model = OnlineModelConfig(
-                transducer = OnlineTransducerModelConfig(
-                    encoder = MODEL_DIR + "/encoder-epoch-12-avg-2-chunk-16-left-64.onnx",
-                    decoder = MODEL_DIR + "/decoder-epoch-12-avg-2-chunk-16-left-64.onnx",
-                    joiner = MODEL_DIR + "/joiner-epoch-12-avg-2-chunk-16-left-64.onnx"
-                ),
-                tokens = MODEL_DIR + "/tokens.txt",
-                numThreads = 2,
-                modelType = "zipformer2",
-                modelingUnit = "bpe",
-                bpeVocab = MODEL_DIR + "/bpe.model"
-            )
-            val config = KeywordSpotterConfig(
-                featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-                modelConfig = model,
-                keywordsFile = MODEL_DIR + "/keywords.txt",
-                maxActivePaths = 4,
-                keywordsScore = 3.0f,
-                keywordsThreshold = 0.10f,
-                numTrailingBlanks = 1
-            )
-            spotter = KeywordSpotter(assetManager = assets, config = config)
-            stream = spotter!!.createStream()
-            android.util.Log.i(TAG, "KWS model and keyword list initialized: ${MODEL_DIR}/keywords.txt")
-            handler.post { startContinuousAudioCapture() }
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "KWS initialization failed; verify model assets and keywords.txt", e)
-            handler.post { speak("Offline wake model could not start. Please rebuild JARVIS V10.4.") }
-            active.set(false)
-            isRunning = false
-            stopSelf()
-        }
-    }
+      - name: Download official Sherpa-ONNX Android AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs
+          curl -fL --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar -o app/libs/sherpa-onnx-2.0.1.aar
+          test -s app/libs/sherpa-onnx-2.0.1.aar
 
-    private fun startContinuousAudioCapture() {
-        if (!active.get() || commandMode || audioRecord != null) return
-        try {
-            val minBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            require(minBytes > 0) { "Invalid AudioRecord buffer size: $minBytes" }
-            val recorder = AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minBytes * 2, 6400))
-            check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed" }
-            recorder.startRecording()
-            check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                "AudioRecord did not enter RECORDSTATE_RECORDING"
-            }
-            android.util.Log.i(TAG, "Standby microphone recording at ${SAMPLE_RATE} Hz")
-            audioRecord = recorder
-            val kws = spotter ?: error("KWS model not initialized")
-            val kwsStream = stream ?: error("KWS stream not initialized")
-            recordThread = thread(name = "JarvisContinuousMic") {
-                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
-                val pcm = ShortArray(1600) // 100 ms at 16 kHz
-                var lastLevelLog = android.os.SystemClock.elapsedRealtime()
-                try {
-                    while (active.get() && !commandMode && audioRecord === recorder) {
-                        val count = try { recorder.read(pcm, 0, pcm.size) } catch (e: Exception) {
-                            android.util.Log.e(TAG, "AudioRecord read threw an exception", e)
-                            -1
-                        }
-                        if (count > 0) {
-                            var peak = 0
-                            for (i in 0 until count) peak = maxOf(peak, kotlin.math.abs(pcm[i].toInt()))
-                            val nowForLog = android.os.SystemClock.elapsedRealtime()
-                            if (nowForLog - lastLevelLog >= 5000) {
-                                android.util.Log.d(TAG, "Standby audio alive; peak PCM=$peak, frames=$count")
-                                lastLevelLog = nowForLog
-                            }
-                            val samples = FloatArray(count) { pcm[it] / 32768.0f }
-                            kwsStream.acceptWaveform(samples, SAMPLE_RATE)
-                            while (kws.isReady(kwsStream)) {
-                                kws.decode(kwsStream)
-                                val detected = kws.getResult(kwsStream).keyword
-                                if (detected.isNotBlank()) {
-                                    android.util.Log.i(TAG, "Wake keyword result: [$detected]")
-                                    kws.reset(kwsStream)
-                                    val now = android.os.SystemClock.elapsedRealtime()
-                                    if (now - lastWakeAt > 1800) {
-                                        lastWakeAt = now
-                                        handler.post { onWakeDetected() }
-                                    }
-                                }
-                            }
-                        } else if (count < 0) {
-                            android.util.Log.w(TAG, "AudioRecord read failed: $count")
-                            break
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e(TAG, "Continuous KWS audio loop crashed", e)
-                } finally {
-                    // A dead AudioRecord must not remain in audioRecord: that would block every retry.
-                    if (audioRecord === recorder) {
-                        audioRecord = null
-                        try { if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop() } catch (_: Exception) {}
-                        try { recorder.release() } catch (_: Exception) {}
-                        if (active.get() && !commandMode) {
-                            android.util.Log.w(TAG, "Restarting continuous microphone after read-loop exit")
-                            handler.postDelayed({ startContinuousAudioCapture() }, 1000)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "Could not start continuous microphone", e)
-            releaseAudioRecord()
-            handler.postDelayed({ if (active.get() && !commandMode) startContinuousAudioCapture() }, 1500)
-        }
-    }
+      - name: Fetch English wake-word model and create Jarvis keyword tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
+          curl -fL --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/${MODEL}.tar.bz2 -o /tmp/kws-model.tar.bz2
+          mkdir -p /tmp/kws-model
+          tar -xjf /tmp/kws-model.tar.bz2 -C /tmp/kws-model
+          mkdir -p app/src/main/assets/${MODEL}
+          cp -a /tmp/kws-model/${MODEL}/. app/src/main/assets/${MODEL}/
+          printf 'JARVIS\n' > /tmp/keywords_raw.txt
+          python -m pip install --disable-pip-version-check sherpa-onnx==2.0.1 sentencepiece pypinyin
+          sherpa-onnx-cli text2token --tokens app/src/main/assets/${MODEL}/tokens.txt --tokens-type bpe --bpe-model app/src/main/assets/${MODEL}/bpe.model /tmp/keywords_raw.txt /tmp/keywords.txt
+          cp /tmp/keywords.txt app/src/main/assets/${MODEL}/keywords.txt
 
-    private fun onWakeDetected() {
-        if (!active.get() || commandMode) return
-        commandMode = true
-        commandSessionFinished.set(false)
-        releaseAudioRecord() // hand off mic exactly once: KWS standby -> one command session
-        // Update the Activity immediately so the wake transition is visible before speech recognition returns.
-        sendBroadcast(Intent(ACTION_WAKE_COMMAND).setPackage(packageName))
-        speak("Yes, Commander.")
-        handler.postDelayed({ startCommandRecognition() }, 900)
-    }
+      - name: Build debug APK
+        run: gradle assembleDebug
 
-    private fun startCommandRecognition() {
-        if (!active.get()) return
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) { finishCommandSession(""); return }
-        try {
-            commandRecognizer?.destroy()
-            commandRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext).also { recognizer ->
-                recognizer.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
-                    override fun onRmsChanged(rmsdB: Float) {}
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() {}
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                    override fun onPartialResults(partialResults: Bundle?) {}
-                    override fun onError(error: Int) { finishCommandSession("") }
-                    override fun onResults(results: Bundle?) {
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        finishCommandSession(matches?.firstOrNull()?.trim().orEmpty())
-                    }
-                })
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-                }
-                recognizer.startListening(intent)
-            }
-            handler.removeCallbacks(commandTimeout)
-            handler.postDelayed(commandTimeout, 10000)
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "Command recognition failed", e)
-            finishCommandSession("")
-        }
-    }
-
-    private val commandTimeout = Runnable { finishCommandSession("") }
-
-    private fun finishCommandSession(command: String) {
-        // SpeechRecognizer can report an error and a late result for the same session.
-        // Process only the first terminal callback.
-        if (!commandSessionFinished.compareAndSet(false, true)) return
-        handler.removeCallbacks(commandTimeout)
-        try { commandRecognizer?.cancel() } catch (_: Exception) {}
-        try { commandRecognizer?.destroy() } catch (_: Exception) {}
-        commandRecognizer = null
-        if (command.isNotBlank() && MainActivity.isWakeReceiverActive()) {
-            sendBroadcast(Intent(ACTION_WAKE_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, command))
-        } else if (command.isNotBlank()) {
-            speak("I heard: $command. Open JARVIS to execute this command.")
-        }
-        commandMode = false
-        handler.postDelayed({ startContinuousAudioCapture() }, 350)
-    }
-
-    private fun releaseAudioRecord() {
-        val recorder = audioRecord
-        audioRecord = null
-        if (recorder != null) {
-            try { recorder.stop() } catch (_: Exception) {}
-            try { recorder.release() } catch (_: Exception) {}
-        }
-    }
-
-    private fun speak(message: String) {
-        val engine = tts
-        if (!ttsReady || engine == null) { pendingSpeech = message; return }
-        engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "jarvis-kws")
-    }
-
-    override fun onTaskRemoved(rootIntent: Intent?) { super.onTaskRemoved(rootIntent) }
-
-    override fun onDestroy() {
-        active.set(false)
-        isRunning = false
-        commandMode = true
-        commandSessionFinished.set(true)
-        handler.removeCallbacksAndMessages(null)
-        releaseAudioRecord()
-        try { commandRecognizer?.cancel(); commandRecognizer?.destroy() } catch (_: Exception) {}
-        commandRecognizer = null
-        try { stream?.release() } catch (_: Exception) {}
-        stream = null
-        try { spotter?.release() } catch (_: Exception) {}
-        spotter = null
-        try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
-        tts = null
-        try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
-        wakeLock = null
-        super.onDestroy()
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-V10.4-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
