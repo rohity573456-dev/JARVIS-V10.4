@@ -10,7 +10,6 @@ import ai.onnxruntime.OrtSession;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.FloatBuffer;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
@@ -51,7 +50,10 @@ final class OpenWakeWordEngine implements AutoCloseable {
     private final float[][] melHistory = new float[MEL_HISTORY][MEL_BINS];
     private int melWrite;
     private int melCount;
-    private final ArrayDeque<float[]> featureHistory = new ArrayDeque<>();
+    // Preallocated embedding ring avoids one 96-float allocation every 80 ms.
+    private final float[][] featureHistory = new float[120][EMBEDDING_SIZE];
+    private int featureWrite;
+    private int featureCount;
 
     OpenWakeWordEngine(AssetManager assets) throws Exception {
         environment = OrtEnvironment.getEnvironment();
@@ -92,8 +94,13 @@ final class OpenWakeWordEngine implements AutoCloseable {
         liveFeatureFrames = 0;
         melWrite = 0;
         melCount = 0;
-        featureHistory.clear();
+        featureWrite = 0;
+        featureCount = CLASSIFIER_WINDOW;
         confidenceGate.reset();
+        for (int i = 0; i < featureHistory.length; i++) {
+            java.util.Arrays.fill(featureHistory[i], 0.0f);
+        }
+        featureWrite = CLASSIFIER_WINDOW;
 
         for (int i = 0; i < MEL_HISTORY; i++) {
             java.util.Arrays.fill(melHistory[i], 0.0f);
@@ -103,11 +110,6 @@ final class OpenWakeWordEngine implements AutoCloseable {
         }
         melCount = MEL_WINDOW;
         melWrite = MEL_WINDOW % MEL_HISTORY;
-        // Fill the initial classifier context; live embeddings replace these
-        // as the microphone stream advances.
-        for (int i = 0; i < CLASSIFIER_WINDOW; i++) {
-            featureHistory.addLast(new float[EMBEDDING_SIZE]);
-        }
     }
 
     synchronized boolean acceptAudio(short[] pcm, int count) throws Exception {
@@ -127,10 +129,11 @@ final class OpenWakeWordEngine implements AutoCloseable {
                 pendingCount = 0;
                 if (rawCount >= AUDIO_CHUNK + 480) {
                     appendMelFrames();
-                    float[] embedding = makeEmbedding();
-                    featureHistory.addLast(embedding);
+                    float[] embedding = featureHistory[featureWrite];
+                    makeEmbedding(embedding);
+                    featureWrite = (featureWrite + 1) % featureHistory.length;
+                    if (featureCount < featureHistory.length) featureCount++;
                     liveFeatureFrames++;
-                    while (featureHistory.size() > 120) featureHistory.removeFirst();
 
                     if (liveFeatureFrames >= CLASSIFIER_WINDOW) {
                         float score = predict();
@@ -183,9 +186,10 @@ final class OpenWakeWordEngine implements AutoCloseable {
         }
     }
 
-    private float[] makeEmbedding() throws Exception {
+    private void makeEmbedding(float[] embedding) throws Exception {
         if (melCount < MEL_WINDOW) {
-            return new float[EMBEDDING_SIZE];
+            java.util.Arrays.fill(embedding, 0.0f);
+            return;
         }
 
         int start = (melWrite - MEL_WINDOW + MEL_HISTORY) % MEL_HISTORY;
@@ -205,11 +209,9 @@ final class OpenWakeWordEngine implements AutoCloseable {
                 if (values.remaining() < EMBEDDING_SIZE) {
                     throw new IllegalStateException("Unexpected embedding output size");
                 }
-                float[] embedding = new float[EMBEDDING_SIZE];
                 for (int i = 0; i < EMBEDDING_SIZE; i++) {
                     embedding[i] = values.get();
                 }
-                return embedding;
             }
         }
     }
@@ -217,10 +219,10 @@ final class OpenWakeWordEngine implements AutoCloseable {
     private float predict() throws Exception {
         java.util.Arrays.fill(classifierInputData, 0.0f);
         int offset = 0;
-        int skip = featureHistory.size() - CLASSIFIER_WINDOW;
-        int index = 0;
-        for (float[] feature : featureHistory) {
-            if (index++ < skip) continue;
+        int start = (featureWrite - CLASSIFIER_WINDOW + featureHistory.length)
+                % featureHistory.length;
+        for (int i = 0; i < CLASSIFIER_WINDOW; i++) {
+            float[] feature = featureHistory[(start + i) % featureHistory.length];
             System.arraycopy(feature, 0, classifierInputData, offset, EMBEDDING_SIZE);
             offset += EMBEDDING_SIZE;
         }
