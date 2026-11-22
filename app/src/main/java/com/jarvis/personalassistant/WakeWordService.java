@@ -56,6 +56,8 @@ public class WakeWordService extends Service {
     private String pendingSpeech;
     private Intent pendingCommandSpeechIntent;
     private int audioRecoveryAttempts = 0;
+    private final VoiceActivityDetector voiceActivityDetector = new VoiceActivityDetector();
+    private final WakeWordAudioVerifier wakeWordAudioVerifier = new WakeWordAudioVerifier();
 
     @Override public void onCreate() {
         super.onCreate();
@@ -256,13 +258,26 @@ public class WakeWordService extends Service {
                 if (recorder == null) break;
                 int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
                 if (count > 0) {
+                    boolean speechActive = voiceActivityDetector.update(pcm, count);
+                    wakeWordAudioVerifier.addFrame(pcm, count, speechActive);
                     if (wakeWordEngine != null && wakeWordEngine.acceptAudio(pcm, count)) {
+                        // Stage two: corroborate the neural temporal score with recent
+                        // voice activity and basic signal-quality checks.
+                        if (!wakeWordAudioVerifier.verify()) {
+                            android.util.Log.i("JARVIS-OWW",
+                                    "Wake candidate rejected by acoustic verification");
+                            wakeWordAudioVerifier.reset();
+                            continue;
+                        }
                         // Ignore stale classifier confidence briefly after a command.
-                        // The rolling OpenWakeWord feature window still contains the
-                        // previous "Jarvis" until fresh microphone frames replace it.
-                        if (SystemClock.elapsedRealtime() < ignoreWakeUntilMs) continue;
+                        if (SystemClock.elapsedRealtime() < ignoreWakeUntilMs) {
+                            wakeWordAudioVerifier.reset();
+                            continue;
+                        }
                         wakeDetected = true;
-                        android.util.Log.i("JARVIS-OWW", "Wake word detected");
+                        android.util.Log.i("JARVIS-OWW",
+                                "Wake word passed neural and acoustic verification");
+                        wakeWordAudioVerifier.reset();
                         break;
                     }
                 } else if (count < 0) {
