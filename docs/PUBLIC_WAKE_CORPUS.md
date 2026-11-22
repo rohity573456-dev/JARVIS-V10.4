@@ -1,32 +1,22 @@
-# Public wake-word corpus for JARVIS
+# Offline replay of the public wake-word corpus through JARVIS ONNX
 
-## Source
-Picovoice Wake Word Benchmark, mirrored at:
-https://huggingface.co/datasets/domdomegg/picovoice-wake-word-benchmark
+This step runs the repository's actual three-stage primary ONNX pipeline and independent Jarvis verifier against downloaded public WAV clips. It mirrors the Java implementation's 16 kHz conversion, 1,280-sample chunks, 1,760-sample rolling window, mel normalization `value / 10 + 2`, 76x32 embedding window, 16x96 classifier window, temporal confidence gate and independent verifier.
 
-The dataset card describes 2,293 audio rows, 16 kHz / 16-bit / mono WAV audio, six wake-word classes, and more than 50 speakers. The source publishes the dataset under Apache-2.0; retain attribution and verify the source card and license before redistribution.
-
-## Prepare locally
-From the repository root, on a computer with Python 3 and internet access:
-
+## Install on a computer
 ```bash
-python -m pip install "datasets[audio]" soundfile
+python -m pip install numpy soundfile onnxruntime
 python tools/prepare_public_wake_corpus.py
+python tools/evaluate_public_wake_corpus.py
 ```
+Use `--max-clips 20` for a short smoke test. The full corpus contains roughly 2,293 clips and can take time.
 
-Optional smaller download for a quick check:
+## Output
+Writes `benchmark_data/picovoice/jarvis_onnx_trials.csv`, with one record per clip. Positive examples are the Jarvis class; the other five wake-word classes are hard negatives. The script reports positive hits/misses and hard-negative triggers.
 
-```bash
-python tools/prepare_public_wake_corpus.py --limit 50
-```
-
-Output is written under `benchmark_data/picovoice/`:
-- `positive_jarvis/`: clips labelled Jarvis;
-- `hard_negative_other_wakeword/`: Alexa, Computer, Smart Mirror, Snowboy, View Glass and other non-Jarvis wake-word classes;
-- `manifest.csv`: per-clip labels, file path, sample rate and duration;
-- `summary.json`: counts and provenance.
-
-## Correct interpretation
-This corpus is useful for offline research and hard-negative comparison. It does **not** contain 1,000 independent real-device trials, and other wake words are not a substitute for real conversation, TV, silence, or environmental-noise negatives. The public source manifest does not provide per-clip speaker IDs, so the downloader marks speaker identity as unavailable rather than inventing it.
-
-Do not feed these clips into model training or alter thresholds using the final evaluation split without creating a separate held-out test set. Do not count them as POCO F5 live-microphone results. The corpus is not copied into the APK or committed to this repository; it is downloaded locally when requested.
+## Critical limitations
+- This is desktop CPU ONNX replay, not the Android app or POCO F5 microphone.
+- Public recordings are short, clean wake-word utterances. They are not continuous background speech, TV, silence or ambient-noise negatives.
+- Source manifest has no reliable per-clip speaker identity; speaker IDs are marked unknown rather than invented.
+- The public corpus has only a few hundred distinct wake recordings according to its card; 2,293 dataset rows are not 2,293 independent live user trials.
+- The trial CSV uses `public_corpus_unpartitioned`; do not use its negative duration as ambient false-wakes/hour and do not merge it into live-device acceptance metrics.
+- No threshold tuning or model training is performed. Do not copy the audio into the Android APK or commit the downloaded files.
