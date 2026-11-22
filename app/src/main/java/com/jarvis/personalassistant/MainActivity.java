@@ -201,10 +201,6 @@ public class MainActivity extends Activity {
         menu.setOnClickListener(v->openSettingsMenu());
         root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
 
-        orbView=new JarvisOrbView(this); orbView.setState("STANDBY");
-        LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(150*d));
-        orbLp.bottomMargin=(int)(4*d); root.addView(orbView,orbLp);
-
         conversationScroll=new ScrollView(this);
         conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false);
         conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
@@ -212,6 +208,11 @@ public class MainActivity extends Activity {
         conversationList.setPadding((int)(2*d),(int)(4*d),(int)(2*d),(int)(12*d));
         conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
         root.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
+
+        orbView=new JarvisOrbView(this); orbView.setState("STANDBY");
+        LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(88*d));
+        orbLp.topMargin=(int)(2*d); orbLp.bottomMargin=(int)(2*d);
+        root.addView(orbView,orbLp);
 
         LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL);
         composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
