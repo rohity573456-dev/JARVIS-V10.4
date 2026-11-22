@@ -431,6 +431,8 @@ Every project report must label each capability as:
 
 - Clear-history confirmation is rendered/spoken without persisting the confirmation turn, so the just-cleared history remains empty until the next real conversation turn.
 
+- Final race-window hardening: the live consent gate is checked inside AI fact extraction loops before each individual fact write and before graph relation writes, not only once per provider response.
+
 **Verification state**
 - Source changes committed to the active feature branch.
 - Automated Android SQLite lifecycle tests and fresh CI are still required. The repository currently has only plain JUnit configured; SQLite runtime tests cannot be honestly claimed from source inspection alone.
