@@ -578,7 +578,7 @@ public class WakeWordService extends Service {
             if (!utteranceId.equals(activeUtteranceId)) return;
             speechPlaying = false;
             activeUtteranceId = "";
-            if (running && !recording && !wakeDetected) startAudioCapture();
+            if (running && !recording && !wakeDetected) startWakeDetection();
         });
     }
 
