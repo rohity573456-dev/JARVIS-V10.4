@@ -31,13 +31,37 @@ public class WakeWordConfidenceGateTest {
     }
 
     @Test
-    public void resetClearsPreviousEvidence() {
+    public void borderlineEvidenceArmsAdaptiveSecondChance() {
         WakeWordConfidenceGate gate = new WakeWordConfidenceGate();
-        assertFalse(gate.add(0.31f));
-        assertTrue(gate.add(0.31f));
-        gate.reset();
-        assertFalse(gate.add(0.31f));
+        assertFalse(gate.add(0.18f));
+        assertFalse(gate.add(0.18f));
+        assertFalse(gate.add(0.20f));
+        assertTrue(gate.add(0.21f));
+    }
+
+    @Test
+    public void isolatedBorderlineSpikeDoesNotArmAdaptiveMode() {
+        WakeWordConfidenceGate gate = new WakeWordConfidenceGate();
+        assertFalse(gate.add(0.18f));
         assertFalse(gate.add(0.08f));
+        assertFalse(gate.add(0.08f));
+        assertFalse(gate.add(0.08f));
+        assertFalse(gate.add(0.20f));
+        assertFalse(gate.add(0.20f));
+        assertFalse(gate.add(0.20f));
+        assertFalse(gate.add(0.20f));
+    }
+
+    @Test
+    public void resetClearsPreviousEvidenceAndAdaptiveMode() {
+        WakeWordConfidenceGate gate = new WakeWordConfidenceGate();
+        assertFalse(gate.add(0.18f));
+        assertFalse(gate.add(0.18f));
+        gate.reset();
+        assertFalse(gate.add(0.20f));
+        assertFalse(gate.add(0.20f));
+        assertFalse(gate.add(0.20f));
+        assertFalse(gate.add(0.20f));
     }
 
     @Test
