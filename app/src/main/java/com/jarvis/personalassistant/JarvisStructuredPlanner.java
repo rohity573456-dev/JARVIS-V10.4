@@ -2,7 +2,6 @@ package com.jarvis.personalassistant;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -10,14 +9,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Converts a user objective into typed OpenAI-compatible function/tool calls.
- * Tool names and argument schemas are sourced only from the local allow-list.
- */
+/** Converts bounded model turns into typed, locally validated tool requests. */
 public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner {
     private static final String GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai";
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1";
-
     private final JarvisToolRegistry registry;
     private final String geminiKey, geminiModel, groqKey, groqModel;
 
@@ -32,6 +27,28 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
     }
 
     @Override public JarvisAgentEngine.AgentPlan createPlan(String objective) throws Exception {
+        return planTurn(objective, "User request: " + objective +
+            "\nChoose at most one immediate action. If no further supported action is needed, return no tool call.");
+    }
+
+    @Override public JarvisAgentEngine.AgentPlan createFollowUpPlan(String objective,
+            List<JarvisAgentEngine.StepReport> verifiedHistory) throws Exception {
+        StringBuilder context = new StringBuilder("Original user request: ").append(objective)
+            .append("\nPreviously executed actions and locally verified results:");
+        if (verifiedHistory != null) for (JarvisAgentEngine.StepReport step : verifiedHistory) {
+            context.append("\n- Tool: ").append(step.toolName)
+                .append("; success=").append(step.success)
+                .append("; verified=").append(step.verified)
+                .append("; result: ").append(limit(step.output, 1200));
+        }
+        context.append("\nDecide whether another action is necessary to fulfil the original request. ")
+            .append("Do not repeat completed actions. Choose at most ONE next action. ")
+            .append("Use only the supplied tools and never assume a result not listed above. ")
+            .append("If complete, or no safe supported next action exists, return no tool call.");
+        return planTurn(objective, context.toString());
+    }
+
+    private JarvisAgentEngine.AgentPlan planTurn(String objective, String prompt) throws Exception {
         if (clean(objective).isEmpty()) throw new IllegalArgumentException("Objective is empty");
         JSONArray schemas = buildToolSchemas();
         if (schemas.length() == 0) throw new IllegalStateException("No Android tools are registered");
@@ -40,8 +57,7 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
             "If the request is a question or cannot be completed by the available tools, do not call any tool. " +
             "Never guess package names. For open_app, use a package name only when the user clearly identified an installed app and you know its exact Android package; otherwise do not call it. " +
             "For web_search, search only when the user explicitly asks to search the web. " +
-            "Never chain unrelated actions. Maximum one action per response. Tool calls are requests, not proof of success.";
-        String prompt = "User request: " + objective + "\nReturn a native tool call only if an allow-listed action is clearly requested.";
+            "Never chain unrelated actions. Return at most one tool call per turn. Tool calls are requests, not proof of success.";
         String result = "ERROR: No AI provider configured.";
         if (!geminiKey.isEmpty())
             result = OnlineAiClient.askForToolCalls(GEMINI_ENDPOINT, geminiKey, geminiModel, prompt, system, schemas);
@@ -49,29 +65,26 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
             result = OnlineAiClient.askForToolCalls(GROQ_ENDPOINT, groqKey, groqModel, prompt, system, schemas);
         if (isError(result)) throw new IllegalStateException(result);
         JSONArray calls = new JSONArray(result);
-        List<JarvisAgentEngine.AgentStep> steps = new ArrayList<>();
-        for (int i = 0; i < calls.length(); i++) {
-            JSONObject call = calls.getJSONObject(i);
-            String name = call.optString("name", "");
-            JarvisToolRegistry.ToolSpec spec = registry.get(name);
-            if (spec == null) throw new SecurityException("Model requested an unregistered tool: " + name);
-            JSONObject jsonArgs = call.optJSONObject("arguments");
-            if (jsonArgs == null) throw new IllegalArgumentException("Tool arguments must be a JSON object");
-            Map<String, String> args = new HashMap<>();
-            Iterator<String> keys = jsonArgs.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                Object value = jsonArgs.opt(key);
-                if (!(value instanceof String)) throw new IllegalArgumentException("Only string arguments are accepted: " + key);
-                args.put(key, (String) value);
-            }
-            List<String> errors = spec.argumentErrors(args);
-            if (!errors.isEmpty()) throw new IllegalArgumentException("Invalid " + name + " arguments: " + errors);
-            steps.add(new JarvisAgentEngine.AgentStep("step-" + (i + 1), name,
-                args, "Requested by user: " + objective));
-            if (steps.size() >= JarvisAgentEngine.MAX_STEPS) break;
+        if (calls.length() == 0) return new JarvisAgentEngine.AgentPlan(objective, Collections.<JarvisAgentEngine.AgentStep>emptyList());
+        JSONObject call = calls.getJSONObject(0);
+        String name = call.optString("name", "");
+        JarvisToolRegistry.ToolSpec spec = registry.get(name);
+        if (spec == null) throw new SecurityException("Model requested an unregistered tool: " + name);
+        JSONObject jsonArgs = call.optJSONObject("arguments");
+        if (jsonArgs == null) throw new IllegalArgumentException("Tool arguments must be a JSON object");
+        Map<String, String> args = new HashMap<>();
+        Iterator<String> keys = jsonArgs.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = jsonArgs.opt(key);
+            if (!(value instanceof String)) throw new IllegalArgumentException("Only string arguments are accepted: " + key);
+            args.put(key, (String) value);
         }
-        return new JarvisAgentEngine.AgentPlan(objective, steps);
+        List<String> errors = spec.argumentErrors(args);
+        if (!errors.isEmpty()) throw new IllegalArgumentException("Invalid " + name + " arguments: " + errors);
+        JarvisAgentEngine.AgentStep step = new JarvisAgentEngine.AgentStep("turn-action-1", name,
+            args, "Requested by user: " + objective);
+        return new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(step));
     }
 
     private JSONArray buildToolSchemas() throws Exception {
@@ -82,15 +95,10 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
             for (String key : spec.optionalArguments) properties.put(key, argumentSchema(key));
             JSONArray required = new JSONArray();
             for (String key : spec.requiredArguments) required.put(key);
-            JSONObject parameters = new JSONObject()
-                .put("type", "object")
-                .put("properties", properties)
-                .put("required", required)
-                .put("additionalProperties", false);
-            JSONObject function = new JSONObject()
-                .put("name", spec.name)
-                .put("description", spec.description)
-                .put("parameters", parameters);
+            JSONObject parameters = new JSONObject().put("type", "object").put("properties", properties)
+                .put("required", required).put("additionalProperties", false);
+            JSONObject function = new JSONObject().put("name", spec.name)
+                .put("description", spec.description).put("parameters", parameters);
             tools.put(new JSONObject().put("type", "function").put("function", function));
         }
         return tools;
@@ -106,5 +114,9 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
     }
 
     private static String clean(String value) { return value == null ? "" : value.trim(); }
+    private static String limit(String value, int max) {
+        if (value == null) return "";
+        return value.length() <= max ? value : value.substring(0, max) + "...";
+    }
     private static boolean isError(String value) { return value == null || value.trim().isEmpty() || value.startsWith("ERROR"); }
 }
