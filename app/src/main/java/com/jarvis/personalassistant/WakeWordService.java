@@ -59,16 +59,27 @@ public class WakeWordService extends Service {
     private int audioRecoveryAttempts = 0;
     private final VoiceActivityDetector voiceActivityDetector = new VoiceActivityDetector();
     private final WakeWordAudioVerifier wakeWordAudioVerifier = new WakeWordAudioVerifier();
+    private final AudioPreRollBuffer audioPreRollBuffer = new AudioPreRollBuffer();
+    private final WakeWordMetrics wakeWordMetrics = new WakeWordMetrics();
+    private volatile short[] lastWakePreRoll = new short[0];
+    private volatile long lastMetricsLogAtMs = 0L;
     private final Runnable healthCheck = new Runnable() {
         @Override public void run() {
             if (!running) return;
             if (engineReady && !wakeDetected && !speechPlaying) {
-                if (!recording) {
+                long now = SystemClock.elapsedRealtime();
+                if (recording && wakeWordMetrics.isAudioStalled(now, 20000L)) {
+                    recoverAudio("Audio frames stalled for 20 seconds");
+                } else if (!recording) {
                     android.util.Log.w("JARVIS-KWS", "Health monitor restarting idle audio capture");
                     startAudioCapture();
                 } else if (audioThread == null || !audioThread.isAlive()) {
                     recoverAudio("Audio worker stopped unexpectedly");
                 }
+            }
+            if (now - lastMetricsLogAtMs >= 300000L) {
+                lastMetricsLogAtMs = now;
+                logWakeDiagnostics("periodic");
             }
             handler.postDelayed(this, 15000L);
         }
@@ -119,6 +130,8 @@ public class WakeWordService extends Service {
 
         if (!running) {
             running = true;
+            wakeWordMetrics.start(SystemClock.elapsedRealtime(), android.os.Process.getElapsedCpuTime());
+            lastMetricsLogAtMs = SystemClock.elapsedRealtime();
             handler.removeCallbacks(healthCheck);
             handler.postDelayed(healthCheck, 15000L);
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -276,6 +289,8 @@ public class WakeWordService extends Service {
                 if (recorder == null) break;
                 int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
                 if (count > 0) {
+                    wakeWordMetrics.onFrame(SystemClock.elapsedRealtime());
+                    audioPreRollBuffer.add(pcm, count);
                     boolean speechActive = voiceActivityDetector.update(pcm, count);
                     wakeWordAudioVerifier.addFrame(pcm, count, speechActive);
                     if (wakeWordEngine != null && wakeWordEngine.acceptAudio(pcm, count)) {
@@ -284,6 +299,7 @@ public class WakeWordService extends Service {
                         if (!wakeWordAudioVerifier.verify()) {
                             android.util.Log.i("JARVIS-OWW",
                                     "Wake candidate rejected by acoustic verification");
+                            wakeWordMetrics.onCandidateRejected();
                             wakeWordAudioVerifier.reset();
                             continue;
                         }
@@ -293,6 +309,8 @@ public class WakeWordService extends Service {
                             continue;
                         }
                         wakeDetected = true;
+                        wakeWordMetrics.onWakeAccepted();
+                        lastWakePreRoll = audioPreRollBuffer.snapshot();
                         android.util.Log.i("JARVIS-OWW",
                                 "Wake word passed neural and acoustic verification");
                         wakeWordAudioVerifier.reset();
@@ -357,7 +375,8 @@ public class WakeWordService extends Service {
                     java.util.ArrayList<String> matches =
                             results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     String command = matches == null || matches.isEmpty() ? "" : matches.get(0).trim();
-                    if (!command.isEmpty()) dispatchCommand(command);
+                    if (isUsableCommandResult(command)) dispatchCommand(command);
+                    else android.util.Log.i("JARVIS-ASR", "Ignored empty or wake-only recognition result");
                     finishCommandCapture();
                 }
                 @Override public void onPartialResults(android.os.Bundle partialResults) {}
@@ -417,6 +436,15 @@ public class WakeWordService extends Service {
         // Let the previous wake-word audio age out of the rolling classifier window.
         ignoreWakeUntilMs = SystemClock.elapsedRealtime() + 1800L;
         restartStandby(700);
+    }
+
+    private boolean isUsableCommandResult(String command) {
+        if (command == null) return false;
+        String normalized = command.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z ]", " ").trim().replaceAll("\\s+", " ");
+        if (normalized.isEmpty() || normalized.length() < 2) return false;
+        return !normalized.equals("jarvis") && !normalized.equals("hey jarvis")
+                && !normalized.equals("ok jarvis") && !normalized.equals("okay jarvis");
     }
 
     private void dispatchCommand(String command) {
@@ -547,11 +575,18 @@ public class WakeWordService extends Service {
         recording = false;
         isRunning = false;
         releaseAudioRecord();
+        wakeWordMetrics.onAudioRecovery();
         audioRecoveryAttempts = Math.min(audioRecoveryAttempts + 1, 6);
         long retryDelayMs = Math.min(1500L << (audioRecoveryAttempts - 1), 30000L);
         android.util.Log.i("JARVIS-KWS", "Retrying microphone in " + retryDelayMs
                 + " ms (attempt " + audioRecoveryAttempts + ")");
         restartStandby(retryDelayMs);
+    }
+
+    private void logWakeDiagnostics(String reason) {
+        android.util.Log.i("JARVIS-METRICS", reason + " " + wakeWordMetrics.snapshot(
+                SystemClock.elapsedRealtime(), android.os.Process.getElapsedCpuTime())
+                + ",preRollSamples=" + lastWakePreRoll.length);
     }
 
     private synchronized void releaseAudioRecord() {
@@ -595,6 +630,7 @@ public class WakeWordService extends Service {
     }
 
     @Override public void onDestroy() {
+        logWakeDiagnostics("service-stop");
         running = false;
         engineReady = false;
         isRunning = false;
