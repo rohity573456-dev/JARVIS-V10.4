@@ -543,7 +543,7 @@ public class MainActivity extends Activity {
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
             if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
-                status.setText("● HYBRID AI CONNECTING...");
+                status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
                 new Thread(() -> {
@@ -551,28 +551,12 @@ public class MainActivity extends Activity {
                     final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
-                    final String prompt = memoryContext + "\nLegacy saved note: " + legacyNote + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
-                    String result = "ERROR: No provider key configured.";
-                    if (!geminiKey.isEmpty()) {
-                        result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai", geminiKey,
-                            memory.getString("gemini_model", "gemini-2.5-flash"), prompt);
-                    }
-                    if (result.startsWith("ERROR") && !groqKey.isEmpty()) {
-                        result = OnlineAiClient.ask("https://api.groq.com/openai/v1", groqKey,
-                            memory.getString("groq_model", "openai/gpt-oss-120b"), prompt);
-                    }
-                    if (result.startsWith("ERROR") && !localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                        LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), localResult -> { runOnUiThread(() -> respond("Online providers unavailable. Offline response: " + localResult)); return kotlin.Unit.INSTANCE; });
-                        return;
-                    }
-                    final String finalResult = result.startsWith("ERROR") ? "Gemini aur Groq dono abhi unavailable hain. Details: " + result : result;
-                    runOnUiThread(() -> respond(finalResult));
-                }).start();
-                return;
-            }
-            if (!localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                status.setText("● OFFLINE AI THINKING...");
-                LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), result -> { runOnUiThread(() -> respond(result)); return kotlin.Unit.INSTANCE; });
+                    final String prompt = memoryContext + "\\nLegacy saved note: " + legacyNote +
+                        "\\nPrevious response: " + lastResponse + "\\nCommander says: " + raw;
+                    JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
+                        groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
+                        localModelPath, prompt, raw, result -> runOnUiThread(() -> respond(result)));
+                }, "Jarvis-HybridBrain").start();
                 return;
             }
             answer="AI brain configure nahi hai, Pratik Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
