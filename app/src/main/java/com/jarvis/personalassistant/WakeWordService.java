@@ -373,8 +373,112 @@ public class WakeWordService extends Service {
             event.putExtra(EXTRA_COMMAND, command);
             sendBroadcast(event);
         } else {
-            speak("I heard: " + command + ". Open JARVIS to execute this command.");
+            executeBackgroundCommand(command);
         }
+    }
+
+    /**
+     * Service-safe fallback for commands heard while the Activity is not alive.
+     * It handles a small set of local actions directly and otherwise routes to the
+     * configured AI provider without attempting a restricted background UI launch.
+     */
+    private void executeBackgroundCommand(String command) {
+        if (command == null || command.trim().isEmpty()) return;
+        final String raw = command.trim();
+        final String q = raw.toLowerCase(Locale.ROOT);
+
+        if (q.contains("time") || q.contains("samay") || q.contains("kitne baje")) {
+            speak("Abhi " + new java.text.SimpleDateFormat("hh:mm a",Locale.getDefault()).format(new java.util.Date()) + " baj rahe hain.");
+            return;
+        }
+        if (q.contains("date") || q.contains("tareekh") || q.contains("aaj ki date")) {
+            speak("Aaj " + new java.text.SimpleDateFormat("dd MMMM yyyy",new Locale("hi","IN")).format(new java.util.Date()) + " hai.");
+            return;
+        }
+        if (q.contains("battery")) {
+            try {
+                Intent battery = registerReceiver(null,new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                int level = battery == null ? -1 : battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
+                speak(level < 0 ? "Battery status unavailable." : "Battery " + level + " percent hai.");
+            } catch (Exception e) { speak("Battery status unavailable."); }
+            return;
+        }
+        if (q.contains("volume up") || q.contains("volume down") || q.equals("mute")) {
+            try {
+                android.media.AudioManager audio = (android.media.AudioManager)getSystemService(AUDIO_SERVICE);
+                if (audio != null) {
+                    int direction = q.contains("up") ? android.media.AudioManager.ADJUST_RAISE :
+                        q.contains("down") ? android.media.AudioManager.ADJUST_LOWER : android.media.AudioManager.ADJUST_MUTE;
+                    audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,direction,android.media.AudioManager.FLAG_SHOW_UI);
+                    speak("Media volume updated.");
+                }
+            } catch (Exception e) { speak("Volume control unavailable."); }
+            return;
+        }
+        if (q.contains("flashlight") || q.contains("torch")) {
+            if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                speak("Flashlight ke liye JARVIS app kholkar Camera permission allow karein.");
+                return;
+            }
+            try {
+                android.hardware.camera2.CameraManager manager =
+                    (android.hardware.camera2.CameraManager)getSystemService(CAMERA_SERVICE);
+                boolean enabled = q.contains("on") || q.contains("enable") || q.contains("chalu");
+                String selected = null;
+                for (String id : manager.getCameraIdList()) {
+                    Boolean available = manager.getCameraCharacteristics(id)
+                        .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                    if (Boolean.TRUE.equals(available)) { selected=id; break; }
+                }
+                if (selected == null) speak("Flashlight hardware nahi mila.");
+                else { manager.setTorchMode(selected,enabled); speak(enabled ? "Flashlight ON." : "Flashlight OFF."); }
+            } catch (Exception e) { speak("Flashlight control unavailable."); }
+            return;
+        }
+
+        new Thread(() -> {
+            android.content.SharedPreferences prefs = getSharedPreferences("jarvis_memory",MODE_PRIVATE);
+            boolean privateMode = prefs.getBoolean("memory_private_mode",false);
+            SecureStore keys = new SecureStore(getApplicationContext());
+            String gemini = keys.get("gemini_key");
+            String groq = keys.get("groq_key");
+            String localPath = prefs.getString("local_model_path","");
+            String memoryContext = "No saved memory context.";
+            JarvisMemoryStore store = null;
+            try {
+                if (!privateMode) {
+                    store = new JarvisMemoryStore(getApplicationContext());
+                    memoryContext = store.getMemoryContext(raw,8);
+                }
+            } catch (Exception ignored) {
+                memoryContext = "Memory context unavailable.";
+            } finally {
+                if (store != null) store.close();
+            }
+            final String prompt = memoryContext + "\n\nYou are JARVIS running in background voice mode. Answer naturally in Hindi/Hinglish or the language used. Be concise. Do not claim a phone action was performed unless confirmed. If a task requires opening an app or screen, explain that the user must open JARVIS.\nCommander says: " + raw;
+            String result = "ERROR: no online provider configured.";
+            if (!gemini.isEmpty()) {
+                result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gemini,
+                    prefs.getString("gemini_model","gemini-2.5-flash"),prompt);
+            }
+            if (result.startsWith("ERROR") && !groq.isEmpty()) {
+                result = OnlineAiClient.ask("https://api.groq.com/openai/v1",groq,
+                    prefs.getString("groq_model","openai/gpt-oss-120b"),prompt);
+            }
+            if (!result.startsWith("ERROR")) {
+                final String answer = result;
+                handler.post(() -> speak(answer));
+                return;
+            }
+            if (!localPath.isEmpty() && new File(localPath).exists()) {
+                LocalAiEngine.ask(localPath,prompt,answer -> {
+                    handler.post(() -> speak(answer));
+                    return kotlin.Unit.INSTANCE;
+                });
+            } else {
+                handler.post(() -> speak("AI provider configured nahi hai. JARVIS app kholkar ONLINE AI SETUP karein."));
+            }
+        },"Jarvis-Background-AI").start();
     }
 
     private void restartStandby(long delayMs) {
