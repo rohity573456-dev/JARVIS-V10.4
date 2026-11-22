@@ -50,8 +50,11 @@ public final class OpenAiResponsesClient {
             }
             JSONObject body = new JSONObject();
             body.put("model", model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim());
-            body.put("instructions", instructions == null ? "Use only the supplied tools." : instructions);
-            body.put("input", input == null ? "" : input);
+            JarvisPromptBudget.Prompt budget = JarvisPromptBudget.fit(
+                    instructions == null ? "Use only the supplied tools." : instructions,
+                    input, JarvisPromptBudget.ASTRA_MAX_CHARS);
+            body.put("instructions", budget.system);
+            body.put("input", budget.input);
             body.put("tools", tools);
             body.put("tool_choice", "auto");
             JSONObject reasoning = new JSONObject();
@@ -110,8 +113,11 @@ public final class OpenAiResponsesClient {
         try {
             JSONObject body = new JSONObject();
             body.put("model", model == null || model.trim().isEmpty() ? DEFAULT_MODEL : model.trim());
-            body.put("instructions", instructions == null ? "You are JARVIS. Be accurate and honest." : instructions);
-            body.put("input", input == null ? "" : input);
+            JarvisPromptBudget.Prompt budget = JarvisPromptBudget.fit(
+                    instructions == null ? "You are JARVIS. Be accurate and honest." : instructions,
+                    input, JarvisPromptBudget.ASTRA_MAX_CHARS);
+            body.put("instructions", budget.system);
+            body.put("input", budget.input);
             JSONObject reasoning = new JSONObject();
             String effort = reasoningEffort == null ? "medium" : reasoningEffort.trim().toLowerCase(java.util.Locale.ROOT);
             if (!("low".equals(effort) || "medium".equals(effort) || "high".equals(effort)
