@@ -350,6 +350,7 @@ public class MainActivity extends Activity {
         else if (q.startsWith("memory delete ")) { long id=parseMemoryId(raw); answer=longTermMemory!=null && longTermMemory.deleteMemory(id)?"Memory #"+id+" delete ho gayi.":"Memory ID nahi mili."; }
         else if (q.startsWith("memory edit ")) { String data=raw.substring("memory edit ".length()).trim(); int bar=data.indexOf('|'); if(bar>0){long id=parseLong(data.substring(0,bar).trim()); answer=longTermMemory!=null && longTermMemory.updateMemory(id,"personal",data.substring(bar+1).trim())?"Memory #"+id+" update ho gayi.":"Memory update nahi hui.";}else answer="Format: memory edit ID | naya text"; }
         else if (q.startsWith("memory search") || q.startsWith("search memory") || q.startsWith("find memory")) { String term=raw.replaceFirst("(?i)^(memory search|search memory|find memory)\\s*", "").trim(); answer=longTermMemory == null ? "Memory database unavailable." : longTermMemory.searchMemories(term, 30); }
+        else if (q.startsWith("remind me at ")) { answer=scheduleReminder(raw); }
         else if (q.startsWith("task add ") || q.startsWith("reminder add ") || q.startsWith("yaad dilana ")) { String task=raw.replaceFirst("(?i)^(task add|reminder add|yaad dilana)\\s*", "").trim(); long id=longTermMemory==null?-1:longTermMemory.addTask(task,0); answer=id>0?"Task/reminder #"+id+" local list mein save ho gaya. Due time set karne ke liye TASKS screen kholo.":"Task save nahi hua."; }
         else if (q.equals("tasks") || q.equals("task list") || q.equals("reminders") || q.equals("show tasks")) { answer=longTermMemory==null?"Task store unavailable.":longTermMemory.getTasksText(false); }
         else if (q.startsWith("task done ") || q.startsWith("task complete ")) { long id=parseLong(raw.replaceFirst("(?i)^task (done|complete)\\s*","").trim()); answer=longTermMemory!=null && longTermMemory.completeTask(id)?"Task #"+id+" complete mark kar diya.":"Task ID nahi mili."; }
@@ -425,6 +426,23 @@ public class MainActivity extends Activity {
                 else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
                 else taskDialog();
             }).setNegativeButton("CLOSE",null).show();
+    }
+    private String scheduleReminder(String raw) {
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?i)remind me at (\\d{1,2}):(\\d{2})\\s*(am|pm)?\\s+to\\s+(.+)").matcher(raw.trim());
+        if(!m.matches()) return "Format bolo: remind me at 7:30 pm to call home";
+        int hour=Integer.parseInt(m.group(1)), minute=Integer.parseInt(m.group(2));
+        String meridiem=m.group(3), title=m.group(4).trim();
+        if(minute>59 || hour> (meridiem==null?23:12) || hour<0 || (meridiem!=null&&hour==0)) return "Time sahi format mein nahi hai.";
+        if(meridiem!=null){hour=hour%12;if(meridiem.equalsIgnoreCase("pm"))hour+=12;}
+        java.util.Calendar when=java.util.Calendar.getInstance();
+        when.set(java.util.Calendar.HOUR_OF_DAY,hour);when.set(java.util.Calendar.MINUTE,minute);when.set(java.util.Calendar.SECOND,0);when.set(java.util.Calendar.MILLISECOND,0);
+        if(when.getTimeInMillis()<=System.currentTimeMillis())when.add(java.util.Calendar.DAY_OF_YEAR,1);
+        long id=longTermMemory==null?-1:longTermMemory.addTask(title,when.getTimeInMillis());
+        Intent alarm=new Intent(AlarmClock.ACTION_SET_ALARM);
+        alarm.putExtra(AlarmClock.EXTRA_HOUR,hour);alarm.putExtra(AlarmClock.EXTRA_MINUTES,minute);
+        alarm.putExtra(AlarmClock.EXTRA_MESSAGE,title);alarm.putExtra(AlarmClock.EXTRA_SKIP_UI,false);
+        try { startActivity(alarm); } catch(Exception e) { return "Reminder local list mein save hua, lekin Clock app available nahi hai."; }
+        return "Reminder "+hour+":"+String.format(Locale.ROOT,"%02d",minute)+" ke liye Clock app mein set karne ko khol diya. Save ID #"+id+". Clock screen par confirm kar dena.";
     }
     private void taskDialog() {
         EditText in=new EditText(this);in.setHint("New task / reminder");in.setMinLines(2);
