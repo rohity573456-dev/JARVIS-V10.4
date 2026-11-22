@@ -35,7 +35,7 @@ public final class OpenAiResponsesClient {
                                     ? new JSONObject().put("type", "object").put("properties", new JSONObject())
                                         .put("additionalProperties", false)
                                     : function.optJSONObject("parameters"))
-                            .put("strict", true);
+                            .put("strict", false);
                     tools.put(tool);
                 }
             }
