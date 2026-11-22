@@ -31,15 +31,17 @@ public final class OnlineAiClient {
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json");
             c.setRequestProperty("Authorization", "Bearer " + apiKey);
+            String safeSystem = systemPrompt == null || systemPrompt.trim().isEmpty()
+                    ? "You are JARVIS. Be accurate and honest." : systemPrompt;
+            JarvisPromptBudget.Prompt budget = JarvisPromptBudget.fit(
+                    safeSystem, prompt, JarvisPromptBudget.STANDARD_MAX_CHARS);
             JSONObject body = new JSONObject();
             body.put("model", model);
             body.put("temperature", 0.35);
-            body.put("max_tokens", 4096);
+            body.put("max_tokens", 2048);
             JSONArray messages = new JSONArray();
-            messages.put(new JSONObject().put("role", "system").put("content",
-                systemPrompt == null || systemPrompt.trim().isEmpty()
-                    ? "You are JARVIS. Be accurate and honest." : systemPrompt));
-            messages.put(new JSONObject().put("role", "user").put("content", prompt));
+            messages.put(new JSONObject().put("role", "system").put("content", budget.system));
+            messages.put(new JSONObject().put("role", "user").put("content", budget.input));
             body.put("messages", messages);
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
             try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
