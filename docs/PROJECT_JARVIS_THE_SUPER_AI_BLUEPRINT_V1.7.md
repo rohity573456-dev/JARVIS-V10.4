@@ -429,6 +429,8 @@ Every project report must label each capability as:
 - Follow-up hardening: cloud semantic embedding jobs now require a live consent callback and re-check it before each provider request and before storing each vector. The callback also checks Private Mode and the memory-generation token. Turning embeddings off, deleting the vector index, clearing history/facts or enabling Private Mode invalidates queued work. The legacy embedding-worker overload fails closed.
 - All foreground voice/text privacy commands now invalidate queued work as well as the Memory Center controls.
 
+- Clear-history confirmation is rendered/spoken without persisting the confirmation turn, so the just-cleared history remains empty until the next real conversation turn.
+
 **Verification state**
 - Source changes committed to the active feature branch.
 - Automated Android SQLite lifecycle tests and fresh CI are still required. The repository currently has only plain JUnit configured; SQLite runtime tests cannot be honestly claimed from source inspection alone.
