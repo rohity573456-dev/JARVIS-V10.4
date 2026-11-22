@@ -38,7 +38,7 @@ public final class OnlineAiClient {
             JSONObject body = new JSONObject();
             body.put("model", model);
             body.put("temperature", 0.35);
-            body.put("max_tokens", 2048);
+            body.put("max_tokens", 1536);
             JSONArray messages = new JSONArray();
             messages.put(new JSONObject().put("role", "system").put("content", budget.system));
             messages.put(new JSONObject().put("role", "user").put("content", budget.input));
