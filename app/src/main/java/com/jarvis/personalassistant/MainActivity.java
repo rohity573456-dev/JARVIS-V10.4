@@ -1,6 +1,8 @@
 package com.jarvis.personalassistant;
 
 import android.app.Activity;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Handler;
@@ -434,17 +436,29 @@ public class MainActivity extends Activity {
         if(!m.matches()) return "Format bolo: remind me at 7:30 pm to call home";
         int hour=Integer.parseInt(m.group(1)), minute=Integer.parseInt(m.group(2));
         String meridiem=m.group(3), title=m.group(4).trim();
-        if(minute>59 || hour> (meridiem==null?23:12) || hour<0 || (meridiem!=null&&hour==0)) return "Time sahi format mein nahi hai.";
+        if(minute>59 || hour>(meridiem==null?23:12) || hour<0 || (meridiem!=null&&hour==0)) return "Time sahi format mein nahi hai.";
         if(meridiem!=null){hour=hour%12;if(meridiem.equalsIgnoreCase("pm"))hour+=12;}
         java.util.Calendar when=java.util.Calendar.getInstance();
-        when.set(java.util.Calendar.HOUR_OF_DAY,hour);when.set(java.util.Calendar.MINUTE,minute);when.set(java.util.Calendar.SECOND,0);when.set(java.util.Calendar.MILLISECOND,0);
+        when.set(java.util.Calendar.HOUR_OF_DAY,hour);when.set(java.util.Calendar.MINUTE,minute);
+        when.set(java.util.Calendar.SECOND,0);when.set(java.util.Calendar.MILLISECOND,0);
         if(when.getTimeInMillis()<=System.currentTimeMillis())when.add(java.util.Calendar.DAY_OF_YEAR,1);
-        long id=longTermMemory==null?-1:longTermMemory.addTask(title,when.getTimeInMillis());
-        Intent alarm=new Intent(AlarmClock.ACTION_SET_ALARM);
-        alarm.putExtra(AlarmClock.EXTRA_HOUR,hour);alarm.putExtra(AlarmClock.EXTRA_MINUTES,minute);
-        alarm.putExtra(AlarmClock.EXTRA_MESSAGE,title);alarm.putExtra(AlarmClock.EXTRA_SKIP_UI,false);
-        try { startActivity(alarm); } catch(Exception e) { return "Reminder local list mein save hua, lekin Clock app available nahi hai."; }
-        return "Reminder "+hour+":"+String.format(Locale.ROOT,"%02d",minute)+" ke liye Clock app mein set karne ko khol diya. Save ID #"+id+". Clock screen par confirm kar dena.";
+        long dueAt=when.getTimeInMillis();
+        long id=longTermMemory==null?-1:longTermMemory.addTask(title,dueAt);
+        if(id<=0)return "Reminder save nahi ho paya.";
+        try {
+            Intent alarmIntent=new Intent(this,JarvisReminderReceiver.class);
+            alarmIntent.putExtra("reminder_title",title);
+            alarmIntent.putExtra("reminder_id",(int)id);
+            int requestCode=(int)(id & 0x7fffffff);
+            PendingIntent pending=PendingIntent.getBroadcast(this,requestCode,alarmIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            AlarmManager alarms=(AlarmManager)getSystemService(ALARM_SERVICE);
+            if(alarms==null)return "Reminder task list mein save hua, lekin Android Alarm service unavailable hai.";
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,dueAt,pending);
+        } catch(Exception e) {
+            return "Reminder task list mein save hua, lekin alarm schedule nahi hua: "+e.getMessage();
+        }
+        return "JARVIS reminder schedule ho gaya: "+title+" — "+new SimpleDateFormat("dd MMM, hh:mm a",Locale.getDefault()).format(new Date(dueAt))+". Notification permission ON rakhein.";
     }
     private void taskDialog() {
         EditText in=new EditText(this);in.setHint("New task / reminder");in.setMinLines(2);
