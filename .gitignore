@@ -7,3 +7,4 @@ local.properties
 *.kt.backup
 *.kt.new
 app/libs/*.aar
+benchmark_data/
