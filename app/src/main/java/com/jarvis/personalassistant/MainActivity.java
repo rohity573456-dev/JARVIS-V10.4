@@ -165,7 +165,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1,0,1); sp.topMargin=12; sp.bottomMargin=12; root.addView(scroll,sp);
         Button listen = button("TAP TO SPEAK  •  VOICE COMMAND"); root.addView(listen,new LinearLayout.LayoutParams(-1,54)); listen.setOnClickListener(v -> listen());
         LinearLayout row1 = new LinearLayout(this); row1.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row1,"MEMORY",v->memoryDialog()); addSmall(row1,"CUSTOM COMMAND",v->customCommandDialog()); addSmall(row1,"SYSTEM STATUS",v->systemReport()); root.addView(row1);
+        addSmall(row1,"MEMORY",v->memoryDialog()); addSmall(row1,"TASKS",v->taskDialog()); addSmall(row1,"CUSTOM COMMAND",v->customCommandDialog()); root.addView(row1);
         LinearLayout row2 = new LinearLayout(this); row2.setOrientation(LinearLayout.HORIZONTAL);
         addSmall(row2,"CAMERA",v->launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"));
         addSmall(row2,"MAPS",v->open("https://maps.google.com"));
@@ -328,7 +328,9 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
-        if (longTermMemory != null) longTermMemory.addConversation("Commander", raw);
+        boolean privateMode = memory.getBoolean("memory_private_mode", false);
+        if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
+        if (!privateMode) autoLearnMemory(raw);
         String q=raw.toLowerCase(Locale.ROOT); show("COMMANDER",raw); String answer;
         if (q.contains("time") || q.contains("samay") || q.contains("समय") || q.contains("kitne baje")) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
         else if (q.contains("date") || q.contains("tareekh") || q.contains("तारीख") || q.contains("aaj ki date")) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
@@ -343,9 +345,17 @@ public class MainActivity extends Activity {
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
         else if (q.contains("alarm")) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
-        else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); saveNote(note); answer="Memory mein save kar diya: "+note; }
+        else if (q.equals("memory privacy off") || q.equals("private mode on") || q.equals("memory band")) { memory.edit().putBoolean("memory_private_mode",true).apply(); answer="Privacy mode ON. Conversation history aur automatic learning save nahi honge."; }
+        else if (q.equals("memory privacy on") || q.equals("private mode off") || q.equals("memory chalu")) { memory.edit().putBoolean("memory_private_mode",false).apply(); answer="Memory mode ON. Local history aur automatic learning resume."; }
+        else if (q.startsWith("memory delete ")) { long id=parseMemoryId(raw); answer=longTermMemory!=null && longTermMemory.deleteMemory(id)?"Memory #"+id+" delete ho gayi.":"Memory ID nahi mili."; }
+        else if (q.startsWith("memory edit ")) { String data=raw.substring("memory edit ".length()).trim(); int bar=data.indexOf('|'); if(bar>0){long id=parseLong(data.substring(0,bar).trim()); answer=longTermMemory!=null && longTermMemory.updateMemory(id,"personal",data.substring(bar+1).trim())?"Memory #"+id+" update ho gayi.":"Memory update nahi hui.";}else answer="Format: memory edit ID | naya text"; }
         else if (q.startsWith("memory search") || q.startsWith("search memory") || q.startsWith("find memory")) { String term=raw.replaceFirst("(?i)^(memory search|search memory|find memory)\\s*", "").trim(); answer=longTermMemory == null ? "Memory database unavailable." : longTermMemory.searchMemories(term, 30); }
-        else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { answer="Aapki saved long-term memory:\n"+(longTermMemory == null ? memory.getString("note","Abhi koi note save nahi hai.") : longTermMemory.getAllMemoriesText()); }
+        else if (q.startsWith("task add ") || q.startsWith("reminder add ") || q.startsWith("yaad dilana ")) { String task=raw.replaceFirst("(?i)^(task add|reminder add|yaad dilana)\\s*", "").trim(); long id=longTermMemory==null?-1:longTermMemory.addTask(task,0); answer=id>0?"Task/reminder #"+id+" local list mein save ho gaya. Due time set karne ke liye TASKS screen kholo.":"Task save nahi hua."; }
+        else if (q.equals("tasks") || q.equals("task list") || q.equals("reminders") || q.equals("show tasks")) { answer=longTermMemory==null?"Task store unavailable.":longTermMemory.getTasksText(false); }
+        else if (q.startsWith("task done ") || q.startsWith("task complete ")) { long id=parseLong(raw.replaceFirst("(?i)^task (done|complete)\\s*","").trim()); answer=longTermMemory!=null && longTermMemory.completeTask(id)?"Task #"+id+" complete mark kar diya.":"Task ID nahi mili."; }
+        else if (q.startsWith("task delete ")) { long id=parseLong(raw.replaceFirst("(?i)^task delete\\s*","").trim()); answer=longTermMemory!=null && longTermMemory.deleteTask(id)?"Task #"+id+" delete kar diya.":"Task ID nahi mili."; }
+        else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); saveNote(note); answer="Memory mein save kar diya: "+note; }
+        else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
         else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Commander. JARVIS systems are ready.";
@@ -354,7 +364,7 @@ public class MainActivity extends Activity {
             String groqKey = secureStore.get("groq_key");
             if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
                 status.setText("● HYBRID AI CONNECTING...");
-                final String memoryContext = longTermMemory == null ? "" : longTermMemory.getMemoryContext(raw, 10);
+                final String memoryContext = longTermMemory == null || memory.getBoolean("memory_private_mode", false) ? "No saved memory context. Respect privacy." : longTermMemory.getMemoryContext(raw, 10);
                 final String prompt = memoryContext + "\nLegacy saved note: " + memory.getString("note", "none") + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
                 new Thread(() -> {
                     String result = "ERROR: No provider key configured.";
@@ -402,13 +412,40 @@ public class MainActivity extends Activity {
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
     private void memoryDialog() {
-        EditText input=new EditText(this); input.setHint("JARVIS ko kya yaad rakhna hai?"); input.setMinLines(2);
-        String saved = longTermMemory == null ? memory.getString("note","No saved memory") : longTermMemory.getAllMemoriesText();
-        new AlertDialog.Builder(this).setTitle("LONG-TERM MEMORY • "+(longTermMemory == null ? 0 : longTermMemory.getMemoryCount())+" SAVED")
-            .setMessage(saved).setView(input)
-            .setPositiveButton("SAVE NEW",(d,w)->{saveNote(input.getText().toString().trim());respond("Memory saved permanently on this device, Commander.");})
-            .setNeutralButton("CLEAR MEMORIES",(d,w)->new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("This permanently clears saved long-term memories. Conversation history is kept.").setPositiveButton("DELETE",(x,y)->{if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("Long-term memories cleared.");}).setNegativeButton("CANCEL",null).show())
+        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","Tasks & reminders"};
+        new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
+            .setItems(options,(d,which)->{
+                if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->{saveNote(in.getText().toString());respond("Memory saved locally.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==1){EditText in=new EditText(this);in.setHint("Search word or phrase");new AlertDialog.Builder(this).setTitle("SEARCH MEMORY").setView(in).setPositiveButton("SEARCH",(x,y)->show("MEMORY RESULTS",longTermMemory==null?"Unavailable":longTermMemory.searchMemories(in.getText().toString(),50))).setNegativeButton("CANCEL",null).show();}
+                else if(which==2){EditText in=new EditText(this);in.setHint("ID | replacement text");new AlertDialog.Builder(this).setTitle("EDIT MEMORY").setMessage("Format: 4 | My favourite colour is blue").setView(in).setPositiveButton("UPDATE",(x,y)->{String[] p=in.getText().toString().split("\\|",2);if(p.length==2&&longTermMemory!=null&&longTermMemory.updateMemory(parseLong(p[0].trim()),"personal",p[1].trim()))respond("Memory updated.");else respond("Format or ID invalid.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==3){EditText in=new EditText(this);in.setHint("Memory ID");new AlertDialog.Builder(this).setTitle("DELETE MEMORY").setView(in).setPositiveButton("DELETE",(x,y)->respond(longTermMemory!=null&&longTermMemory.deleteMemory(parseLong(in.getText().toString()))?"Memory deleted.":"Memory ID not found.")).setNegativeButton("CANCEL",null).show();}
+                else if(which==4){show("CONVERSATION HISTORY",longTermMemory==null?"Unavailable":longTermMemory.getRecentConversation(100));}
+                else if(which==5){new AlertDialog.Builder(this).setTitle("CLEAR HISTORY?").setMessage("Saved memories will remain.").setPositiveButton("CLEAR",(x,y)->{if(longTermMemory!=null)longTermMemory.clearConversationHistory();respond("Conversation history cleared.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts and preferences will be permanently deleted.").setPositiveButton("DELETE",(x,y)->{if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All memories cleared.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
+                else taskDialog();
+            }).setNegativeButton("CLOSE",null).show();
+    }
+    private void taskDialog() {
+        EditText in=new EditText(this);in.setHint("New task / reminder");in.setMinLines(2);
+        String tasks=longTermMemory==null?"Unavailable":longTermMemory.getTasksText(true);
+        new AlertDialog.Builder(this).setTitle("TASKS & REMINDERS").setMessage(tasks).setView(in)
+            .setPositiveButton("ADD TASK",(d,w)->{long id=longTermMemory==null?-1:longTermMemory.addTask(in.getText().toString(),0);respond(id>0?"Task saved as #"+id+". Say task done "+id+" when completed.":"Enter a task first.");})
+            .setNeutralButton("MARK DONE",(d,w)->{EditText id=new EditText(this);id.setHint("Task ID");new AlertDialog.Builder(this).setTitle("COMPLETE TASK").setView(id).setPositiveButton("DONE",(x,y)->respond(longTermMemory!=null&&longTermMemory.completeTask(parseLong(id.getText().toString()))?"Task completed.":"Task ID not found.")).setNegativeButton("CANCEL",null).show();})
             .setNegativeButton("CLOSE",null).show();
+    }
+    private long parseLong(String s){try{return Long.parseLong(s.trim());}catch(Exception e){return -1;}}
+    private long parseMemoryId(String s){return parseLong(s.replaceFirst("(?i)^memory delete\\s*","").trim());}
+    private void autoLearnMemory(String raw){
+        if(longTermMemory==null||raw==null)return;
+        String s=raw.trim(),q=s.toLowerCase(Locale.ROOT);
+        if(q.length()<8||q.startsWith("memory ")||q.startsWith("task ")||q.startsWith("reminder "))return;
+        String[] blocked={"password","passcode","otp","cvv","bank account","aadhaar","pan number","medical","medicine","diagnosis","disease","sexual"};
+        for(String word:blocked)if(q.contains(word))return;
+        boolean learn=q.startsWith("my name is ")||q.startsWith("mera naam ")||q.startsWith("my favourite ")||q.startsWith("my favorite ")||q.startsWith("mera favourite ")||q.startsWith("meri favourite ")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer ")||q.startsWith("my preference ")||q.startsWith("i live in ")||q.startsWith("my goal is ")||q.startsWith("mera goal ")||q.startsWith("i work as ")||q.startsWith("my job is ");
+        if(!learn)return;
+        String category=(q.startsWith("my favourite")||q.startsWith("my favorite")||q.startsWith("mera favourite")||q.startsWith("meri favourite")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer "))?"preference":"personal";
+        longTermMemory.saveMemory(category,s);
     }
     private void customCommandDialog() {
         LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(24,8,24,8);
