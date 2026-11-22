@@ -718,7 +718,7 @@ public class MainActivity extends Activity {
         if(memory.getBoolean("memory_ai_learning",false))
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-                memory.getString("groq_model","openai/gpt-oss-120b"),note.trim());
+                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),note.trim());
         return true;
     }
     private void setFlashlight(boolean enabled) {
@@ -852,7 +852,7 @@ public class MainActivity extends Activity {
             return;
         }
         if(secureStore.get("gemini_key").isEmpty()&&secureStore.get("groq_key").isEmpty()&&secureStore.get("openai_key").isEmpty()){
-            respond("Pehle ONLINE AI SETUP mein Gemini ya Groq API key add karo.");return;
+            respond("Pehle ONLINE AI SETUP mein Gemini, Groq ya OpenAI API key add karo.");return;
         }
         new AlertDialog.Builder(this).setTitle("ENABLE AI MEMORY LEARNING?")
             .setMessage("When enabled, new user messages and eligible past conversation sessions may be sent to your configured Gemini, Groq or OpenAI provider to extract durable facts and create summaries. Sensitive categories are filtered, but cloud processing is still involved. Local memory remains available. Enable only if you agree.")
