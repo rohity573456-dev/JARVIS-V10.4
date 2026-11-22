@@ -57,7 +57,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 4102;
     private static final int REQUEST_CAMERA_TORCH = 4104;
     private String localModelPath = "";
-    private TextView status, conversation, dashboard;
+    private TextView status;
+    private LinearLayout conversationList;
+    private ScrollView conversationScroll;
     private JarvisOrbView orbView;
     private TextToSpeech tts;
     private SpeechRecognizer recognizer;
@@ -153,7 +155,7 @@ public class MainActivity extends Activity {
                 if (pendingSpeech != null) { String queued = pendingSpeech; pendingSpeech = null; speak(queued); }
             }
         });
-        refreshDashboard();
+        refreshUiStatus();
         show("JARVIS CORE", "V9 foundation online. Voice, memory and command modules ready.");
         speak("JARVIS systems online. At your service, Pratik Boss.");
     }
@@ -167,123 +169,78 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        // Full-screen conversational layout: no dashboard cards or rows of shortcut buttons.
-        final int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        final float d=getResources().getDisplayMetrics().density;
+        final int pad=(int)(18*d);
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-
-        LinearLayout root = new LinearLayout(this);
+        LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+        root.setPadding(pad,(int)(10*d),pad,(int)(12*d));
+        root.setClipToPadding(false);
         root.setBackground(new android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(7, 12, 27), Color.rgb(3, 7, 17), Color.rgb(9, 15, 32)}));
-        root.setFocusableInTouchMode(true);
-
-        LinearLayout header = new LinearLayout(this);
+            new int[]{Color.rgb(5,10,24),Color.rgb(8,19,37),Color.rgb(3,8,19)}));
+        LinearLayout header=new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout identity = new LinearLayout(this);
-        identity.setOrientation(LinearLayout.VERTICAL);
-        identity.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout brand=new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        TextView wordmark=new TextView(this);
+        wordmark.setText("JARVIS"); wordmark.setTextColor(Color.rgb(242,248,255));
+        wordmark.setTextSize(21); wordmark.setLetterSpacing(0.20f);
+        wordmark.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        brand.addView(wordmark,new LinearLayout.LayoutParams(-2,-2));
+        status=new TextView(this); status.setText("● SYSTEM READY");
+        status.setTextColor(Color.rgb(107,231,210)); status.setTextSize(10); status.setLetterSpacing(0.10f);
+        brand.addView(status,new LinearLayout.LayoutParams(-2,-2));
+        header.addView(brand,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView menu=new TextView(this); menu.setText("···"); menu.setTextColor(Color.rgb(185,220,246));
+        menu.setTextSize(27); menu.setGravity(Gravity.CENTER);
+        menu.setBackground(panel(Color.rgb(17,31,51),Color.rgb(43,76,108),18));
+        header.addView(menu,new LinearLayout.LayoutParams((int)(46*d),(int)(42*d)));
+        menu.setOnClickListener(v->openSettingsMenu());
+        root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
 
-        TextView title = new TextView(this);
-        title.setText("JARVIS");
-        title.setTextColor(Color.rgb(239, 247, 255));
-        title.setTextSize(22);
-        title.setLetterSpacing(0.16f);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        identity.addView(title, new LinearLayout.LayoutParams(-2, -2));
+        orbView=new JarvisOrbView(this); orbView.setState("STANDBY");
+        LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(150*d));
+        orbLp.bottomMargin=(int)(4*d); root.addView(orbView,orbLp);
 
-        status = new TextView(this);
-        status.setText("● ONLINE  ·  VOICE STANDBY");
-        status.setTextColor(Color.rgb(115, 226, 205));
-        status.setTextSize(10);
-        status.setLetterSpacing(0.07f);
-        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-2, -2);
-        statusParams.topMargin = (int) (3 * getResources().getDisplayMetrics().density);
-        identity.addView(status, statusParams);
-        header.addView(identity, new LinearLayout.LayoutParams(0, -2, 1f));
+        conversationScroll=new ScrollView(this);
+        conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false);
+        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
+        conversationList=new LinearLayout(this); conversationList.setOrientation(LinearLayout.VERTICAL);
+        conversationList.setPadding((int)(2*d),(int)(4*d),(int)(2*d),(int)(12*d));
+        conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
+        root.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
 
-        Button settings = button("⋯");
-        settings.setTextSize(23);
-        settings.setPadding(0, 0, 0, (int) (5 * getResources().getDisplayMetrics().density));
-        header.addView(settings, new LinearLayout.LayoutParams(
-            (int) (48 * getResources().getDisplayMetrics().density),
-            (int) (44 * getResources().getDisplayMetrics().density)));
-        settings.setOnClickListener(v -> openSettingsMenu());
-        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
-
-        orbView = new JarvisOrbView(this);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1,
-            (int) (138 * getResources().getDisplayMetrics().density));
-        orbParams.topMargin = (int) (3 * getResources().getDisplayMetrics().density);
-        orbParams.bottomMargin = (int) (5 * getResources().getDisplayMetrics().density);
-        root.addView(orbView, orbParams);
-
-        ScrollView conversationScroll = new ScrollView(this);
-        conversationScroll.setFillViewport(true);
-        conversationScroll.setClipToPadding(false);
-        conversationScroll.setVerticalScrollBarEnabled(false);
-        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        conversationScroll.setBackground(panel(Color.rgb(10, 17, 32), Color.rgb(31, 55, 83), 22));
-
-        conversation = new TextView(this);
-        conversation.setTextColor(Color.rgb(232, 241, 252));
-        conversation.setTextSize(15);
-        conversation.setLineSpacing(5f, 1.04f);
-        conversation.setPadding(pad, pad, pad, pad);
-        conversation.setTextIsSelectable(true);
-        conversationScroll.addView(conversation, new ScrollView.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams chatParams = new LinearLayout.LayoutParams( -1, 0, 1f);
-        chatParams.topMargin = (int) (4 * getResources().getDisplayMetrics().density);
-        root.addView(conversationScroll, chatParams);
-
-        LinearLayout composer = new LinearLayout(this);
-        composer.setOrientation(LinearLayout.HORIZONTAL);
-        composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding((int) (9 * getResources().getDisplayMetrics().density),
-            (int) (3 * getResources().getDisplayMetrics().density),
-            (int) (5 * getResources().getDisplayMetrics().density),
-            (int) (3 * getResources().getDisplayMetrics().density));
-        composer.setBackground(panel(Color.rgb(17, 25, 43), Color.rgb(55, 91, 127), 28));
-
-        Button mic = button("◉");
-        mic.setTextSize(19);
-        composer.addView(mic, new LinearLayout.LayoutParams(
-            (int) (42 * getResources().getDisplayMetrics().density), -1));
-        mic.setOnClickListener(v -> listen());
-
-        commandInput = new EditText(this);
-        commandInput.setSingleLine(true);
-        commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.rgb(137, 157, 184));
-        commandInput.setHint("Message JARVIS…");
-        commandInput.setTextSize(15);
-        commandInput.setBackgroundColor(Color.TRANSPARENT);
-        commandInput.setPadding((int) (8 * getResources().getDisplayMetrics().density), 0,
-            (int) (4 * getResources().getDisplayMetrics().density), 0);
+        LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
+        composer.setBackground(panel(Color.rgb(14,27,46),Color.rgb(46,83,119),27));
+        TextView mic=new TextView(this); mic.setText("◉"); mic.setTextColor(Color.rgb(135,225,255));
+        mic.setTextSize(21); mic.setGravity(Gravity.CENTER);
+        composer.addView(mic,new LinearLayout.LayoutParams((int)(44*d),(int)(46*d)));
+        mic.setOnClickListener(v->listen());
+        commandInput=new EditText(this); commandInput.setSingleLine(true);
+        commandInput.setTextColor(Color.rgb(244,249,255)); commandInput.setHintTextColor(Color.rgb(125,151,180));
+        commandInput.setHint("Ask JARVIS anything"); commandInput.setTextSize(15);
+        commandInput.setPadding((int)(8*d),0,(int)(4*d),0); commandInput.setBackgroundColor(Color.TRANSPARENT);
         commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        commandInput.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE
-                    || actionId == EditorInfo.IME_ACTION_GO) {
-                submitTypedCommand();
-                return true;
-            }
-            return false;
+        commandInput.setOnEditorActionListener((v,actionId,event)->{
+            if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){
+                submitTypedCommand(); return true;
+            } return false;
         });
-        composer.addView(commandInput, new LinearLayout.LayoutParams(0, -1, 1f));
-
-        Button send = button("➤");
-        send.setTextSize(19);
-        composer.addView(send, new LinearLayout.LayoutParams(
-            (int) (46 * getResources().getDisplayMetrics().density), -1));
-        send.setOnClickListener(v -> submitTypedCommand());
-
-        LinearLayout.LayoutParams composerParams = new LinearLayout.LayoutParams(-1,
-            (int) (58 * getResources().getDisplayMetrics().density));
-        composerParams.topMargin = (int) (10 * getResources().getDisplayMetrics().density);
-        root.addView(composer, composerParams);
-
+        composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(46*d),1f));
+        TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(5,16,30));
+        send.setTextSize(19); send.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(132,235,255),Color.rgb(77,174,232)});
+        sendBg.setCornerRadius(22*d); send.setBackground(sendBg);
+        composer.addView(send,new LinearLayout.LayoutParams((int)(44*d),(int)(44*d)));
+        send.setOnClickListener(v->submitTypedCommand());
+        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(58*d));
+        composerLp.topMargin=(int)(8*d); root.addView(composer,composerLp);
         setContentView(root);
     }
 
@@ -402,29 +359,12 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
         return b;
     }
-    private void addSmall(LinearLayout row, String label, View.OnClickListener listener) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setTextSize(10);
-        b.setTextColor(Color.rgb(220, 229, 247));
-        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        b.setPadding(3, 2, 3, 2);
-        b.setBackground(panel(Color.rgb(19, 24, 39), Color.rgb(51, 62, 88), 17));
-        if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
-        b.setOnClickListener(listener);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, 48, 1);
-        p.setMargins(3, 4, 3, 0);
-        row.addView(b, p);
+    private void refreshUiStatus() {
+        if(status==null)return;
+        boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty());
+        status.setText("● "+(WakeWordService.isRunning?"VOICE ACTIVE":"SYSTEM READY")+(cloudReady?"  ·  AI CONNECTED":""));
     }
-    private void refreshDashboard() {
-        if (dashboard == null) return;
-        int battery=-1; try { Intent i=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); if(i!=null) battery=i.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); } catch(Exception ignored) {}
-        Runtime rt=Runtime.getRuntime(); long freeRam=(rt.maxMemory()-rt.totalMemory()+rt.freeMemory())/(1024*1024);
-        StatFs fs=new StatFs(Environment.getDataDirectory().getPath()); long freeStorage=(fs.getAvailableBytes()/(1024*1024*1024));
-        String brain = !localModelPath.isEmpty() && new File(localModelPath).exists() ? "LOCAL LLM MODEL READY" : "LOCAL LLM MODEL NOT LOADED";
-        dashboard.setText("SYSTEM TELEMETRY\nBATTERY: "+(battery<0?"N/A":battery+"%")+"     FREE APP HEAP: "+freeRam+" MB\nAVAILABLE STORAGE: "+freeStorage+" GB\nAI MODE: HYBRID ROUTER\nOFFLINE BRAIN: "+brain+"\nONLINE BRAIN: "+((!secureStore.get("gemini_key").isEmpty() || !secureStore.get("groq_key").isEmpty())?"HYBRID READY":"KEYS NOT SET")+"\nWAKE LISTENING: "+(WakeWordService.isRunning?"ACTIVE":"NOT RUNNING"));
-    }
+
     private void requestNotificationPermissionIfNeeded() {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -831,7 +771,7 @@ public class MainActivity extends Activity {
     }
 
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
-    private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
+    private void systemReport() { refreshUiStatus(); respond("System report. "+batteryReport()+" Storage and memory information are available in the system report."); }
     private void memoryDialog() {
         String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile","Memory temporary note"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
@@ -946,7 +886,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("JARVIS OFFLINE AI BRAIN")
             .setMessage(state + "\n\nSelect a compatible .litertlm model file. Model files are large and are not included in the APK.")
             .setPositiveButton("SELECT MODEL", (d,w) -> { Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT); i.setType("*/*"); i.addCategory(Intent.CATEGORY_OPENABLE); startActivityForResult(i,PICK_MODEL); })
-            .setNeutralButton("UNLOAD MODEL", (d,w) -> { localModelPath=""; memory.edit().remove("local_model_path").apply(); LocalAiEngine.close(); refreshDashboard(); respond("Offline model unloaded."); })
+            .setNeutralButton("UNLOAD MODEL", (d,w) -> { localModelPath=""; memory.edit().remove("local_model_path").apply(); LocalAiEngine.close(); refreshUiStatus(); respond("Offline model unloaded."); })
             .setNegativeButton("CLOSE",null).show();
     }
 
@@ -967,9 +907,9 @@ public class MainActivity extends Activity {
                     String gm = geminiModel.getText().toString().trim(); String gr = groqModel.getText().toString().trim();
                     memory.edit().putString("gemini_model", gm.isEmpty()?"gemini-2.5-flash":gm)
                         .putString("groq_model", gr.isEmpty()?"openai/gpt-oss-120b":gr).apply();
-                    refreshDashboard(); respond("Hybrid AI settings saved. Gemini primary, Groq backup.");
+                    refreshUiStatus(); respond("Hybrid AI settings saved. Gemini primary, Groq backup.");
                 } catch (Exception e) { respond("Secure key storage failed: " + e.getMessage()); }
-            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); refreshDashboard(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
+            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); refreshUiStatus(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
             .setNegativeButton("CANCEL", null).show();
     }
 
@@ -987,9 +927,9 @@ public class MainActivity extends Activity {
                     if(in==null) throw new Exception("Cannot open selected model file"); byte[] buf=new byte[PICK_MODEL_COPY_BUFFER]; int n; while((n=in.read(buf))>0) out.write(buf,0,n);
                 }
                 localModelPath=target.getAbsolutePath(); memory.edit().putString("local_model_path",localModelPath).apply();
-                refreshDashboard();
+                refreshUiStatus();
                 status.setText("● LOADING OFFLINE MODEL...");
-                LocalAiEngine.load(localModelPath, result -> { runOnUiThread(() -> { status.setText("● CORE ONLINE"); respond(result); refreshDashboard(); }); return kotlin.Unit.INSTANCE; });
+                LocalAiEngine.load(localModelPath, result -> { runOnUiThread(() -> { status.setText("● CORE ONLINE"); respond(result); refreshUiStatus(); }); return kotlin.Unit.INSTANCE; });
             } catch(Exception e) { respond("Model import failed: "+e.getMessage()); }
         }
     }
@@ -1002,13 +942,34 @@ public class MainActivity extends Activity {
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
     } }
-    private void show(String who,String s) { if (conversation != null) conversation.append("\n"+who+"\n"+s+"\n"); }
+    private void show(String who,String s) {
+        if(conversationList==null)return;
+        final float d=getResources().getDisplayMetrics().density;
+        boolean fromUser=who!=null&&who.equalsIgnoreCase("YOU");
+        LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL);
+        row.setGravity(fromUser?Gravity.END:Gravity.START); row.setPadding(0,(int)(4*d),0,(int)(4*d));
+        TextView label=new TextView(this); label.setText(fromUser?"YOU":"JARVIS");
+        label.setTextColor(fromUser?Color.rgb(104,203,255):Color.rgb(111,226,207));
+        label.setTextSize(9); label.setLetterSpacing(0.12f);
+        label.setPadding((int)(10*d),0,(int)(10*d),(int)(4*d));
+        row.addView(label,new LinearLayout.LayoutParams(-2,-2));
+        TextView message=new TextView(this); message.setText(s==null?"":s);
+        message.setTextColor(Color.rgb(232,241,252)); message.setTextSize(14);
+        message.setLineSpacing(3*d,1.04f); message.setPadding((int)(13*d),(int)(10*d),(int)(13*d),(int)(10*d));
+        message.setBackground(panel(fromUser?Color.rgb(19,49,75):Color.rgb(14,29,49),
+            fromUser?Color.rgb(44,107,148):Color.rgb(35,70,99),18));
+        LinearLayout.LayoutParams bubble=new LinearLayout.LayoutParams(
+            fromUser?(int)(getResources().getDisplayMetrics().widthPixels*0.78f):-2,-2);
+        bubble.setMargins(fromUser?(int)(34*d):0,0,fromUser?0:(int)(34*d),0);
+        row.addView(message,bubble); conversationList.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        conversationScroll.post(()->conversationScroll.fullScroll(View.FOCUS_DOWN));
+    }
     @Override protected void onResume() {
         super.onResume();
         wakeReceiverActive = wakeReceiverRegistered;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && !WakeWordService.isRunning)
             startAlwaysOnWakeService();
-        if (dashboard != null) refreshDashboard();
+        refreshUiStatus();
     }
     @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
     @Override protected void onDestroy() { if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
