@@ -167,150 +167,144 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        // Minimal iOS-inspired glass layout. Existing JARVIS actions and their order remain available.
-        ScrollView page = new ScrollView(this);
-        page.setFillViewport(true);
-        page.setClipToPadding(false);
-        page.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        // Full-screen conversational layout: no dashboard cards or rows of shortcut buttons.
+        final int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(18, 18, 18, 22);
-        root.setBackgroundColor(Color.rgb(5, 7, 14));
+        root.setPadding(pad, pad, pad, pad);
+        root.setBackground(new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(7, 12, 27), Color.rgb(3, 7, 17), Color.rgb(9, 15, 32)}));
+        root.setFocusableInTouchMode(true);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.VERTICAL);
+        identity.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView title = new TextView(this);
         title.setText("JARVIS");
-        title.setTextColor(Color.rgb(238, 243, 255));
-        title.setTextSize(25);
-        title.setLetterSpacing(0.12f);
+        title.setTextColor(Color.rgb(239, 247, 255));
+        title.setTextSize(22);
+        title.setLetterSpacing(0.16f);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        title.setGravity(Gravity.CENTER);
-        root.addView(title, new LinearLayout.LayoutParams(-1, 42));
+        identity.addView(title, new LinearLayout.LayoutParams(-2, -2));
 
         status = new TextView(this);
         status.setText("● ONLINE  ·  VOICE STANDBY");
-        status.setTextColor(Color.rgb(126, 220, 190));
-        status.setTextSize(11);
-        status.setLetterSpacing(0.08f);
-        status.setGravity(Gravity.CENTER);
-        root.addView(status, new LinearLayout.LayoutParams(-1, 28));
+        status.setTextColor(Color.rgb(115, 226, 205));
+        status.setTextSize(10);
+        status.setLetterSpacing(0.07f);
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-2, -2);
+        statusParams.topMargin = (int) (3 * getResources().getDisplayMetrics().density);
+        identity.addView(status, statusParams);
+        header.addView(identity, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        Button settings = button("⋯");
+        settings.setTextSize(23);
+        settings.setPadding(0, 0, 0, (int) (5 * getResources().getDisplayMetrics().density));
+        header.addView(settings, new LinearLayout.LayoutParams(
+            (int) (48 * getResources().getDisplayMetrics().density),
+            (int) (44 * getResources().getDisplayMetrics().density)));
+        settings.setOnClickListener(v -> openSettingsMenu());
+        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         orbView = new JarvisOrbView(this);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1, 184);
-        orbParams.topMargin = 4;
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1,
+            (int) (138 * getResources().getDisplayMetrics().density));
+        orbParams.topMargin = (int) (3 * getResources().getDisplayMetrics().density);
+        orbParams.bottomMargin = (int) (5 * getResources().getDisplayMetrics().density);
         root.addView(orbView, orbParams);
 
-        dashboard = new TextView(this);
-        dashboard.setTextColor(Color.rgb(211, 220, 239));
-        dashboard.setTextSize(11);
-        dashboard.setLineSpacing(3f, 1.0f);
-        dashboard.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-        dashboard.setPadding(16, 13, 16, 13);
-        dashboard.setBackground(panel(Color.rgb(17, 21, 34), Color.rgb(48, 57, 82), 20));
-        LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
-        dp.topMargin = 10;
-        root.addView(dashboard, dp);
-
-        TextView chatLabel = new TextView(this);
-        chatLabel.setText("CONVERSATION");
-        chatLabel.setTextColor(Color.rgb(153, 169, 197));
-        chatLabel.setTextSize(10);
-        chatLabel.setLetterSpacing(0.13f);
-        chatLabel.setPadding(4, 16, 4, 7);
-        root.addView(chatLabel);
-
         ScrollView conversationScroll = new ScrollView(this);
-        conversationScroll.setFillViewport(false);
-        conversationScroll.setBackground(panel(Color.rgb(13, 17, 29), Color.rgb(42, 50, 72), 20));
+        conversationScroll.setFillViewport(true);
         conversationScroll.setClipToPadding(false);
-        conversation = new TextView(this);
-        conversation.setTextColor(Color.rgb(242, 245, 252));
-        conversation.setTextSize(14);
-        conversation.setLineSpacing(4f, 1.0f);
-        conversation.setPadding(16, 15, 16, 15);
-        conversationScroll.addView(conversation);
-        int conversationHeight = Math.max(150, Math.min(220,
-                (int)(getResources().getDisplayMetrics().heightPixels * 0.21f)));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, conversationHeight);
-        root.addView(conversationScroll, cp);
+        conversationScroll.setVerticalScrollBarEnabled(false);
+        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        conversationScroll.setBackground(panel(Color.rgb(10, 17, 32), Color.rgb(31, 55, 83), 22));
 
-        LinearLayout typeRow = new LinearLayout(this);
-        typeRow.setOrientation(LinearLayout.HORIZONTAL);
-        typeRow.setGravity(Gravity.CENTER_VERTICAL);
-        typeRow.setPadding(12, 2, 6, 2);
-        typeRow.setBackground(panel(Color.rgb(20, 25, 40), Color.rgb(67, 82, 117), 28));
+        conversation = new TextView(this);
+        conversation.setTextColor(Color.rgb(232, 241, 252));
+        conversation.setTextSize(15);
+        conversation.setLineSpacing(5f, 1.04f);
+        conversation.setPadding(pad, pad, pad, pad);
+        conversation.setTextIsSelectable(true);
+        conversationScroll.addView(conversation, new ScrollView.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams chatParams = new LinearLayout.LayoutParams( -1, 0, 1f);
+        chatParams.topMargin = (int) (4 * getResources().getDisplayMetrics().density);
+        root.addView(conversationScroll, chatParams);
+
+        LinearLayout composer = new LinearLayout(this);
+        composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.CENTER_VERTICAL);
+        composer.setPadding((int) (9 * getResources().getDisplayMetrics().density),
+            (int) (3 * getResources().getDisplayMetrics().density),
+            (int) (5 * getResources().getDisplayMetrics().density),
+            (int) (3 * getResources().getDisplayMetrics().density));
+        composer.setBackground(panel(Color.rgb(17, 25, 43), Color.rgb(55, 91, 127), 28));
+
+        Button mic = button("◉");
+        mic.setTextSize(19);
+        composer.addView(mic, new LinearLayout.LayoutParams(
+            (int) (42 * getResources().getDisplayMetrics().density), -1));
+        mic.setOnClickListener(v -> listen());
+
         commandInput = new EditText(this);
         commandInput.setSingleLine(true);
         commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.rgb(139, 151, 177));
-        commandInput.setHint("Message JARVIS...");
-        commandInput.setTextSize(14);
+        commandInput.setHintTextColor(Color.rgb(137, 157, 184));
+        commandInput.setHint("Message JARVIS…");
+        commandInput.setTextSize(15);
         commandInput.setBackgroundColor(Color.TRANSPARENT);
-        commandInput.setPadding(8, 0, 4, 0);
-        commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
+        commandInput.setPadding((int) (8 * getResources().getDisplayMetrics().density), 0,
+            (int) (4 * getResources().getDisplayMetrics().density), 0);
+        commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
         commandInput.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
+            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE
+                    || actionId == EditorInfo.IME_ACTION_GO) {
                 submitTypedCommand();
                 return true;
             }
             return false;
         });
-        typeRow.addView(commandInput, new LinearLayout.LayoutParams(0, 52, 1));
-        Button run = button("➤");
-        typeRow.addView(run, new LinearLayout.LayoutParams(48, 46));
-        run.setOnClickListener(v -> submitTypedCommand());
-        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-1, -2);
-        trp.topMargin = 12;
-        root.addView(typeRow, trp);
+        composer.addView(commandInput, new LinearLayout.LayoutParams(0, -1, 1f));
 
-        Button listen = button("  MIC  ·  TALK TO JARVIS  ");
-        LinearLayout.LayoutParams listenParams = new LinearLayout.LayoutParams(-1, 48);
-        listenParams.topMargin = 9;
-        root.addView(listen, listenParams);
-        listen.setOnClickListener(v -> listen());
+        Button send = button("➤");
+        send.setTextSize(19);
+        composer.addView(send, new LinearLayout.LayoutParams(
+            (int) (46 * getResources().getDisplayMetrics().density), -1));
+        send.setOnClickListener(v -> submitTypedCommand());
 
-        TextView toolsLabel = new TextView(this);
-        toolsLabel.setText("QUICK ACTIONS");
-        toolsLabel.setTextColor(Color.rgb(153, 169, 197));
-        toolsLabel.setTextSize(10);
-        toolsLabel.setLetterSpacing(0.13f);
-        toolsLabel.setPadding(4, 15, 4, 6);
-        root.addView(toolsLabel);
+        LinearLayout.LayoutParams composerParams = new LinearLayout.LayoutParams(-1,
+            (int) (58 * getResources().getDisplayMetrics().density));
+        composerParams.topMargin = (int) (10 * getResources().getDisplayMetrics().density);
+        root.addView(composer, composerParams);
 
-        LinearLayout row1 = new LinearLayout(this);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row1, "MEMORY", v -> memoryDialog());
-        addSmall(row1, "TASKS", v -> taskDialog());
-        addSmall(row1, "CUSTOM COMMAND", v -> customCommandDialog());
-        root.addView(row1);
+        setContentView(root);
+    }
 
-        LinearLayout row2 = new LinearLayout(this);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row2, "CAMERA", v -> launch(new Intent("android.media.action.IMAGE_CAPTURE"), "Camera"));
-        addSmall(row2, "MAPS", v -> open("https://maps.google.com"));
-        addSmall(row2, "REPEAT", v -> speak(lastResponse));
-        root.addView(row2);
-
-        LinearLayout row3 = new LinearLayout(this);
-        row3.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row3, "AI BRAIN / MODEL", v -> aiBrainDialog());
-        addSmall(row3, "ONLINE AI SETUP", v -> onlineAiDialog());
-        root.addView(row3);
-
-        LinearLayout row4 = new LinearLayout(this);
-        row4.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row4, "VISION / IMAGE", v -> pickImage());
-        addSmall(row4, "WEB SEARCH", v -> searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
-        addSmall(row4, "SYSTEM STATUS", v -> systemReport());
-        root.addView(row4);
-
-        LinearLayout row5 = new LinearLayout(this);
-        row5.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row5, "FLOATING ORB SETUP", v -> requestFloatingOrbPermission());
-        root.addView(row5);
-
-        page.addView(root, new ScrollView.LayoutParams(-1, -2));
-        setContentView(page);
+    private void openSettingsMenu() {
+        final String[] items = {
+            "AI brain / model", "Online AI setup", "Memory center",
+            "Tasks & reminders", "Vision / image", "System status",
+            "Floating orb setup"
+        };
+        new AlertDialog.Builder(this).setTitle("JARVIS SETTINGS").setItems(items, (dialog, which) -> {
+            switch (which) {
+                case 0: aiBrainDialog(); break;
+                case 1: onlineAiDialog(); break;
+                case 2: memoryDialog(); break;
+                case 3: taskDialog(); break;
+                case 4: pickImage(); break;
+                case 5: systemReport(); break;
+                case 6: requestFloatingOrbPermission(); break;
+                default: break;
+            }
+        }).setNegativeButton("CLOSE", null).show();
     }
 
     private void requestFloatingOrbPermission() {
@@ -423,7 +417,7 @@ public class MainActivity extends Activity {
         p.setMargins(3, 4, 3, 0);
         row.addView(b, p);
     }
-    private void refreshDashboard() {
+    private void refreshDashboard() {\n        if (dashboard == null) return;
         int battery=-1; try { Intent i=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); if(i!=null) battery=i.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); } catch(Exception ignored) {}
         Runtime rt=Runtime.getRuntime(); long freeRam=(rt.maxMemory()-rt.totalMemory()+rt.freeMemory())/(1024*1024);
         StatFs fs=new StatFs(Environment.getDataDirectory().getPath()); long freeStorage=(fs.getAvailableBytes()/(1024*1024*1024));
