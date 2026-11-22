@@ -664,10 +664,7 @@ public class MainActivity extends Activity {
         respond(answer);
     }
     private boolean isAgentActionIntent(String q) {
-        return q.startsWith("open ") || q.startsWith("launch ") ||
-            q.startsWith("open app ") || q.startsWith("launch app ") ||
-            q.startsWith("start app ") || q.startsWith("web search ") ||
-            q.startsWith("search web ");
+        return JarvisActionIntentRouter.isExplicitAction(q);
     }
 
     private void runAgent(String objective) {
