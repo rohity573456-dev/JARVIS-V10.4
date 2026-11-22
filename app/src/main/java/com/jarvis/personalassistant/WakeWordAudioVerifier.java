@@ -10,9 +10,9 @@ final class WakeWordAudioVerifier {
     private final boolean[] voicedHistory = new boolean[HISTORY_FRAMES];
     private int next;
     private int count;
-    private int lastPeak;
-    private float lastRms;
-    private float lastClippedRatio;
+    private int windowPeak;
+    private float windowMaxRms;
+    private float windowMaxClippedRatio;
 
     void addFrame(short[] pcm, int length, boolean voiced) {
         if (pcm == null || length <= 0) return;
@@ -27,9 +27,9 @@ final class WakeWordAudioVerifier {
             double normalized = value / 32768.0;
             sumSquares += normalized * normalized;
         }
-        lastPeak = peak;
-        lastRms = (float) Math.sqrt(sumSquares / length);
-        lastClippedRatio = (float) clipped / length;
+        windowPeak = Math.max(windowPeak, peak);
+        windowMaxRms = Math.max(windowMaxRms, (float) Math.sqrt(sumSquares / length));
+        windowMaxClippedRatio = Math.max(windowMaxClippedRatio, (float) clipped / length);
 
         voicedHistory[next] = voiced;
         next = (next + 1) % HISTORY_FRAMES;
@@ -45,17 +45,17 @@ final class WakeWordAudioVerifier {
         // voiced frames corroborate the detector's temporal confidence decision.
         return count >= MIN_VOICED_FRAMES
                 && voicedFrames >= MIN_VOICED_FRAMES
-                && lastPeak >= 180
-                && lastRms >= 0.003f
-                && lastClippedRatio < 0.60f;
+                && windowPeak >= 180
+                && windowMaxRms >= 0.003f
+                && windowMaxClippedRatio < 0.60f;
     }
 
     void reset() {
         java.util.Arrays.fill(voicedHistory, false);
         next = 0;
         count = 0;
-        lastPeak = 0;
-        lastRms = 0.0f;
-        lastClippedRatio = 0.0f;
+        windowPeak = 0;
+        windowMaxRms = 0.0f;
+        windowMaxClippedRatio = 0.0f;
     }
 }
