@@ -3,13 +3,13 @@ JARVIS V10.4 — CONTINUOUS OFFLINE WAKE DETECTION
 Source changes:
 - WakeWordService owns standby mic capture through one AudioRecord instance.
 - AudioRecord feeds 100 ms PCM frames to Sherpa-ONNX streaming KeywordSpotter.
-- SpeechRecognizer is opened only after offline Hey Jarvis detection, then the mic returns to AudioRecord standby.
+- SpeechRecognizer is opened only after offline Jarvis detection, then the mic returns to AudioRecord standby.
 - MainActivity no longer contains a second wake-only SpeechRecognizer loop; tap-to-speak remains available.
 - Existing AI command handler, receiver action and foreground microphone service are retained.
 
 GitHub Actions setup:
 - Downloads the official Sherpa-ONNX Android AAR v2.0.1.
-- Downloads the English GigaSpeech KWS model and creates a custom HEY JARVIS keyword file with the matching CLI.
+- Downloads the English GigaSpeech KWS model and creates a custom single-word JARVIS keyword file with the matching CLI.
 - Builds the debug APK.
 
 Validation status (must read):
