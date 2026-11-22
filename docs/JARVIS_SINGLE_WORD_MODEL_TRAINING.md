@@ -26,6 +26,8 @@ Do not use the older model at https://openwakeword.com/library/293 as the prefer
 
 The existing candidate is preferable to inventing a classifier, but its binary is not committed because the download requires an authenticated session. Do not fabricate or rename another ONNX model as `jarvis.onnx`.
 
+The Sherpa fallback and OpenWakeWord runtime both package the ONNX Runtime native library. The Android packaging configuration selects one `libonnxruntime.so` for the arm64 APK while retaining the Java/JNI bindings. CI must verify this packaging and runtime combination.
+
 ## Android compatibility
 
 The selected Android OpenWakeWord runtime declares Android API 26 (Android 8.0) as its minimum. The app's `minSdk` is therefore 26 on this migration branch; Android 7.x and older are not supported by this build. The target Android 15 device is within the supported range.
