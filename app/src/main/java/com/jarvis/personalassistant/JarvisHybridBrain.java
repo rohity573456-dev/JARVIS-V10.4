@@ -86,6 +86,11 @@ public final class JarvisHybridBrain {
                     contextPrompt, directive);
             }
             if (!isError(result)) {
+                if (useAstra && shouldVerifyAstraAnswer(userText, true)) {
+                    String audited = OpenAiResponsesClient.verifyAnswer(openAiKey, contextPrompt, result,
+                        specialist == Specialist.CODING || specialist == Specialist.RESEARCH || specialist == Specialist.DATA_ANALYSIS ? "high" : "medium");
+                    if (!isError(audited)) result = audited;
+                }
                 callback.onResult(result);
                 return;
             }
@@ -109,6 +114,11 @@ public final class JarvisHybridBrain {
         if (!configured) return false;
         return classify(userText) != Specialist.GENERAL
                 || (userText != null && userText.toLowerCase(Locale.ROOT).startsWith("astra "));
+    }
+
+    static boolean shouldVerifyAstraAnswer(String userText, boolean configured) {
+        if (!configured) return false;
+        return classify(userText) != Specialist.GENERAL;
     }
 
     private static boolean isError(String value) {
