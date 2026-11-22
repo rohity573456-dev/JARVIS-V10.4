@@ -112,4 +112,58 @@ public class JarvisAgentEngineTest {
             fail("Expected bounded plan rejection");
         } catch (IllegalArgumentException expected) { }
     }
+
+    @Test public void verifiedResultIsReturnedBeforeNextPlanningTurn() throws Exception {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        registry.register(new JarvisToolRegistry.ToolSpec("first", "First action",
+            JarvisToolRegistry.Risk.READ_ONLY, Collections.<String>emptySet(),
+            Collections.<String>emptySet(), "", args -> JarvisToolRegistry.ToolResult.success("first verified output")));
+        registry.register(new JarvisToolRegistry.ToolSpec("second", "Second action",
+            JarvisToolRegistry.Risk.READ_ONLY, Collections.<String>emptySet(),
+            Collections.<String>emptySet(), "", args -> JarvisToolRegistry.ToolResult.success("second verified output")));
+        AtomicInteger turns = new AtomicInteger();
+        JarvisAgentEngine.Planner planner = new JarvisAgentEngine.Planner() {
+            public JarvisAgentEngine.AgentPlan createPlan(String objective) {
+                return new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
+                    new JarvisAgentEngine.AgentStep("one", "first", Collections.<String,String>emptyMap(), "")));
+            }
+            @Override public JarvisAgentEngine.AgentPlan createFollowUpPlan(String objective,
+                    java.util.List<JarvisAgentEngine.StepReport> history) {
+                int turn = turns.incrementAndGet();
+                assertEquals(1, history.size());
+                assertEquals("first verified output", history.get(0).output);
+                if (turn == 1) return new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
+                    new JarvisAgentEngine.AgentStep("two", "second", Collections.<String,String>emptyMap(), "")));
+                return new JarvisAgentEngine.AgentPlan(objective, Collections.<JarvisAgentEngine.AgentStep>emptyList());
+            }
+        };
+        JarvisAgentEngine engine = new JarvisAgentEngine(planner, registry, step -> true);
+        CountDownLatch done = new CountDownLatch(1);
+        final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
+        engine.submit("complete two actions", new JarvisAgentEngine.Listener() {
+            public void onState(JarvisAgentEngine.State state, String detail) {}
+            public void onComplete(JarvisAgentEngine.AgentReport value) { report[0] = value; done.countDown(); }
+        });
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(JarvisAgentEngine.State.COMPLETED, report[0].finalState);
+        assertEquals(2, report[0].steps.size());
+        assertEquals(2, turns.get());
+    }
+
+    @Test public void emptyInitialPlanCompletesWithoutExecutingTools() throws Exception {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            objective -> new JarvisAgentEngine.AgentPlan(objective, Collections.<JarvisAgentEngine.AgentStep>emptyList()),
+            registry, step -> true);
+        CountDownLatch done = new CountDownLatch(1);
+        final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
+        engine.submit("just answer a question", new JarvisAgentEngine.Listener() {
+            public void onState(JarvisAgentEngine.State state, String detail) {}
+            public void onComplete(JarvisAgentEngine.AgentReport value) { report[0] = value; done.countDown(); }
+        });
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(JarvisAgentEngine.State.COMPLETED, report[0].finalState);
+        assertTrue(report[0].steps.isEmpty());
+    }
+
 }
