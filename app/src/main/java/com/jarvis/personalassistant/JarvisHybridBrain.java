@@ -68,8 +68,7 @@ public final class JarvisHybridBrain {
             String directive = systemDirective(userText);
             String result = "ERROR: No AI provider configured.";
             Specialist specialist = classify(userText);
-            boolean useAstra = !empty(openAiKey) && (specialist != Specialist.GENERAL
-                    || (userText != null && userText.toLowerCase(Locale.ROOT).startsWith("astra ")));
+            boolean useAstra = shouldUseAstra(userText, !empty(openAiKey));
             if (useAstra) {
                 String effort = specialist == Specialist.CODING || specialist == Specialist.RESEARCH
                         || specialist == Specialist.DATA_ANALYSIS ? "high" : "medium";
@@ -104,6 +103,12 @@ public final class JarvisHybridBrain {
             callback.onResult("JARVIS AI providers unavailable. " + result
                     + ". Configure Gemini/Groq, optional GPT-6.2 Astra, or load a compatible offline model.");
         });
+    }
+
+    static boolean shouldUseAstra(String userText, boolean configured) {
+        if (!configured) return false;
+        return classify(userText) != Specialist.GENERAL
+                || (userText != null && userText.toLowerCase(Locale.ROOT).startsWith("astra "));
     }
 
     private static boolean isError(String value) {
