@@ -41,7 +41,16 @@ final class OpenWakeWordEngine implements AutoCloseable {
     private int pendingCount;
     private int liveFeatureFrames;
 
-    private final ArrayList<float[]> melHistory = new ArrayList<>();
+    // Reusable hot-path buffers avoid allocating large arrays every 80 ms.
+    private final float[] rawWindow = new float[AUDIO_CHUNK + 480];
+    private final float[] embeddingInputData = new float[MEL_WINDOW * MEL_BINS];
+    private final float[] classifierInputData =
+            new float[CLASSIFIER_WINDOW * EMBEDDING_SIZE];
+
+    // Fixed-size mel ring buffer avoids ArrayList.remove(0) shifting on every chunk.
+    private final float[][] melHistory = new float[MEL_HISTORY][MEL_BINS];
+    private int melWrite;
+    private int melCount;
     private final ArrayDeque<float[]> featureHistory = new ArrayDeque<>();
 
     OpenWakeWordEngine(AssetManager assets) throws Exception {
@@ -81,15 +90,19 @@ final class OpenWakeWordEngine implements AutoCloseable {
         rawCount = 0;
         pendingCount = 0;
         liveFeatureFrames = 0;
-        melHistory.clear();
+        melWrite = 0;
+        melCount = 0;
         featureHistory.clear();
         confidenceGate.reset();
 
-        for (int i = 0; i < MEL_WINDOW; i++) {
-            float[] initialMel = new float[MEL_BINS];
-            java.util.Arrays.fill(initialMel, 1.0f);
-            melHistory.add(initialMel);
+        for (int i = 0; i < MEL_HISTORY; i++) {
+            java.util.Arrays.fill(melHistory[i], 0.0f);
         }
+        for (int i = 0; i < MEL_WINDOW; i++) {
+            java.util.Arrays.fill(melHistory[i], 1.0f);
+        }
+        melCount = MEL_WINDOW;
+        melWrite = MEL_WINDOW % MEL_HISTORY;
         // Fill the initial classifier context; live embeddings replace these
         // as the microphone stream advances.
         for (int i = 0; i < CLASSIFIER_WINDOW; i++) {
@@ -121,7 +134,8 @@ final class OpenWakeWordEngine implements AutoCloseable {
 
                     if (liveFeatureFrames >= CLASSIFIER_WINDOW) {
                         float score = predict();
-                        Log.d(TAG, "Wake confidence=" + score);
+                        // Avoid a log write for every 80 ms inference; it adds
+                        // needless wakeups and I/O during continuous standby.
                         if (confidenceGate.add(score)) {
                             detected = true;
                             confidenceGate.reset();
@@ -136,13 +150,12 @@ final class OpenWakeWordEngine implements AutoCloseable {
     }
 
     private float[] latestRawWindow() {
-        int length = AUDIO_CHUNK + 480;
-        float[] values = new float[length];
+        int length = rawWindow.length;
         int start = (rawWrite - length + RAW_HISTORY) % RAW_HISTORY;
         for (int i = 0; i < length; i++) {
-            values[i] = rawHistory[(start + i) % RAW_HISTORY];
+            rawWindow[i] = rawHistory[(start + i) % RAW_HISTORY];
         }
-        return values;
+        return rawWindow;
     }
 
     private void appendMelFrames() throws Exception {
@@ -159,31 +172,31 @@ final class OpenWakeWordEngine implements AutoCloseable {
                 FloatBuffer values = output.getFloatBuffer();
                 int frames = values.remaining() / MEL_BINS;
                 for (int frame = 0; frame < frames; frame++) {
-                    float[] mel = new float[MEL_BINS];
+                    float[] mel = melHistory[melWrite];
                     for (int bin = 0; bin < MEL_BINS; bin++) {
                         mel[bin] = values.get() / 10.0f + 2.0f;
                     }
-                    melHistory.add(mel);
+                    melWrite = (melWrite + 1) % MEL_HISTORY;
+                    if (melCount < MEL_HISTORY) melCount++;
                 }
-                while (melHistory.size() > MEL_HISTORY) melHistory.remove(0);
             }
         }
     }
 
     private float[] makeEmbedding() throws Exception {
-        if (melHistory.size() < MEL_WINDOW) {
+        if (melCount < MEL_WINDOW) {
             return new float[EMBEDDING_SIZE];
         }
 
-        float[] inputData = new float[MEL_WINDOW * MEL_BINS];
-        int start = melHistory.size() - MEL_WINDOW;
+        int start = (melWrite - MEL_WINDOW + MEL_HISTORY) % MEL_HISTORY;
         for (int i = 0; i < MEL_WINDOW; i++) {
-            System.arraycopy(melHistory.get(start + i), 0,
-                    inputData, i * MEL_BINS, MEL_BINS);
+            float[] mel = melHistory[(start + i) % MEL_HISTORY];
+            System.arraycopy(mel, 0,
+                    embeddingInputData, i * MEL_BINS, MEL_BINS);
         }
 
         try (OnnxTensor input = OnnxTensor.createTensor(
-                environment, FloatBuffer.wrap(inputData),
+                environment, FloatBuffer.wrap(embeddingInputData),
                 new long[]{1, MEL_WINDOW, MEL_BINS, 1})) {
             try (OrtSession.Result result = embeddingSession.run(
                     Collections.singletonMap("input_1", input))) {
@@ -202,18 +215,18 @@ final class OpenWakeWordEngine implements AutoCloseable {
     }
 
     private float predict() throws Exception {
-        float[] features = new float[CLASSIFIER_WINDOW * EMBEDDING_SIZE];
+        java.util.Arrays.fill(classifierInputData, 0.0f);
         int offset = 0;
         int skip = featureHistory.size() - CLASSIFIER_WINDOW;
         int index = 0;
         for (float[] feature : featureHistory) {
             if (index++ < skip) continue;
-            System.arraycopy(feature, 0, features, offset, EMBEDDING_SIZE);
+            System.arraycopy(feature, 0, classifierInputData, offset, EMBEDDING_SIZE);
             offset += EMBEDDING_SIZE;
         }
 
         try (OnnxTensor input = OnnxTensor.createTensor(
-                environment, FloatBuffer.wrap(features),
+                environment, FloatBuffer.wrap(classifierInputData),
                 new long[]{1, CLASSIFIER_WINDOW, EMBEDDING_SIZE})) {
             try (OrtSession.Result result = classifierSession.run(
                     Collections.singletonMap(classifierInputName, input))) {
