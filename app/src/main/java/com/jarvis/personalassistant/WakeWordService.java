@@ -41,6 +41,7 @@ public class WakeWordService extends Service {
     private volatile boolean wakeDetected = false;
     private volatile boolean recording = false;
     private volatile boolean speechPlaying = false;
+    private volatile boolean engineReady = false;
     private volatile long ignoreWakeUntilMs = 0L;
     private boolean commandCaptureFinished = true;
     private volatile String activeUtteranceId = "";
@@ -58,6 +59,20 @@ public class WakeWordService extends Service {
     private int audioRecoveryAttempts = 0;
     private final VoiceActivityDetector voiceActivityDetector = new VoiceActivityDetector();
     private final WakeWordAudioVerifier wakeWordAudioVerifier = new WakeWordAudioVerifier();
+    private final Runnable healthCheck = new Runnable() {
+        @Override public void run() {
+            if (!running) return;
+            if (engineReady && !wakeDetected && !speechPlaying) {
+                if (!recording) {
+                    android.util.Log.w("JARVIS-KWS", "Health monitor restarting idle audio capture");
+                    startAudioCapture();
+                } else if (audioThread == null || !audioThread.isAlive()) {
+                    recoverAudio("Audio worker stopped unexpectedly");
+                }
+            }
+            handler.postDelayed(this, 15000L);
+        }
+    };
 
     @Override public void onCreate() {
         super.onCreate();
@@ -104,6 +119,8 @@ public class WakeWordService extends Service {
 
         if (!running) {
             running = true;
+            handler.removeCallbacks(healthCheck);
+            handler.postDelayed(healthCheck, 15000L);
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm != null) {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JARVIS:WakeWordCpu");
@@ -142,6 +159,7 @@ public class WakeWordService extends Service {
     private void initializeAndStart() {
         try {
             wakeWordEngine = new OpenWakeWordEngine(getAssets());
+            engineReady = true;
             handler.post(this::startAudioCapture);
         } catch (Exception e) {
             android.util.Log.e("JARVIS-OWW", "OpenWakeWord initialization failed", e);
@@ -153,7 +171,7 @@ public class WakeWordService extends Service {
     }
 
     private void startAudioCapture() {
-        if (!running || recording || wakeDetected || speechPlaying) return;
+        if (!running || !engineReady || recording || wakeDetected || speechPlaying) return;
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             stopSelf();
@@ -282,6 +300,9 @@ public class WakeWordService extends Service {
                     }
                 } else if (count < 0) {
                     throw new IllegalStateException("AudioRecord read error: " + count);
+                } else {
+                    // Avoid a tight CPU spin if a vendor AudioRecord returns zero.
+                    SystemClock.sleep(5L);
                 }
             }
         } catch (Exception e) {
@@ -295,6 +316,12 @@ public class WakeWordService extends Service {
             releaseAudioRecord();
             if (running && wakeDetected) {
                 handler.postDelayed(this::beginCommandCapture, 250);
+            } else if (running) {
+                handler.post(() -> {
+                    if (running && !wakeDetected && !recording && !speechPlaying) {
+                        recoverAudio("Audio capture worker exited unexpectedly");
+                    }
+                });
             }
         }
     }
@@ -569,6 +596,7 @@ public class WakeWordService extends Service {
 
     @Override public void onDestroy() {
         running = false;
+        engineReady = false;
         isRunning = false;
         recording = false;
         wakeDetected = false;
