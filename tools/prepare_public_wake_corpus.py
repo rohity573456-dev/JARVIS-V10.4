@@ -42,10 +42,14 @@ def main():
         samples = np.asarray(audio["array"], dtype=np.float32)
         rate = int(audio["sampling_rate"])
         if samples.ndim == 2:
-            samples = samples.mean(axis=1 if samples.shape[0] < samples.shape[1] else 0)
+            # HF audio arrays are usually [samples, channels], but accept [channels, samples].
+            channel_axis = 0 if samples.shape[0] <= 8 and samples.shape[1] > 8 else 1
+            samples = samples.mean(axis=channel_axis)
         if rate != 16000:
-            import scipy.signal
-            samples = scipy.signal.resample_poly(samples, 16000, rate).astype(np.float32)
+            target_length = max(1, round(len(samples) * 16000 / rate))
+            old_x = np.arange(len(samples), dtype=np.float64)
+            new_x = np.linspace(0, max(0, len(samples) - 1), target_length)
+            samples = np.interp(new_x, old_x, samples).astype(np.float32)
             rate = 16000
         samples = np.clip(samples, -1.0, 1.0)
         relative = Path("benchmark_data/picovoice/audio") / f"clip_{index:05d}.wav"
