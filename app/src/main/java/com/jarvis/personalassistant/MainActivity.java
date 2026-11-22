@@ -417,7 +417,8 @@ public class MainActivity extends Activity {
         p.setMargins(3, 4, 3, 0);
         row.addView(b, p);
     }
-    private void refreshDashboard() {\n        if (dashboard == null) return;
+    private void refreshDashboard() {
+        if (dashboard == null) return;
         int battery=-1; try { Intent i=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); if(i!=null) battery=i.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); } catch(Exception ignored) {}
         Runtime rt=Runtime.getRuntime(); long freeRam=(rt.maxMemory()-rt.totalMemory()+rt.freeMemory())/(1024*1024);
         StatFs fs=new StatFs(Environment.getDataDirectory().getPath()); long freeStorage=(fs.getAvailableBytes()/(1024*1024*1024));
