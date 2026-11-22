@@ -21,7 +21,6 @@ public final class OpenAiResponsesClient {
         String instructions = "You are JARVIS's answer quality auditor. Check the draft against the user's request and supplied context. Look for factual contradictions, unsupported claims, missing assumptions, arithmetic mistakes, unsafe instructions, and failure to answer. Do not invent facts or sources. Do not reveal private reasoning. If the draft is sound, return it unchanged. If it has a clear error, return a corrected complete answer. If evidence is insufficient, clearly state the uncertainty instead of guessing.";
         String input = "USER REQUEST AND AVAILABLE CONTEXT:\n" + (questionAndContext == null ? "" : questionAndContext)
                 + "\n\nDRAFT ANSWER TO AUDIT:\n" + (draft == null ? "" : draft);
-        if (input.length() > 14000) input = input.substring(0, 14000);
         return ask(apiKey, DEFAULT_MODEL, instructions, input, effort == null ? "medium" : effort);
     }
 
