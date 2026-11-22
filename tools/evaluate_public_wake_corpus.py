@@ -15,9 +15,7 @@ import zipfile
 from collections import deque
 from pathlib import Path
 
-import numpy as np
-import onnxruntime as ort
-import soundfile as sf
+np = None
 
 SAMPLE_RATE = 16000
 CHUNK = 1280
@@ -34,6 +32,8 @@ GATE_CONFIG = "fast=.30x2;soft=.22x3of4_avg=.245;borderline=.18;adaptive=.19x3_a
 
 
 def mono_16k(path):
+    import numpy as np
+    import soundfile as sf
     audio, rate = sf.read(str(path), dtype="int16", always_2d=True)
     audio = audio.astype(np.float32).mean(axis=1)
     if rate != SAMPLE_RATE:
@@ -78,6 +78,9 @@ class ConfidenceGate:
 
 class JarvisOnnxPipeline:
     def __init__(self, assets):
+        global np
+        import numpy as np
+        import onnxruntime as ort
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = 1
         opts.inter_op_num_threads = 1
@@ -105,25 +108,18 @@ class JarvisOnnxPipeline:
         shape = session.get_inputs()[0].shape
         mel_frames = int(info.get("mel_time", 98))
         mel_bins = int(info.get("n_mels", 32))
-        if len(shape) == 4:
-            input_shape = [1, mel_frames, mel_bins, 1]
-        elif len(shape) == 3:
-            input_shape = [1, mel_frames, mel_bins]
-        else:
+        if len(shape) not in (3, 4) or shape[-1] != mel_bins or mel_frames not in shape[1:-1]:
             raise ValueError(f"Unsupported independent verifier input shape: {shape}")
-        return session, keywords.index("jarvis"), float(info.get("threshold", .5)), input_shape
-
-    def reset(self):
-        self.__init__(self.assets)
+        if any(not isinstance(dim, int) or dim <= 0 for dim in shape):
+            raise ValueError(f"Independent verifier requires a static input shape: {shape}")
+        return session, keywords.index("jarvis"), float(info.get("threshold", .5)), list(shape)
 
     def _verify(self):
         frames = list(self.mel_history)
         n = int(self.verifier_shape[1])
         if len(frames) < n:
             return False
-        data = np.stack(frames[-n:]).astype(np.float32)[None, ...]
-        if len(self.verifier_shape) == 4:
-            data = data[..., None]
+        data = np.stack(frames[-n:]).astype(np.float32).reshape(self.verifier_shape)
         input_name = self.verifier.get_inputs()[0].name
         output = self.verifier.run(None, {input_name: data})[0].reshape(-1)
         return len(output) > self.verifier_index and float(output[self.verifier_index]) >= self.verifier_threshold
