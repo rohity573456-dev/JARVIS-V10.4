@@ -140,14 +140,17 @@ class WakeWordService : Service() {
                 featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
                 modelConfig = model,
                 keywordsFile = MODEL_DIR + "/keywords.txt",
-                keywordsScore = 2.0f,
-                keywordsThreshold = 0.25f
+                maxActivePaths = 4,
+                keywordsScore = 3.0f,
+                keywordsThreshold = 0.10f,
+                numTrailingBlanks = 1
             )
             spotter = KeywordSpotter(assetManager = assets, config = config)
             stream = spotter!!.createStream()
+            android.util.Log.i(TAG, "KWS model and keyword list initialized: ${MODEL_DIR}/keywords.txt")
             handler.post { startContinuousAudioCapture() }
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "KWS initialization failed", e)
+            android.util.Log.e(TAG, "KWS initialization failed; verify model assets and keywords.txt", e)
             handler.post { speak("Offline wake model could not start. Please rebuild JARVIS V10.4.") }
             active.set(false)
             isRunning = false
@@ -164,12 +167,17 @@ class WakeWordService : Service() {
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minBytes * 2, 6400))
             check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed" }
             recorder.startRecording()
+            check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                "AudioRecord did not enter RECORDSTATE_RECORDING"
+            }
+            android.util.Log.i(TAG, "Standby microphone recording at ${SAMPLE_RATE} Hz")
             audioRecord = recorder
             val kws = spotter ?: error("KWS model not initialized")
             val kwsStream = stream ?: error("KWS stream not initialized")
             recordThread = thread(name = "JarvisContinuousMic") {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
                 val pcm = ShortArray(1600) // 100 ms at 16 kHz
+                var lastLevelLog = android.os.SystemClock.elapsedRealtime()
                 try {
                     while (active.get() && !commandMode && audioRecord === recorder) {
                         val count = try { recorder.read(pcm, 0, pcm.size) } catch (e: Exception) {
@@ -177,6 +185,13 @@ class WakeWordService : Service() {
                             -1
                         }
                         if (count > 0) {
+                            var peak = 0
+                            for (i in 0 until count) peak = maxOf(peak, kotlin.math.abs(pcm[i].toInt()))
+                            val nowForLog = android.os.SystemClock.elapsedRealtime()
+                            if (nowForLog - lastLevelLog >= 5000) {
+                                android.util.Log.d(TAG, "Standby audio alive; peak PCM=$peak, frames=$count")
+                                lastLevelLog = nowForLog
+                            }
                             val samples = FloatArray(count) { pcm[it] / 32768.0f }
                             kwsStream.acceptWaveform(samples, SAMPLE_RATE)
                             while (kws.isReady(kwsStream)) {
