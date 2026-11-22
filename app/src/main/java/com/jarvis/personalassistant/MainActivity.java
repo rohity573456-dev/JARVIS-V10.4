@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
     private SecureStore secureStore;
     private JarvisMemoryStore longTermMemory;
     private JarvisToolRegistry agentToolRegistry;
+    private JarvisAgentEngine.RunHandle activeAgentRun;
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -634,6 +635,10 @@ public class MainActivity extends Activity {
         else if (runCustomCommand(raw)) return;
         else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Pratik Boss. JARVIS systems are ready.";
         else {
+            if (isAgentActionIntent(q)) {
+                runAgent(raw);
+                return;
+            }
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
             if (!geminiKey.isEmpty() || !groqKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
@@ -657,6 +662,113 @@ public class MainActivity extends Activity {
         }
         respond(answer);
     }
+    private boolean isAgentActionIntent(String q) {
+        return q.startsWith("open ") || q.startsWith("launch ") ||
+            q.startsWith("open app ") || q.startsWith("launch app ") ||
+            q.startsWith("start app ");
+    }
+
+    private void runAgent(String objective) {
+        String geminiKey = secureStore.get("gemini_key");
+        String groqKey = secureStore.get("groq_key");
+        if (geminiKey.isEmpty() && groqKey.isEmpty()) {
+            respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
+            return;
+        }
+        if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+            respond("JARVIS is already handling an agent task. Pehle current task complete hone do.");
+            return;
+        }
+        status.setText("● AGENT PLANNING...");
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            new JarvisStructuredPlanner(agentToolRegistry, geminiKey,
+                memory.getString("gemini_model", "gemini-2.5-flash"),
+                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b")),
+            agentToolRegistry, this::requestAgentApproval);
+        activeAgentRun = engine.submit(objective, new JarvisAgentEngine.Listener() {
+            @Override public void onState(JarvisAgentEngine.State state, String detail) {
+                runOnUiThread(() -> {
+                    if (status == null || isFinishing()) return;
+                    if (state == JarvisAgentEngine.State.AWAITING_APPROVAL) status.setText("● WAITING FOR YOUR APPROVAL");
+                    else if (state == JarvisAgentEngine.State.RUNNING) status.setText("● EXECUTING APPROVED ACTION");
+                    else if (state == JarvisAgentEngine.State.PLANNING) status.setText("● AI ACTION PLANNING...");
+                    else if (state == JarvisAgentEngine.State.VERIFYING) status.setText("● VERIFYING ACTION...");
+                });
+            }
+            @Override public void onComplete(JarvisAgentEngine.AgentReport report) {
+                runOnUiThread(() -> {
+                    activeAgentRun = null;
+                    if (isFinishing()) return;
+                    if (report.finalState == JarvisAgentEngine.State.COMPLETED && report.steps.isEmpty()) {
+                        respond("Is request ke liye koi supported Android action identify nahi hua. App ka exact naam batao, ya normal question ki tarah pucho.");
+                        return;
+                    }
+                    StringBuilder message = new StringBuilder();
+                    message.append(report.finalState == JarvisAgentEngine.State.COMPLETED
+                        ? "Agent task complete. " : report.finalState == JarvisAgentEngine.State.CANCELLED
+                        ? "Agent task cancelled or approval denied. " : "Agent task stopped safely. ");
+                    for (JarvisAgentEngine.StepReport step : report.steps) {
+                        message.append("\n").append(step.toolName).append(": ")
+                            .append(step.output);
+                        if (step.success && step.verified) message.append(" ✓");
+                    }
+                    respond(message.toString().trim());
+                });
+            }
+        });
+    }
+
+    private boolean requestAgentApproval(JarvisAgentEngine.AgentStep step) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicBoolean resolved = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final java.util.concurrent.atomic.AtomicBoolean allowed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final AlertDialog[] dialog = new AlertDialog[1];
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || !hasWindowFocus()) {
+                resolved.set(true);
+                latch.countDown();
+                return;
+            }
+            StringBuilder details = new StringBuilder();
+            details.append("Action: ").append(step.toolName).append("\n");
+            if (!step.purpose.isEmpty()) details.append("Reason: ").append(step.purpose).append("\n");
+            if (!step.arguments.isEmpty()) details.append("Arguments: ").append(step.arguments);
+            details.append("\n\nJARVIS will perform this action only once if you allow it.");
+            dialog[0] = new AlertDialog.Builder(MainActivity.this)
+                .setTitle("JARVIS APPROVAL REQUIRED")
+                .setMessage(details.toString())
+                .setPositiveButton("ALLOW ONCE", (d, which) -> {
+                    if (resolved.compareAndSet(false, true)) {
+                        allowed.set(true);
+                        latch.countDown();
+                    }
+                })
+                .setNegativeButton("DENY", (d, which) -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                })
+                .setOnCancelListener(d -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                })
+                .create();
+            dialog[0].show();
+        });
+        try {
+            if (!latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (resolved.compareAndSet(false, true)) runOnUiThread(() -> {
+                    if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+                });
+                return false;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (resolved.compareAndSet(false, true)) runOnUiThread(() -> {
+                if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+            });
+            return false;
+        }
+        return allowed.get();
+    }
+
     private boolean runCustomCommand(String raw) {
         Map<String,?> all=memory.getAll();
         for(String key:all.keySet()) if(key.startsWith("custom_")) {
