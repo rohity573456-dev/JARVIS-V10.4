@@ -1,4 +1,3 @@
-
 package com.jarvis.personalassistant;
 
 import android.app.Notification;
@@ -7,8 +6,11 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -18,58 +20,59 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 
-import java.util.ArrayList;
+import com.k2fsa.sherpa.onnx.FeatureConfig;
+import com.k2fsa.sherpa.onnx.KeywordSpotter;
+import com.k2fsa.sherpa.onnx.KeywordSpotterConfig;
+import com.k2fsa.sherpa.onnx.OnlineModelConfig;
+import com.k2fsa.sherpa.onnx.OnlineStream;
+import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.Locale;
 
 public class WakeWordService extends Service {
-
     public static final String ACTION_WAKE_COMMAND = "com.jarvis.personalassistant.WAKE_COMMAND";
     public static final String EXTRA_COMMAND = "command";
     private static final String CHANNEL_ID = "jarvis_wake_channel";
     private static final int NOTIFICATION_ID = 991;
+    private static final String MODEL_DIR = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
+    private static final int SAMPLE_RATE = 16000;
+    private static final int FRAME_SAMPLES = 1600; // 100 ms
+    private static final String[] MODEL_FILES = {
+            "encoder-epoch-12-avg-2-chunk-16-left-64.onnx",
+            "decoder-epoch-12-avg-2-chunk-16-left-64.onnx",
+            "joiner-epoch-12-avg-2-chunk-16-left-64.onnx",
+            "tokens.txt",
+            "keywords.txt"
+    };
 
     public static volatile boolean isRunning = false;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private SpeechRecognizer recognizer;
+    private volatile boolean running = false;
+    private volatile boolean wakeDetected = false;
+    private volatile boolean recording = false;
+    private AudioRecord audioRecord;
+    private Thread audioThread;
+    private KeywordSpotter keywordSpotter;
+    private OnlineStream keywordStream;
+    private SpeechRecognizer commandRecognizer;
     private PowerManager.WakeLock wakeLock;
     private TextToSpeech tts;
-
     private boolean ttsReady = false;
-    private boolean running = false;
-    private boolean listening = false;
-    private boolean restartQueued = false;
-    private boolean waitingForCommand = false;
-    private boolean useHindi = false;
-
     private String pendingSpeech;
-    private int consecutiveErrors = 0;
-    private long lastWakeAt = 0L;
 
-    private final Runnable commandTimeout = () -> {
-        waitingForCommand = false;
-        speak("I am listening, Commander. Please say your command again.");
-        scheduleListen(1800);
-    };
-
-    @Override
-    public void onCreate() {
+    @Override public void onCreate() {
         super.onCreate();
         createNotificationChannel();
-
         tts = new TextToSpeech(getApplicationContext(), result -> {
             if (result == TextToSpeech.SUCCESS) {
-                int language = tts.setLanguage(new Locale("en", "IN"));
-
-                if (language == TextToSpeech.LANG_MISSING_DATA ||
-                        language == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts.setLanguage(new Locale("hi", "IN"));
-                }
-
+                tts.setLanguage(new Locale("en", "IN"));
                 tts.setPitch(0.78f);
                 tts.setSpeechRate(0.90f);
                 ttsReady = true;
-
                 if (pendingSpeech != null) {
                     String queued = pendingSpeech;
                     pendingSpeech = null;
@@ -79,22 +82,17 @@ public class WakeWordService extends Service {
         });
     }
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                != PackageManager.PERMISSION_GRANTED) {
             stopSelf();
             return START_NOT_STICKY;
         }
 
         try {
             if (Build.VERSION.SDK_INT >= 29) {
-                startForeground(
-                        NOTIFICATION_ID,
-                        buildNotification(),
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                );
+                startForeground(NOTIFICATION_ID, buildNotification(),
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
             } else {
                 startForeground(NOTIFICATION_ID, buildNotification());
             }
@@ -106,298 +104,252 @@ public class WakeWordService extends Service {
         if (!running) {
             running = true;
             isRunning = true;
-
-            PowerManager pm =
-                    (PowerManager) getSystemService(POWER_SERVICE);
-
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm != null) {
-                wakeLock = pm.newWakeLock(
-                        PowerManager.PARTIAL_WAKE_LOCK,
-                        "JARVIS:WakeWordCpu"
-                );
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JARVIS:WakeWordCpu");
                 wakeLock.setReferenceCounted(false);
                 wakeLock.acquire(10 * 60 * 60 * 1000L);
             }
-
-            scheduleListen(500);
+            new Thread(this::initializeAndStart, "Jarvis-KWS-Init").start();
         }
-
         return START_STICKY;
     }
 
     private Notification buildNotification() {
         Intent open = new Intent(this, MainActivity.class);
-
-        PendingIntent pending = PendingIntent.getActivity(
-                this,
-                0,
-                open,
+        PendingIntent pending = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT |
-                        (Build.VERSION.SDK_INT >= 23
-                                ? PendingIntent.FLAG_IMMUTABLE : 0)
-        );
-
-        Notification.Builder builder =
-                Build.VERSION.SDK_INT >= 26
-                        ? new Notification.Builder(this, CHANNEL_ID)
-                        : new Notification.Builder(this);
-
-        return builder
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                        (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, CHANNEL_ID)
+                : new Notification.Builder(this);
+        return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentTitle("JARVIS voice standby")
-                .setContentText("Wake listening active — say Jarvis")
-                .setContentIntent(pending)
-                .setOngoing(true)
-                .build();
+                .setContentText("Offline wake detection active — say Hey Jarvis")
+                .setContentIntent(pending).setOngoing(true).build();
     }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "JARVIS Wake Listening",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-
-            channel.setDescription(
-                    "Foreground microphone service for JARVIS wake-word detection"
-            );
-
-            NotificationManager manager =
-                    getSystemService(NotificationManager.class);
-
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
+                    CHANNEL_ID, "JARVIS Wake Listening", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("Continuous offline microphone standby for JARVIS");
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.createNotificationChannel(channel);
         }
     }
 
-    private void ensureRecognizer() {
-        if (recognizer != null) return;
+    private void initializeAndStart() {
+        try {
+            File dir = new File(getFilesDir(), MODEL_DIR);
+            if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create KWS model folder");
 
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            speak("Speech recognition service is unavailable. Please enable Google Speech Services.");
-            scheduleListen(5000);
-            return;
-        }
-
-        recognizer = SpeechRecognizer.createSpeechRecognizer(
-                getApplicationContext()
-        );
-
-        recognizer.setRecognitionListener(new RecognitionListener() {
-
-            @Override
-            public void onReadyForSpeech(Bundle params) {
-                listening = true;
-            }
-
-            @Override
-            public void onBeginningOfSpeech() {
-                listening = true;
-            }
-
-            @Override
-            public void onRmsChanged(float rmsdB) {}
-
-            @Override
-            public void onBufferReceived(byte[] buffer) {}
-
-            @Override
-            public void onEndOfSpeech() {
-                listening = false;
-            }
-
-            @Override
-            public void onError(int error) {
-                listening = false;
-                if (!running) return;
-
-                if (error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED) {
-                    destroyRecognizer();
-                    scheduleListen(1800);
-                    return;
+            for (String name : MODEL_FILES) {
+                File target = new File(dir, name);
+                if (!target.exists() || target.length() == 0) {
+                    copyAsset(MODEL_DIR + "/" + name, target);
                 }
-
-                if (error == SpeechRecognizer.ERROR_NO_MATCH ||
-                        error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                    consecutiveErrors++;
-                    if (consecutiveErrors >= 3) useHindi = !useHindi;
-                    scheduleListen(1200);
-                    return;
+                if (!target.exists() || target.length() == 0) {
+                    throw new IllegalStateException("Missing wake model file: " + name);
                 }
-
-                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                    scheduleListen(1200);
-                    return;
-                }
-
-                consecutiveErrors++;
-                scheduleListen(Math.min(6000, 700L * consecutiveErrors));
             }
 
-            @Override
-            public void onResults(Bundle results) {
-                listening = false;
-                consecutiveErrors = 0;
-                useHindi = false;
-                processResults(results);
-            }
+            String prefix = dir.getAbsolutePath() + "/";
+            OnlineTransducerModelConfig transducer = OnlineTransducerModelConfig.builder()
+                    .setEncoder(prefix + MODEL_FILES[0])
+                    .setDecoder(prefix + MODEL_FILES[1])
+                    .setJoiner(prefix + MODEL_FILES[2])
+                    .build();
+            OnlineModelConfig model = OnlineModelConfig.builder()
+                    .setTransducer(transducer)
+                    .setTokens(prefix + "tokens.txt")
+                    .setNumThreads(2)
+                    .setDebug(false)
+                    .setProvider("cpu")
+                    .build();
+            FeatureConfig features = FeatureConfig.builder()
+                    .setSampleRate(SAMPLE_RATE).setFeatureDim(80).build();
+            KeywordSpotterConfig config = KeywordSpotterConfig.builder()
+                    .setFeatureConfig(features)
+                    .setOnlineModelConfig(model)
+                    .setKeywordsFile(prefix + "keywords.txt")
+                    .setKeywordsThreshold(0.40f)
+                    .setKeywordsScore(1.5f)
+                    .setMaxActivePaths(4)
+                    .build();
 
-            @Override
-            public void onPartialResults(Bundle partialResults) {}
-
-            @Override
-            public void onEvent(int eventType, Bundle params) {}
-        });
-    }
-
-    private void scheduleListen(long delayMs) {
-        if (!running || restartQueued) return;
-
-        restartQueued = true;
-
-        handler.postDelayed(() -> {
-            restartQueued = false;
-            if (!running || listening) return;
-
-            try {
-                ensureRecognizer();
-                if (recognizer == null) return;
-
-                Intent speech = new Intent(
-                        RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-                );
-
-                speech.putExtra(
-                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                );
-
-                speech.putExtra(
-                        RecognizerIntent.EXTRA_LANGUAGE,
-                        useHindi ? "hi-IN" : "en-IN"
-                );
-
-                speech.putExtra(
-                        RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
-                        useHindi ? "hi-IN" : "en-IN"
-                );
-
-                speech.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
-                speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-                speech.putExtra(
-                        RecognizerIntent.EXTRA_CALLING_PACKAGE,
-                        getPackageName()
-                );
-
-                speech.putExtra(
-                        RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                        8000L
-                );
-
-                speech.putExtra(
-                        RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                        6000L
-                );
-
-                recognizer.startListening(speech);
-                listening = true;
-
-            } catch (SecurityException e) {
-                listening = false;
+            keywordSpotter = new KeywordSpotter(config);
+            keywordStream = keywordSpotter.createStream();
+            handler.post(this::startAudioCapture);
+        } catch (Exception e) {
+            android.util.Log.e("JARVIS-KWS", "Offline wake engine initialization failed", e);
+            handler.post(() -> {
+                speak("Offline wake engine could not start. Please reopen JARVIS.");
                 stopSelf();
-
-            } catch (Exception e) {
-                listening = false;
-                destroyRecognizer();
-                scheduleListen(1500);
-            }
-
-        }, delayMs);
+            });
+        }
     }
 
-    private void processResults(Bundle results) {
-        ArrayList<String> matches =
-                results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+    private void copyAsset(String assetPath, File target) throws Exception {
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IllegalStateException("Cannot create model directory");
+        }
+        try (InputStream in = getAssets().open(assetPath);
+             FileOutputStream out = new FileOutputStream(target)) {
+            byte[] buffer = new byte[65536];
+            int count;
+            while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+            out.flush();
+        }
+    }
 
-        String spoken =
-                matches == null || matches.isEmpty() ? "" : matches.get(0).trim();
-
-        String lower = spoken.toLowerCase(Locale.ROOT);
-
-        if (waitingForCommand) {
-            waitingForCommand = false;
-            handler.removeCallbacks(commandTimeout);
-
-            if (!spoken.isEmpty()) {
-                dispatchCommand(spoken);
-            } else {
-                speak("I did not catch that, Commander.");
-            }
-
-            scheduleListen(1800);
+    private void startAudioCapture() {
+        if (!running || recording || wakeDetected) return;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            stopSelf();
             return;
         }
 
-        int wakeEnd = wakePhraseEnd(lower);
-
-        if (wakeEnd < 0 && matches != null) {
-            for (String candidate : matches) {
-                if (candidate == null) continue;
-
-                int candidateEnd =
-                        wakePhraseEnd(candidate.toLowerCase(Locale.ROOT));
-
-                if (candidateEnd >= 0) {
-                    spoken = candidate.trim();
-                    wakeEnd = candidateEnd;
-                    break;
-                }
-            }
+        int minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        if (minBuffer <= 0) {
+            recoverAudio("AudioRecord returned invalid buffer size: " + minBuffer);
+            return;
         }
 
-        if (wakeEnd >= 0) {
-            long now = android.os.SystemClock.elapsedRealtime();
-
-            if (now - lastWakeAt > 1800) {
-                lastWakeAt = now;
-
-                String rest = spoken.substring(
-                        Math.min(spoken.length(), wakeEnd)
-                ).trim();
-
-                if (rest.startsWith(",") || rest.startsWith(":")) {
-                    rest = rest.substring(1).trim();
-                }
-
-                speak("Yes, Commander.");
-
-                if (rest.isEmpty()) {
-                    waitingForCommand = true;
-                    handler.removeCallbacks(commandTimeout);
-                    handler.postDelayed(commandTimeout, 9000);
-                } else {
-                    dispatchCommand(rest);
-                }
+        try {
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                    Math.max(minBuffer * 2, FRAME_SAMPLES * 4));
+            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                releaseAudioRecord();
+                recoverAudio("AudioRecord initialization failed");
+                return;
             }
-        }
 
-        scheduleListen(300);
+            audioRecord.startRecording();
+            if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                releaseAudioRecord();
+                recoverAudio("Microphone did not enter recording state");
+                return;
+            }
+
+            recording = true;
+            audioThread = new Thread(this::processAudio, "Jarvis-Continuous-KWS");
+            audioThread.start();
+        } catch (SecurityException e) {
+            stopSelf();
+        } catch (Exception e) {
+            releaseAudioRecord();
+            recoverAudio("Microphone start failed: " + e.getMessage());
+        }
     }
 
-    // ONLY WAKE WORD: JARVIS
-    private int wakePhraseEnd(String lower) {
-        String[] phrases = {"jarvis", "जार्विस", "जर्विस"};
+    private void processAudio() {
+        short[] pcm = new short[FRAME_SAMPLES];
+        try {
+            while (running && recording && !wakeDetected) {
+                AudioRecord recorder = audioRecord;
+                if (recorder == null) break;
+                int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
+                if (count > 0) {
+                    float[] samples = new float[count];
+                    for (int i = 0; i < count; i++) samples[i] = pcm[i] / 32768.0f;
+                    keywordStream.acceptWaveform(samples, SAMPLE_RATE);
 
-        for (String phrase : phrases) {
-            int index = lower.indexOf(phrase);
-            if (index >= 0) {
-                return index + phrase.length();
+                    while (keywordSpotter.isReady(keywordStream)) {
+                        keywordSpotter.decode(keywordStream);
+                        String keyword = keywordSpotter.getResult(keywordStream).getKeyword();
+                        if (keyword != null && !keyword.trim().isEmpty()) {
+                            keywordSpotter.reset(keywordStream);
+                            wakeDetected = true;
+                            android.util.Log.i("JARVIS-KWS", "Wake word detected: " + keyword);
+                            break;
+                        }
+                    }
+                } else if (count < 0) {
+                    throw new IllegalStateException("AudioRecord read error: " + count);
+                }
+            }
+        } catch (Exception e) {
+            if (running && !wakeDetected) {
+                android.util.Log.e("JARVIS-KWS", "Audio capture failed", e);
+                handler.post(() -> recoverAudio(e.getMessage()));
+            }
+        } finally {
+            recording = false;
+            releaseAudioRecord();
+            if (running && wakeDetected) {
+                handler.postDelayed(this::beginCommandCapture, 250);
             }
         }
+    }
 
-        return -1;
+    private void beginCommandCapture() {
+        if (!running || !wakeDetected) return;
+        speak("Yes, Commander.");
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            wakeDetected = false;
+            restartStandby(1000);
+            return;
+        }
+
+        try {
+            if (commandRecognizer != null) {
+                try { commandRecognizer.destroy(); } catch (Exception ignored) {}
+            }
+            commandRecognizer = SpeechRecognizer.createSpeechRecognizer(getApplicationContext());
+            commandRecognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(android.os.Bundle params) {}
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) {
+                    finishCommandCapture();
+                }
+                @Override public void onResults(android.os.Bundle results) {
+                    java.util.ArrayList<String> matches =
+                            results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+                    String command = matches == null || matches.isEmpty() ? "" : matches.get(0).trim();
+                    if (!command.isEmpty()) dispatchCommand(command);
+                    finishCommandCapture();
+                }
+                @Override public void onPartialResults(android.os.Bundle partialResults) {}
+                @Override public void onEvent(int eventType, android.os.Bundle params) {}
+            });
+
+            Intent speech = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN");
+            speech.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-IN");
+            speech.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+            speech.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+
+            // Allow the spoken acknowledgement to finish before command capture.
+            handler.postDelayed(() -> {
+                if (running && commandRecognizer != null) {
+                    try { commandRecognizer.startListening(speech); }
+                    catch (Exception e) { finishCommandCapture(); }
+                }
+            }, 900);
+        } catch (Exception e) {
+            finishCommandCapture();
+        }
+    }
+
+    private void finishCommandCapture() {
+        if (commandRecognizer != null) {
+            try { commandRecognizer.cancel(); } catch (Exception ignored) {}
+            try { commandRecognizer.destroy(); } catch (Exception ignored) {}
+            commandRecognizer = null;
+        }
+        wakeDetected = false;
+        restartStandby(700);
     }
 
     private void dispatchCommand(String command) {
@@ -407,69 +359,80 @@ public class WakeWordService extends Service {
             event.putExtra(EXTRA_COMMAND, command);
             sendBroadcast(event);
         } else {
-            speak("I heard: " + command +
-                    ". Open JARVIS to execute this command.");
+            speak("I heard: " + command + ". Open JARVIS to execute this command.");
+        }
+    }
+
+    private void restartStandby(long delayMs) {
+        if (!running) return;
+        handler.postDelayed(() -> {
+            if (running && !recording && !wakeDetected) startAudioCapture();
+        }, delayMs);
+    }
+
+    private void recoverAudio(String reason) {
+        if (!running || wakeDetected) return;
+        android.util.Log.w("JARVIS-KWS", reason);
+        recording = false;
+        releaseAudioRecord();
+        restartStandby(1500);
+    }
+
+    private synchronized void releaseAudioRecord() {
+        AudioRecord recorder = audioRecord;
+        audioRecord = null;
+        if (recorder != null) {
+            try {
+                if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) recorder.stop();
+            } catch (Exception ignored) {}
+            try { recorder.release(); } catch (Exception ignored) {}
         }
     }
 
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
-
         if (!ttsReady || tts == null) {
             pendingSpeech = text;
             return;
         }
-
-        tts.speak(
-                text,
-                TextToSpeech.QUEUE_FLUSH,
-                null,
-                "jarvis-service"
-        );
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-service");
     }
 
-    private void destroyRecognizer() {
-        if (recognizer != null) {
-            try {
-                recognizer.cancel();
-            } catch (Exception ignored) {}
-
-            try {
-                recognizer.destroy();
-            } catch (Exception ignored) {}
-
-            recognizer = null;
-        }
-
-        listening = false;
-    }
-
-    @Override
-    public void onDestroy() {
+    @Override public void onDestroy() {
         running = false;
         isRunning = false;
-
+        recording = false;
+        wakeDetected = false;
         handler.removeCallbacksAndMessages(null);
-        waitingForCommand = false;
 
-        destroyRecognizer();
-
-        if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
+        if (commandRecognizer != null) {
+            try { commandRecognizer.cancel(); } catch (Exception ignored) {}
+            try { commandRecognizer.destroy(); } catch (Exception ignored) {}
+            commandRecognizer = null;
         }
 
+        releaseAudioRecord();
+        if (keywordStream != null) {
+            try { keywordStream.release(); } catch (Exception ignored) {}
+            keywordStream = null;
+        }
+        if (keywordSpotter != null) {
+            try { keywordSpotter.release(); } catch (Exception ignored) {}
+            keywordSpotter = null;
+        }
+        if (wakeLock != null && wakeLock.isHeld()) {
+            try { wakeLock.release(); } catch (Exception ignored) {}
+        }
         if (tts != null) {
             tts.stop();
             tts.shutdown();
             tts = null;
         }
-
         ttsReady = false;
         super.onDestroy();
     }
 
-    @Override
-    public IBinder onBind(Intent intent) {
+    @Override public IBinder onBind(Intent intent) {
         return null;
     }
 }
