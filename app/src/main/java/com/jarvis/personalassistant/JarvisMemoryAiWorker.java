@@ -49,7 +49,7 @@ public final class JarvisMemoryAiWorker {
         String result="ERROR: no provider";
         if(!empty(openAiKey))result=OpenAiResponsesClient.ask(openAiKey,OpenAiResponsesClient.DEFAULT_MODEL,
             "You are JARVIS memory curator. Extract only explicit, durable user facts. Return valid JSON only. Never infer sensitive information.",prompt,"medium");
-        if(!empty(gKey))result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
+        if(result.startsWith("ERROR")&&!empty(gKey))result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
             empty(gModel)?"gemini-2.5-flash":gModel,prompt);
         if(result.startsWith("ERROR")&&!empty(rKey))result=OnlineAiClient.ask("https://api.groq.com/openai/v1",rKey,
             empty(rModel)?"openai/gpt-oss-120b":rModel,prompt);
