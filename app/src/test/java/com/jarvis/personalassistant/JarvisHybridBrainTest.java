@@ -38,4 +38,15 @@ public class JarvisHybridBrainTest {
         assertFalse(JarvisHybridBrain.shouldVerifyAstraAnswer("Debug this Java crash", false));
     }
 
+    @Test public void codingAndPlanningPreferGroqWhenBothCloudProvidersExist() {
+        assertEquals("GROQ", JarvisHybridBrain.preferredCloudProvider(JarvisHybridBrain.Specialist.CODING, true, true));
+        assertEquals("GROQ", JarvisHybridBrain.preferredCloudProvider(JarvisHybridBrain.Specialist.PLANNING, true, true));
+    }
+
+    @Test public void generalAndResearchPreferGeminiAndFallbackToGroq() {
+        assertEquals("GEMINI", JarvisHybridBrain.preferredCloudProvider(JarvisHybridBrain.Specialist.GENERAL, true, true));
+        assertEquals("GEMINI", JarvisHybridBrain.preferredCloudProvider(JarvisHybridBrain.Specialist.RESEARCH, true, true));
+        assertEquals("GROQ", JarvisHybridBrain.preferredCloudProvider(JarvisHybridBrain.Specialist.GENERAL, false, true));
+        assertEquals("NONE", JarvisHybridBrain.preferredCloudProvider(JarvisHybridBrain.Specialist.GENERAL, false, false));
+    }
 }
