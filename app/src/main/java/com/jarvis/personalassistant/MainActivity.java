@@ -581,10 +581,8 @@ public class MainActivity extends Activity {
                     final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
-                    final String previousTurn = privateContext ? "Unavailable in private mode." : lastResponse;
-                    final String prompt = "CONVERSATION RULES: Continue naturally from supplied conversation history. Resolve pronouns and short follow-ups using relevant recent turns. Prefer the newest explicit user statement when memories conflict. Never claim to remember a detail unless it appears in supplied memory context. If a required detail is absent or ambiguous, ask one concise clarification. Do not expose internal memory records.\n\n"
-                        + memoryContext + "\nLegacy saved note: " + legacyNote
-                        + "\nPrevious response: " + previousTurn + "\nCommander says: " + raw;
+                    final String prompt = JarvisConversationContext.compose(memoryContext, legacyNote,
+                        lastResponse, raw, privateContext);
                     JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
                         localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> respond(result)));
