@@ -25,7 +25,6 @@ import android.provider.AlarmClock;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -349,17 +348,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setTextColor(Color.rgb(245, 248, 255));
-        b.setTextSize(13);
-        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        b.setBackground(panel(Color.rgb(36, 49, 75), Color.rgb(92, 125, 177), 22));
-        if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
-        return b;
-    }
     private void refreshUiStatus() {
         if(status==null)return;
         boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty());
