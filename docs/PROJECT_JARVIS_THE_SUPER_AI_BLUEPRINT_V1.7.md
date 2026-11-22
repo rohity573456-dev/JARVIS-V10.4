@@ -298,3 +298,16 @@ Every project report must label each capability as:
 5. Implement Phase 1 on a dedicated feature branch, run tests/build, and review the diff before merging to `main`.
 
 **Project rule:** Preserve the current app. Upgrade in small, testable modules. No feature is allowed to break voice recognition, memory data, existing Android commands or the user's current workflow.
+
+
+## GPT-6.2 Astra integration (optional premium tier)
+
+- JARVIS does not contain or copy OpenAI's proprietary model weights, hidden source code, or private internal memory implementation.
+- The app includes an independent Responses API adapter for the public GPT-6.2 Astra model ID `gpt-6.2-astra`.
+- Gemini/Groq remain the everyday and fallback providers. Astra is selected for complex coding, research, data-analysis and planning requests when an OpenAI API key is configured; the explicit `Astra ...` prefix can request Astra for a general question.
+- The same optional Astra adapter can produce structured function-call plans for the existing Android agent. The existing local schema validation and user approval gate remain mandatory; model output never executes a device action directly.
+- GPT-6.2 Astra API usage is paid separately from a ChatGPT subscription. Do not make it the default for routine turns; preserve a free-first route and expose the cost implication in provider setup.
+- The OpenAI key is stored through the existing Android Keystore-backed SecureStore. Never commit keys to GitHub or embed them in source.
+- Astra-assisted memory extraction/reflection is available only through the existing explicit cloud-memory consent. Local SQLite remains the source of truth for profile facts, semantic/procedural/episodic memory, session summaries, temporal validity, knowledge-graph relations and retrieval.
+- Private mode must suppress cloud memory extraction and memory-context injection. Sensitive categories remain excluded from automatic extraction. The user must be able to disable cloud learning and clear local memory independently.
+- The Responses API adapter uses the documented `reasoning.effort` field; complex tasks may use high effort while routine tasks remain on Gemini/Groq/local fallback.
