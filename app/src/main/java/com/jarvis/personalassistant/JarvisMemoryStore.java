@@ -773,7 +773,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         String pinned = getPinnedMemoriesText(6);
         String graph = getKnowledgeGraphText(query);
         String summaries = getSessionSummaryText(3);
-        String recent = getRecentConversation(6);
+        String recent = getRecentConversation(12);
         StringBuilder result = new StringBuilder(
             "JARVIS MEMORY CONTEXT. Treat explicit facts as evidence; do not invent missing personal details. " +
             "Prefer CURRENT facts over historical versions. If recall is uncertain, say you do not have that detail.\n");
