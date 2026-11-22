@@ -24,7 +24,7 @@ import java.util.UUID;
  */
 public final class JarvisMemoryStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "jarvis_long_term_memory.db";
-    private static final int DB_VERSION = 4;
+    private static final int DB_VERSION = 5;
     private static final String MEMORIES = "memories";
     private static final String CONVERSATIONS = "conversations";
     private static final String TASKS = "tasks";
@@ -119,6 +119,9 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS memory_feedback (" +
             "id INTEGER PRIMARY KEY AUTOINCREMENT, memory_id INTEGER NOT NULL, rating INTEGER NOT NULL, " +
             "query TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS memory_local_vectors (" +
+            "memory_id INTEGER PRIMARY KEY, model TEXT NOT NULL, dimensions INTEGER NOT NULL, " +
+            "vector BLOB NOT NULL, updated_at INTEGER NOT NULL)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_summary_type ON memory_summaries(summary_type,created_at DESC)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_feedback_memory ON memory_feedback(memory_id)");
         db.execSQL("UPDATE memories SET valid_from=created_at WHERE valid_from=0");
@@ -173,7 +176,10 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         v.put("valid_until", 0);
         v.put("source", source == null ? "manual" : source);
         long id = db.insert(MEMORIES, null, v);
-        if (id > 0) indexMemoryGraph(db, id, content);
+        if (id > 0) {
+            indexMemoryGraph(db, id, content);
+            putLocalVector(id, JarvisLocalVectorEngine.embed(content));
+        }
         return id;
     }
 
@@ -263,7 +269,9 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         if (changed) {
             db.delete(EDGES, "memory_id=?", new String[]{String.valueOf(id)});
             db.delete("memory_embeddings", "memory_id=?", new String[]{String.valueOf(id)});
+            db.delete("memory_local_vectors", "memory_id=?", new String[]{String.valueOf(id)});
             indexMemoryGraph(db, id, content.trim());
+            putLocalVector(id, JarvisLocalVectorEngine.embed(content.trim()));
         }
         return changed;
     }
@@ -332,6 +340,26 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         edge.put("confidence", 0.85);
         edge.put("is_active", 1);
         db.insertWithOnConflict(EDGES, null, edge, SQLiteDatabase.CONFLICT_IGNORE);
+    }
+
+    /** Adds a provenance-linked edge between two named graph entities. */
+    public synchronized void addGraphRelation(long memoryId,String subject,String relation,String object,
+            double confidence,long validFrom,long validUntil) {
+        if(memoryId<=0||object==null||object.trim().length()<2)return;
+        SQLiteDatabase db=getWritableDatabase();
+        String sourceName=(subject==null||subject.trim().isEmpty())?"Commander":subject.trim();
+        String targetName=object.trim().replaceAll("[.!?]+$","").trim();
+        if(targetName.length()>180)return;
+        long source=node(db,sourceName,"entity"),target=node(db,targetName,"entity");
+        if(source<=0||target<=0)return;
+        ContentValues edge=new ContentValues();
+        edge.put("source_id",source);edge.put("target_id",target);
+        edge.put("relation",relation==null||relation.trim().isEmpty()?"related_to":relation.trim().toLowerCase(Locale.ROOT));
+        edge.put("memory_id",memoryId);edge.put("created_at",System.currentTimeMillis());
+        edge.put("valid_from",validFrom>0?validFrom:System.currentTimeMillis());
+        edge.put("valid_until",Math.max(0,validUntil));
+        edge.put("confidence",Math.max(0.0,Math.min(1.0,confidence)));edge.put("is_active",1);
+        db.insertWithOnConflict(EDGES,null,edge,SQLiteDatabase.CONFLICT_REPLACE);
     }
 
     private void indexMemoryGraph(SQLiteDatabase db, long memoryId, String text) {
@@ -447,10 +475,45 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         return made;
     }
 
+    public static final class PendingSession {
+        public final String sessionId,transcript;
+        public PendingSession(String id,String text){sessionId=id;transcript=text;}
+    }
+
+    public synchronized List<PendingSession> getPendingReflectionSessions(int limit) {
+        List<PendingSession> out=new ArrayList<>();
+        long cutoff=System.currentTimeMillis()-20L*60L*1000L;
+        Cursor sessions=getReadableDatabase().rawQuery(
+            "SELECT session_id FROM memory_sessions WHERE summary='' AND turn_count>=4 AND ended_at<=? ORDER BY ended_at ASC LIMIT ?",
+            new String[]{String.valueOf(cutoff),String.valueOf(Math.max(1,Math.min(10,limit)))});
+        List<String> ids=new ArrayList<>();
+        try{while(sessions.moveToNext())ids.add(sessions.getString(0));}finally{sessions.close();}
+        for(String id:ids){
+            StringBuilder transcript=new StringBuilder();
+            Cursor turns=getReadableDatabase().rawQuery(
+                "SELECT speaker,content FROM conversations WHERE session_id=? ORDER BY created_at ASC LIMIT 80",new String[]{id});
+            try{while(turns.moveToNext()){
+                if(transcript.length()>0)transcript.append("\n");
+                transcript.append(turns.getString(0)).append(": ").append(turns.getString(1));
+            }}finally{turns.close();}
+            if(transcript.length()>0)out.add(new PendingSession(id,transcript.toString()));
+        }
+        return out;
+    }
+
+    public synchronized void saveAiSessionReflection(String sessionId,String summary) {
+        if(sessionId==null||summary==null||summary.trim().isEmpty())return;
+        String clean=summary.trim();ContentValues v=new ContentValues();v.put("summary",clean);
+        getWritableDatabase().update("memory_sessions",v,"session_id=?",new String[]{sessionId});
+        ContentValues s=new ContentValues();s.put("summary_type","ai-session");s.put("summary_key","ai-session:"+sessionId);
+        s.put("content",clean);s.put("importance",65);s.put("created_at",System.currentTimeMillis());
+        getWritableDatabase().insertWithOnConflict("memory_summaries",null,s,SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
     public synchronized String getSessionSummaryText(int limit) {
         StringBuilder out = new StringBuilder();
         Cursor c = getReadableDatabase().rawQuery(
-            "SELECT content FROM memory_summaries WHERE summary_type='session' ORDER BY created_at DESC LIMIT ?",
+            "SELECT content FROM memory_summaries WHERE summary_type IN ('session','ai-session') ORDER BY created_at DESC LIMIT ?",
             new String[]{String.valueOf(Math.max(1, Math.min(10, limit)))});
         try {
             while (c.moveToNext()) {
@@ -475,13 +538,33 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     private String searchMemoriesInternal(String query, int limit, boolean includeInactive, float[] queryVector) {
-        String q = query == null ? "" : query.trim();
-        SQLiteDatabase db = getReadableDatabase();
-        String sql = "SELECT m.id,m.category,m.content,m.updated_at,m.memory_type,m.importance,m.confidence,m.pinned,m.is_active,m.valid_until,m.access_count,e.vector " +
+        return searchMemoriesInternal(query,limit,includeInactive,queryVector,null);
+    }
+
+    public synchronized String searchMemoriesDuring(String query,int limit,long startAt,long endAt) {
+        JarvisTimeQuery.Window w=new JarvisTimeQuery.Window(startAt,endAt,"requested time range",query==null?"":query);
+        return searchMemoriesInternal(query,limit,false,null,w);
+    }
+
+    private String searchMemoriesInternal(String query,int limit,boolean includeInactive,float[] queryVector,JarvisTimeQuery.Window timeWindow) {
+        String q=query==null?"":query.trim();
+        SQLiteDatabase db=getReadableDatabase();
+        expireTransientMemories();
+        StringBuilder where=new StringBuilder();
+        List<String> args=new ArrayList<>();
+        if(!includeInactive)where.append("m.is_active=1");
+        if(timeWindow!=null){
+            if(where.length()>0)where.append(" AND ");
+            where.append("m.valid_from<=? AND (m.valid_until=0 OR m.valid_until>=?)");
+            args.add(String.valueOf(timeWindow.endAt));args.add(String.valueOf(timeWindow.startAt));
+        }
+        String sql="SELECT m.id,m.category,m.content,m.updated_at,m.memory_type,m.importance,m.confidence,m.pinned,m.is_active,m.valid_until,m.access_count,e.vector,lv.vector " +
             "FROM memories m LEFT JOIN memory_embeddings e ON e.memory_id=m.id " +
-            (includeInactive ? "" : "WHERE m.is_active=1 ") + "ORDER BY m.pinned DESC,m.updated_at DESC LIMIT 3000";
-        Cursor c = db.rawQuery(sql, null);
-        List<MemoryHit> hits = new ArrayList<>();
+            "LEFT JOIN memory_local_vectors lv ON lv.memory_id=m.id " +
+            (where.length()>0?"WHERE "+where+" ":"")+"ORDER BY m.pinned DESC,m.updated_at DESC LIMIT 3000";
+        Cursor c=db.rawQuery(sql,args.toArray(new String[0]));
+        float[] localQueryVector=JarvisLocalVectorEngine.embed(q);
+        List<MemoryHit> hits=new ArrayList<>();
         long now = System.currentTimeMillis();
         try {
             while (c.moveToNext()) {
@@ -490,13 +573,13 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
                 int importance = c.getInt(5), pinned = c.getInt(7), active = c.getInt(8);
                 double confidence = c.getDouble(6);
                 int lexical = q.isEmpty() ? 1 : JarvisSemanticEngine.score(q, content, category);
-                double semantic = 0.0;
-                byte[] blob = c.getBlob(11);
-                if (queryVector != null && blob != null) {
-                    float[] stored = decodeVector(blob);
-                    semantic = JarvisEmbeddingClient.cosineSimilarity(queryVector, stored);
-                }
-                if (!q.isEmpty() && lexical <= 0 && semantic < 0.28) continue;
+                double semantic=0.0;
+                byte[] cloudBlob=c.getBlob(11),localBlob=c.getBlob(12);
+                if(queryVector!=null&&cloudBlob!=null)
+                    semantic=Math.max(semantic,JarvisEmbeddingClient.cosineSimilarity(queryVector,decodeVector(cloudBlob)));
+                if(localBlob!=null)
+                    semantic=Math.max(semantic,JarvisLocalVectorEngine.similarity(localQueryVector,decodeVector(localBlob)));
+                if(!q.isEmpty()&&lexical<=0&&semantic<0.18)continue;
                 long updated = c.getLong(3);
                 double ageDays = Math.max(0, (now - updated) / 86400000.0);
                 double recency = 12.0 / (1.0 + ageDays / 30.0);
@@ -583,12 +666,13 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         int historical = count(db, "SELECT COUNT(*) FROM memories WHERE is_active=0");
         int pinned = count(db, "SELECT COUNT(*) FROM memories WHERE pinned=1 AND is_active=1");
         int vectors = count(db, "SELECT COUNT(*) FROM memory_embeddings");
+        int localVectors = count(db, "SELECT COUNT(*) FROM memory_local_vectors");
         int sessions = count(db, "SELECT COUNT(*) FROM memory_sessions");
         int summaries = count(db, "SELECT COUNT(*) FROM memory_summaries");
         int turns = count(db, "SELECT COUNT(*) FROM conversations");
         int tasks = count(db, "SELECT COUNT(*) FROM tasks WHERE done=0");
         return "JARVIS MEMORY HEALTH\nActive facts: "+active+"\nHistorical facts: "+historical+
-            "\nPinned core facts: "+pinned+"\nStored semantic vectors: "+vectors+
+            "\nPinned core facts: "+pinned+"\nCloud neural vectors: "+vectors+"\nOffline feature vectors (not neural): "+localVectors+
             "\nConversation turns: "+turns+"\nSessions: "+sessions+"\nSession digests: "+summaries+
             "\nOpen tasks/reminders: "+tasks+"\nTotal stored fact versions: "+total+
             "\nStorage: on-device SQLite (offline-first)";
@@ -599,22 +683,51 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         try { return c.moveToFirst() ? c.getInt(0) : 0; } finally { c.close(); }
     }
 
+    /** Multi-hop graph traversal (up to three hops) over current temporal edges. */
     public synchronized String getKnowledgeGraphText(String query) {
-        String q = query == null ? "" : query.trim();
-        Cursor c = q.isEmpty()
-            ? getReadableDatabase().rawQuery(
-                "SELECT e.relation,n.name FROM knowledge_edges e JOIN knowledge_nodes n ON n.id=e.target_id WHERE e.is_active=1 ORDER BY e.created_at DESC LIMIT 80", null)
-            : getReadableDatabase().rawQuery(
-                "SELECT e.relation,n.name FROM knowledge_edges e JOIN knowledge_nodes n ON n.id=e.target_id WHERE e.is_active=1 AND (n.name LIKE ? OR e.relation LIKE ?) ORDER BY e.created_at DESC LIMIT 80",
-                new String[]{"%"+q+"%","%"+q+"%"});
-        StringBuilder out = new StringBuilder();
-        try {
-            while (c.moveToNext()) {
-                if (out.length() > 0) out.append("\n");
-                out.append("Commander — ").append(c.getString(0)).append(" → ").append(c.getString(1));
+        String q=query==null?"":query.trim();
+        SQLiteDatabase db=getReadableDatabase();
+        List<Long> frontier=new ArrayList<>();
+        if(q.isEmpty()){
+            Cursor c=db.rawQuery("SELECT id FROM knowledge_nodes WHERE name='Commander' COLLATE NOCASE LIMIT 1",null);
+            try{if(c.moveToFirst())frontier.add(c.getLong(0));}finally{c.close();}
+        }else{
+            Cursor seeds=db.rawQuery("SELECT id FROM knowledge_nodes WHERE name LIKE ? ORDER BY length(name) LIMIT 20",new String[]{"%"+q+"%"});
+            try{while(seeds.moveToNext())frontier.add(seeds.getLong(0));}finally{seeds.close();}
+            if(frontier.isEmpty())for(String term:JarvisSemanticEngine.terms(q)){
+                Cursor c=db.rawQuery("SELECT id FROM knowledge_nodes WHERE name LIKE ? LIMIT 10",new String[]{"%"+term+"%"});
+                try{while(c.moveToNext()){long id=c.getLong(0);if(!frontier.contains(id))frontier.add(id);}}finally{c.close();}
             }
-        } finally { c.close(); }
-        return out.length()==0 ? "No linked knowledge found." : out.toString();
+        }
+        StringBuilder out=new StringBuilder();
+        java.util.HashSet<Long> visited=new java.util.HashSet<>(),seenEdges=new java.util.HashSet<>();
+        long now=System.currentTimeMillis();int written=0;
+        for(int depth=0;depth<3&&!frontier.isEmpty()&&written<80;depth++){
+            List<Long> next=new ArrayList<>();
+            for(Long nodeId:frontier){
+                if(!visited.add(nodeId))continue;
+                Cursor edges=db.rawQuery(
+                    "SELECT e.id,e.source_id,e.target_id,e.relation,s.name,t.name,e.confidence FROM knowledge_edges e "+
+                    "JOIN knowledge_nodes s ON s.id=e.source_id JOIN knowledge_nodes t ON t.id=e.target_id "+
+                    "WHERE e.is_active=1 AND e.valid_from<=? AND (e.valid_until=0 OR e.valid_until>=?) AND (e.source_id=? OR e.target_id=?) "+
+                    "ORDER BY e.confidence DESC,e.created_at DESC LIMIT 50",
+                    new String[]{String.valueOf(now),String.valueOf(now),String.valueOf(nodeId),String.valueOf(nodeId)});
+                try{while(edges.moveToNext()&&written<80){
+                    long edgeId=edges.getLong(0);if(!seenEdges.add(edgeId))continue;
+                    long source=edges.getLong(1),target=edges.getLong(2);
+                    boolean forward=source==nodeId;
+                    String a=forward?edges.getString(4):edges.getString(5);
+                    String b=forward?edges.getString(5):edges.getString(4);
+                    if(out.length()>0)out.append("\n");
+                    out.append(a).append(" —").append(edges.getString(3)).append("→ ").append(b)
+                        .append(" [confidence ").append(String.format(Locale.US,"%.2f",edges.getDouble(6))).append("]");
+                    written++;long other=forward?target:source;
+                    if(!visited.contains(other)&&!next.contains(other))next.add(other);
+                }}finally{edges.close();}
+            }
+            frontier=next;
+        }
+        return out.length()==0?"No linked knowledge found.":out.toString();
     }
 
     public synchronized String getRecentConversation(int limit) {
@@ -636,8 +749,11 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     public synchronized String getMemoryContext(String query, int limit, float[] queryVector) {
-        String memories = queryVector == null ? searchMemories(query, limit) : searchMemoriesWithEmbedding(query, limit, queryVector);
-        if (memories.startsWith("No matching")) memories = searchMemories("", Math.min(6, limit));
+        JarvisTimeQuery.Window timeWindow=JarvisTimeQuery.parse(query);
+        String scopedQuery=timeWindow==null?query:timeWindow.query;
+        String memories=timeWindow!=null?searchMemoriesInternal(scopedQuery,limit,false,queryVector,timeWindow):
+            (queryVector==null?searchMemories(query,limit):searchMemoriesWithEmbedding(query,limit,queryVector));
+        if(memories.startsWith("No matching")&&timeWindow==null)memories=searchMemories("",Math.min(6,limit));
         String pinned = getPinnedMemoriesText(6);
         String graph = getKnowledgeGraphText(query);
         String summaries = getSessionSummaryText(3);
@@ -645,6 +761,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         StringBuilder result = new StringBuilder(
             "JARVIS MEMORY CONTEXT. Treat explicit facts as evidence; do not invent missing personal details. " +
             "Prefer CURRENT facts over historical versions. If recall is uncertain, say you do not have that detail.\n");
+        if(timeWindow!=null)result.append("\nTIME SCOPE: ").append(timeWindow.label).append(" (facts overlapping this period).");
         if (!pinned.isEmpty()) result.append("\nCORE / PINNED PROFILE:\n").append(pinned);
         if (!memories.startsWith("No matching")) result.append("\n\nRELEVANT LONG-TERM FACTS:\n").append(memories);
         if (!graph.startsWith("No linked")) result.append("\n\nRELATED KNOWLEDGE GRAPH:\n").append(graph);
@@ -664,6 +781,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
             db.delete(NODES, null, null);
             db.delete(MEMORIES, null, null);
             db.delete("memory_embeddings", null, null);
+            db.delete("memory_local_vectors", null, null);
             db.delete("memory_feedback", null, null);
             db.delete("memory_summaries", null, null);
             db.setTransactionSuccessful();
@@ -722,8 +840,48 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         return v;
     }
 
+    public synchronized void putLocalVector(long memoryId,float[] vector) {
+        if(memoryId<=0||vector==null||vector.length==0||vector.length>4096)return;
+        ByteBuffer b=ByteBuffer.allocate(vector.length*4).order(ByteOrder.LITTLE_ENDIAN);
+        for(float f:vector)b.putFloat(f);
+        ContentValues v=new ContentValues();v.put("memory_id",memoryId);v.put("model",JarvisLocalVectorEngine.MODEL);
+        v.put("dimensions",vector.length);v.put("vector",b.array());v.put("updated_at",System.currentTimeMillis());
+        getWritableDatabase().insertWithOnConflict("memory_local_vectors",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+    }
+    public synchronized int indexMissingLocalVectors(int limit) {
+        Cursor c=getReadableDatabase().rawQuery(
+            "SELECT m.id,m.content FROM memories m LEFT JOIN memory_local_vectors v ON v.memory_id=m.id WHERE v.memory_id IS NULL ORDER BY m.pinned DESC,m.importance DESC LIMIT ?",
+            new String[]{String.valueOf(Math.max(1,Math.min(1000,limit)))});
+        List<MemoryRecord> rows=new ArrayList<>();
+        try{while(c.moveToNext())rows.add(new MemoryRecord(c.getLong(0),"local",c.getString(1)));}finally{c.close();}
+        for(MemoryRecord row:rows)putLocalVector(row.id,JarvisLocalVectorEngine.embed(row.content));
+        return rows.size();
+    }
+    public synchronized int getLocalVectorCount(){return count(getReadableDatabase(),"SELECT COUNT(*) FROM memory_local_vectors");}
+    public synchronized String getProfileSummaryText(){
+        StringBuilder out=new StringBuilder();
+        Cursor c=getReadableDatabase().rawQuery("SELECT memory_key,content,confidence FROM memories WHERE is_active=1 AND memory_key LIKE 'profile.%' ORDER BY pinned DESC,importance DESC LIMIT 30",null);
+        try{while(c.moveToNext()){
+            if(out.length()>0)out.append("\n");
+            out.append(c.getString(0)).append(": ").append(c.getString(1))
+                .append(" (confidence ").append(String.format(Locale.US,"%.2f",c.getDouble(2))).append(")");
+        }}finally{c.close();}
+        return out.length()==0?"No structured profile facts yet.":out.toString();
+    }
+    /** Only explicitly transient records expire; stable facts are never auto-erased. */
+    public synchronized int expireTransientMemories(){
+        SQLiteDatabase db=getWritableDatabase();long now=System.currentTimeMillis();
+        Cursor c=db.rawQuery("SELECT id FROM memories WHERE memory_type='transient' AND expires_at>0 AND expires_at<=?",new String[]{String.valueOf(now)});
+        List<String> ids=new ArrayList<>();try{while(c.moveToNext())ids.add(String.valueOf(c.getLong(0)));}finally{c.close();}
+        for(String id:ids){
+            db.delete(EDGES,"memory_id=?",new String[]{id});db.delete("memory_embeddings","memory_id=?",new String[]{id});
+            db.delete("memory_local_vectors","memory_id=?",new String[]{id});db.delete(MEMORIES,"id=?",new String[]{id});
+        }
+        return ids.size();
+    }
+
     public synchronized int getEmbeddingCount() { return count(getReadableDatabase(), "SELECT COUNT(*) FROM memory_embeddings"); }
-    public synchronized void clearEmbeddings() { getWritableDatabase().delete("memory_embeddings", null, null); }
+    public synchronized void clearEmbeddings() { SQLiteDatabase db=getWritableDatabase(); db.delete("memory_embeddings",null,null); db.delete("memory_local_vectors",null,null); }
 
     public static final class ReminderInfo {
         public final long id, dueAt;

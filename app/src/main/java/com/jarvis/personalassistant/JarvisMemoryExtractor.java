@@ -97,6 +97,21 @@ public final class JarvisMemoryExtractor {
             return store(db,"instructions","procedural",key,"Standing instruction: "+value,0.88,88,true);
         }
 
+        m = match("^(?:i study|i am studying|my education is|main padh raha hoon|main padh rahi hoon)\\s+(.+)$",s);
+        if (m != null && !(value=clean(m.group(1))).isEmpty())
+            return store(db,"education","semantic","profile.education","Education: "+value,0.84,70,false);
+        m = match("^(?:my company is|i own|mera business hai|meri company hai)\\s+(.+)$",s);
+        if (m != null && !(value=clean(m.group(1))).isEmpty())
+            return store(db,"business","semantic","profile.business","Business: "+value,0.84,75,false);
+        m = match("^(?:i am building|i am developing|i am creating|i am working on|my current project is|mera project hai)\\s+(.+)$",s);
+        if (m != null && !(value=clean(m.group(1))).isEmpty())
+            return store(db,"projects","semantic","project.current","Current project: "+value,0.86,82,false);
+        m = match("^(?:my preferred response style is|i want replies|reply to me|mujhe jawab)\\s+(.+)$",s);
+        if (m != null && !(value=clean(m.group(1))).isEmpty())
+            return store(db,"instructions","procedural","instruction.response_style","Response style: "+value,0.90,90,true);
+        m = match("^(?:i no longer|i don't like|i do not like|mujhe ab pasand nahi)\\s+(.+)$",s);
+        if (m != null && !(value=clean(m.group(1))).isEmpty())
+            return store(db,"preference","procedural","preference.avoid."+slug(value),"Avoid preference: "+value,0.84,70,false);
         return false;
     }
 }

@@ -113,11 +113,14 @@ public class MainActivity extends Activity {
         memory = getSharedPreferences("jarvis_memory", MODE_PRIVATE);
         secureStore = new SecureStore(this);
         longTermMemory = new JarvisMemoryStore(this);
+        longTermMemory.indexMissingLocalVectors(500);
+        longTermMemory.consolidateMemories();
         lastResponse = memory.getString("last_response", lastResponse);
         localModelPath = memory.getString("local_model_path", "");
         if (!localModelPath.isEmpty() && !new File(localModelPath).exists()) localModelPath = "";
         buildUi();
         if(memory.getBoolean("memory_cloud_embeddings",false)) indexSemanticMemoryIfEnabled(300);
+        runAiMemoryReflectionIfEnabled();
         registerWakeReceiver();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             requestNotificationPermissionIfNeeded();
@@ -348,11 +351,17 @@ public class MainActivity extends Activity {
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
         else if (q.contains("alarm")) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
+        else if (q.startsWith("memory useful ")) { long id=parseLong(raw.replaceFirst("(?i)^memory useful\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,1,raw); answer="Memory usefulness feedback saved for #"+id+"."; }
+        else if (q.startsWith("memory wrong ")) { long id=parseLong(raw.replaceFirst("(?i)^memory wrong\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,-1,raw); answer="Memory reliability feedback saved for #"+id+"; its retrieval priority was reduced."; }
+        else if (q.startsWith("memory forget ")) { long id=parseLong(raw.replaceFirst("(?i)^memory forget\\s*","")); answer=longTermMemory!=null&&longTermMemory.deleteMemory(id)?"Memory #"+id+" permanently deleted with its indexes.":"Memory ID not found."; }
+        else if (q.equals("memory ai learning on") || q.equals("memory ai learning off")) { confirmAiMemoryLearning(); return; }
+        else if (q.startsWith("memory at ")) { String term=raw.substring("memory at ".length()).trim(); JarvisTimeQuery.Window w=JarvisTimeQuery.parse(term); answer=longTermMemory==null?"Memory unavailable.":w==null?"Date/time period not recognized. Try: memory at 2024 job":longTermMemory.searchMemoriesDuring(w.query,30,w.startAt,w.endAt); }
+        else if (q.equals("memory profile") || q.equals("show my profile")) { answer=longTermMemory==null?"Memory unavailable.":longTermMemory.getProfileSummaryText(); }
         else if (q.startsWith("memory pin ")) { long id=parseLong(raw.replaceFirst("(?i)^memory pin\\s*","")); answer=longTermMemory!=null && longTermMemory.setMemoryPinned(id,true)?"Memory #"+id+" pinned as core memory.":"Memory ID nahi mili."; }
         else if (q.startsWith("memory unpin ")) { long id=parseLong(raw.replaceFirst("(?i)^memory unpin\\s*","")); answer=longTermMemory!=null && longTermMemory.setMemoryPinned(id,false)?"Memory #"+id+" unpinned.":"Memory ID nahi mili."; }
         else if (q.startsWith("memory history")) { String term=raw.replaceFirst("(?i)^memory history\\s*","").trim(); answer=longTermMemory==null?"Memory unavailable.":longTermMemory.getMemoryHistoryText(term); }
         else if (q.equals("memory stats") || q.equals("memory status")) { answer=longTermMemory==null?"Memory unavailable.":longTermMemory.getMemoryStatsText(); }
-        else if (q.equals("memory consolidate") || q.equals("memory reflect") || q.equals("memory dreaming")) { int made=longTermMemory==null?0:longTermMemory.consolidateMemories(); answer="Memory reflection complete. "+made+" session digest(s) created. Existing facts were preserved."; }
+        else if (q.equals("memory consolidate") || q.equals("memory reflect") || q.equals("memory dreaming")) { int made=longTermMemory==null?0:longTermMemory.consolidateMemories(); runAiMemoryReflectionIfEnabled(); answer="Local consolidation complete. "+made+" digest(s) created. AI reflection runs in the background only when opted in."; }
         else if (q.equals("memory embeddings on")) { memory.edit().putBoolean("memory_cloud_embeddings",true).apply(); indexSemanticMemoryIfEnabled(300); answer="Gemini semantic memory ON. Saved memory snippets and future search queries may be sent to Google for embedding. Local recall remains as fallback."; }
         else if (q.equals("memory embeddings off")) { memory.edit().putBoolean("memory_cloud_embeddings",false).apply(); answer="Cloud semantic embeddings OFF. JARVIS will use on-device lexical, temporal and graph recall."; }
         else if (q.equals("memory embeddings delete")) { if(longTermMemory!=null)longTermMemory.clearEmbeddings(); answer="Stored semantic vector index deleted. Your original memories are unchanged."; }
@@ -395,7 +404,7 @@ public class MainActivity extends Activity {
                             memory.getString("groq_model", "openai/gpt-oss-120b"), prompt);
                     }
                     if (result.startsWith("ERROR") && !localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                        LocalAiEngine.ask(localModelPath, raw, localResult -> { runOnUiThread(() -> respond("Online providers unavailable. Offline response: " + localResult)); return kotlin.Unit.INSTANCE; });
+                        LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), localResult -> { runOnUiThread(() -> respond("Online providers unavailable. Offline response: " + localResult)); return kotlin.Unit.INSTANCE; });
                         return;
                     }
                     final String finalResult = result.startsWith("ERROR") ? "Gemini aur Groq dono abhi unavailable hain. Details: " + result : result;
@@ -405,7 +414,7 @@ public class MainActivity extends Activity {
             }
             if (!localModelPath.isEmpty() && new File(localModelPath).exists()) {
                 status.setText("● OFFLINE AI THINKING...");
-                LocalAiEngine.ask(localModelPath, raw, result -> { runOnUiThread(() -> respond(result)); return kotlin.Unit.INSTANCE; });
+                LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), result -> { runOnUiThread(() -> respond(result)); return kotlin.Unit.INSTANCE; });
                 return;
             }
             answer="AI brain configure nahi hai, Commander. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
@@ -429,12 +438,16 @@ public class MainActivity extends Activity {
         // Keep the legacy backup only after the secure memory store accepted the content.
         memory.edit().putString("note",note.trim()).apply();
         indexSemanticMemoryIfEnabled(1);
+        if(memory.getBoolean("memory_ai_learning",false))
+            JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
+                memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
+                memory.getString("groq_model","openai/gpt-oss-120b"),note.trim());
         return true;
     }
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
     private void memoryDialog() {
-        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index"};
+        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
             .setItems(options,(d,which)->{
                 if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->respond(saveNote(in.getText().toString())?"Memory saved locally.":"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai.")).setNegativeButton("CANCEL",null).show();}
@@ -459,6 +472,8 @@ public class MainActivity extends Activity {
                         .setNegativeButton("CANCEL",null).show();
                 }
                 else if(which==14){if(longTermMemory!=null)longTermMemory.clearEmbeddings();respond("Semantic vector index deleted. Saved facts remain.");}
+                else if(which==15) confirmAiMemoryLearning();
+                else if(which==16) show("STRUCTURED PROFILE",longTermMemory==null?"Unavailable":longTermMemory.getProfileSummaryText());
             }).setNegativeButton("CLOSE",null).show();
     }
     private String scheduleReminder(String raw) {
@@ -492,6 +507,38 @@ public class MainActivity extends Activity {
     private void autoLearnMemory(String raw){
         if(longTermMemory==null||raw==null||memory.getBoolean("memory_private_mode",false))return;
         if(JarvisMemoryExtractor.learn(longTermMemory,raw)) indexSemanticMemoryIfEnabled(1);
+        if(memory.getBoolean("memory_ai_learning",false))
+            JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
+                memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
+                memory.getString("groq_model","openai/gpt-oss-120b"),raw);
+    }
+    private void runAiMemoryReflectionIfEnabled(){
+        if(longTermMemory==null||memory.getBoolean("memory_private_mode",false)||!memory.getBoolean("memory_ai_learning",false))return;
+        JarvisMemoryAiWorker.reflectPendingAsync(longTermMemory,secureStore.get("gemini_key"),
+            memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
+            memory.getString("groq_model","openai/gpt-oss-120b"));
+    }
+    private String buildOfflineMemoryPrompt(String raw){
+        if(memory==null||memory.getBoolean("memory_private_mode",false)||longTermMemory==null)return raw;
+        return longTermMemory.getMemoryContext(raw,10)+"\n\nCommander says: "+raw;
+    }
+    private void confirmAiMemoryLearning(){
+        boolean enabled=memory.getBoolean("memory_ai_learning",false);
+        if(enabled){
+            memory.edit().putBoolean("memory_ai_learning",false).apply();
+            respond("AI memory extraction and cloud reflection OFF. Local learning remains available.");
+            return;
+        }
+        if(secureStore.get("gemini_key").isEmpty()&&secureStore.get("groq_key").isEmpty()){
+            respond("Pehle ONLINE AI SETUP mein Gemini ya Groq API key add karo.");return;
+        }
+        new AlertDialog.Builder(this).setTitle("ENABLE AI MEMORY LEARNING?")
+            .setMessage("When enabled, new user messages and eligible past conversation sessions will be sent to your configured Gemini/Groq provider to extract durable facts and create summaries. Sensitive categories are filtered, but cloud processing is still involved. Local memory remains available. Enable only if you agree.")
+            .setPositiveButton("ENABLE",(d,w)->{
+                memory.edit().putBoolean("memory_ai_learning",true).apply();
+                runAiMemoryReflectionIfEnabled();
+                respond("AI memory learning ON. Local learning remains active too.");
+            }).setNegativeButton("CANCEL",null).show();
     }
     private void indexSemanticMemoryIfEnabled(int maximum){
         if(memory!=null && memory.getBoolean("memory_cloud_embeddings",false) && secureStore!=null)
