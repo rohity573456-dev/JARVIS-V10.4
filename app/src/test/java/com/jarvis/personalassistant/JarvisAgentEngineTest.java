@@ -130,7 +130,7 @@ public class JarvisAgentEngineTest {
             @Override public JarvisAgentEngine.AgentPlan createFollowUpPlan(String objective,
                     java.util.List<JarvisAgentEngine.StepReport> history) {
                 int turn = turns.incrementAndGet();
-                assertEquals(1, history.size());
+                assertEquals(turn == 1 ? 1 : 2, history.size());
                 assertEquals("first verified output", history.get(0).output);
                 if (turn == 1) return new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
                     new JarvisAgentEngine.AgentStep("two", "second", Collections.<String,String>emptyMap(), "")));
