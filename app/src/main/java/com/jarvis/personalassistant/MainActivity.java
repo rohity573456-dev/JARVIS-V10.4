@@ -94,9 +94,11 @@ public class MainActivity extends Activity {
                 String command = intent.getStringExtra(WakeWordService.EXTRA_COMMAND);
                 if (command == null || command.trim().isEmpty()) {
                     if (status != null) status.setText("● JARVIS ACTIVATED");
+                    if (orbView != null) orbView.setState("LISTENING");
                     // Wake acknowledgement is spoken by the foreground service to avoid duplicates.
                 } else {
                     if (status != null) status.setText("● COMMAND RECEIVED");
+                    if (orbView != null) orbView.setState("THINKING");
                     handle(command);
                 }
             }
@@ -886,7 +888,7 @@ public class MainActivity extends Activity {
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
     private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
-    private void speak(String s) { if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
+    private void speak(String s) { if (orbView != null) orbView.setState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
@@ -894,11 +896,11 @@ public class MainActivity extends Activity {
     private void show(String who,String s) { if (conversation != null) conversation.append("\n"+who+"\n"+s+"\n"); }
     @Override protected void onResume() {
         super.onResume();
+        wakeReceiverActive = wakeReceiverRegistered;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && !WakeWordService.isRunning)
             startAlwaysOnWakeService();
         if (dashboard != null) refreshDashboard();
     }
-    @Override protected void onResume() { super.onResume(); wakeReceiverActive = wakeReceiverRegistered; }
     @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
     @Override protected void onDestroy() { wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }
