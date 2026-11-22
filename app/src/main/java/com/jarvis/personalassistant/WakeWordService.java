@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.audiofx.AcousticEchoCanceler;
+import android.media.audiofx.NoiseSuppressor;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
@@ -43,6 +45,8 @@ public class WakeWordService extends Service {
     private boolean commandCaptureFinished = true;
     private volatile String activeUtteranceId = "";
     private AudioRecord audioRecord;
+    private AcousticEchoCanceler echoCanceler;
+    private NoiseSuppressor noiseSuppressor;
     private Thread audioThread;
     private OpenWakeWordEngine wakeWordEngine;
     private SpeechRecognizer commandRecognizer;
@@ -176,6 +180,10 @@ public class WakeWordService extends Service {
                 return;
             }
 
+            // Use device-provided acoustic processing when available. These effects
+            // are optional: unsupported devices continue with the raw microphone path.
+            attachAudioProcessing(audioRecord.getAudioSessionId());
+
             recording = true;
             isRunning = true;
             audioThread = new Thread(this::processAudio, "Jarvis-Continuous-KWS");
@@ -186,6 +194,55 @@ public class WakeWordService extends Service {
             releaseAudioRecord();
             recoverAudio("Microphone start failed: " + e.getMessage());
         }
+    }
+
+    private void attachAudioProcessing(int audioSessionId) {
+        releaseAudioProcessing();
+
+        try {
+            if (AcousticEchoCanceler.isAvailable()) {
+                echoCanceler = AcousticEchoCanceler.create(audioSessionId);
+                if (echoCanceler != null) {
+                    int status = echoCanceler.setEnabled(true);
+                    android.util.Log.i("JARVIS-AUDIO",
+                            "Acoustic echo cancellation enabled=" +
+                                    (status == android.media.audiofx.AudioEffect.SUCCESS));
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("JARVIS-AUDIO", "AEC unavailable; using raw microphone", e);
+            releaseAudioEffect(echoCanceler);
+            echoCanceler = null;
+        }
+
+        try {
+            if (NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = NoiseSuppressor.create(audioSessionId);
+                if (noiseSuppressor != null) {
+                    int status = noiseSuppressor.setEnabled(true);
+                    android.util.Log.i("JARVIS-AUDIO",
+                            "Noise suppression enabled=" +
+                                    (status == android.media.audiofx.AudioEffect.SUCCESS));
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("JARVIS-AUDIO", "Noise suppressor unavailable; continuing", e);
+            releaseAudioEffect(noiseSuppressor);
+            noiseSuppressor = null;
+        }
+    }
+
+    private void releaseAudioEffect(android.media.audiofx.AudioEffect effect) {
+        if (effect == null) return;
+        try { effect.setEnabled(false); } catch (Exception ignored) {}
+        try { effect.release(); } catch (Exception ignored) {}
+    }
+
+    private void releaseAudioProcessing() {
+        releaseAudioEffect(echoCanceler);
+        releaseAudioEffect(noiseSuppressor);
+        echoCanceler = null;
+        noiseSuppressor = null;
     }
 
     private void processAudio() {
@@ -430,6 +487,7 @@ public class WakeWordService extends Service {
     }
 
     private synchronized void releaseAudioRecord() {
+        releaseAudioProcessing();
         AudioRecord recorder = audioRecord;
         audioRecord = null;
         if (recorder != null) {
