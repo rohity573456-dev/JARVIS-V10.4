@@ -542,7 +542,7 @@ public class MainActivity extends Activity {
         else {
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
-            if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
+            if (!geminiKey.isEmpty() || !groqKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
                 status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
