@@ -13,7 +13,7 @@ public class JarvisIntentRouterTest {
 
     @Test public void technicalSystemQuestionsStayOnAiPath() {
         assertTrue(JarvisIntentRouter.isSystemReportQuery("system report"));
-        assertTrue(JarvisIntentRouter.isSystemReportQuery("phone ka status batao"));
+        assertTrue(JarvisIntentRouter.isSystemReportQuery("phone ka status batao"));\n        assertTrue(JarvisIntentRouter.isSystemReportQuery("storage"));\n        assertTrue(JarvisIntentRouter.isSystemReportQuery("RAM kitni hai?"));
         assertFalse(JarvisIntentRouter.isSystemReportQuery("Explain Android RAM management"));
         assertFalse(JarvisIntentRouter.isSystemReportQuery("What is storage architecture?"));
     }
