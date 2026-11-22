@@ -66,8 +66,8 @@ public class WakeWordService extends Service {
     private final Runnable healthCheck = new Runnable() {
         @Override public void run() {
             if (!running) return;
+            long now = SystemClock.elapsedRealtime();
             if (engineReady && !wakeDetected && !speechPlaying) {
-                long now = SystemClock.elapsedRealtime();
                 if (recording && wakeWordMetrics.isAudioStalled(now, 20000L)) {
                     recoverAudio("Audio frames stalled for 20 seconds");
                 } else if (!recording) {
@@ -348,6 +348,9 @@ public class WakeWordService extends Service {
         if (!running || !wakeDetected) return;
         commandCaptureFinished = false;
         pendingCommandSpeechIntent = null;
+        android.util.Log.i("JARVIS-AUDIO", "Wake pre-roll retained: "
+                + lastWakePreRoll.length + " PCM samples (~"
+                + (lastWakePreRoll.length / 16) + " ms at 16 kHz)");
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             commandCaptureFinished = true;
@@ -586,7 +589,25 @@ public class WakeWordService extends Service {
     private void logWakeDiagnostics(String reason) {
         android.util.Log.i("JARVIS-METRICS", reason + " " + wakeWordMetrics.snapshot(
                 SystemClock.elapsedRealtime(), android.os.Process.getElapsedCpuTime())
-                + ",preRollSamples=" + lastWakePreRoll.length);
+                + ",preRollSamples=" + lastWakePreRoll.length
+                + ",batteryPercent=" + getBatteryPercent()
+                + ",powerSave=" + isPowerSaveMode());
+    }
+
+    private int getBatteryPercent() {
+        try {
+            android.os.BatteryManager battery =
+                    (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
+            return battery == null ? -1 : battery.getIntProperty(
+                    android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+        } catch (Exception ignored) { return -1; }
+    }
+
+    private boolean isPowerSaveMode() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            return pm != null && pm.isPowerSaveMode();
+        } catch (Exception ignored) { return false; }
     }
 
     private synchronized void releaseAudioRecord() {
