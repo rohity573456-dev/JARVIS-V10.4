@@ -55,6 +55,7 @@ public class MainActivity extends Activity {
     private static final int PICK_IMAGE = 902;
     private static final int PICK_MODEL_COPY_BUFFER = 65536;
     private static final int REQUEST_NOTIFICATIONS = 4102;
+    private static final int REQUEST_CAMERA_TORCH = 4104;
     private String localModelPath = "";
     private TextView status, conversation, dashboard;
     private JarvisOrbView orbView;
@@ -355,6 +356,13 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQUEST_CAMERA_TORCH) {
+            boolean enabled = memory.getBoolean("pending_torch_enabled",false);
+            memory.edit().remove("pending_torch_enabled").apply();
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) setFlashlight(enabled);
+            else respond("Camera permission denied; flashlight control unavailable.");
+            return;
+        }
         if (requestCode == 4101) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 status.setText("● MICROPHONE READY");
@@ -484,6 +492,11 @@ public class MainActivity extends Activity {
         if (q.contains("time") || q.contains("samay") || q.contains("समय") || q.contains("kitne baje")) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
         else if (q.contains("date") || q.contains("tareekh") || q.contains("तारीख") || q.contains("aaj ki date")) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
         else if (q.contains("battery") || q.contains("बैटरी")) answer=batteryReport();
+        else if (q.contains("flashlight") || q.contains("torch")) { setFlashlight(q.contains("on") || q.contains("enable") || q.contains("chalu")); return; }
+        else if (q.contains("volume up") || q.contains("volume badhao")) { adjustVolume(1); return; }
+        else if (q.contains("volume down") || q.contains("volume kam")) { adjustVolume(-1); return; }
+        else if (q.contains("mute volume") || q.equals("mute")) { adjustVolume(0); return; }
+        else if (q.contains("brightness") || q.contains("screen brightness")) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
         else if (q.contains("system status") || q.contains("system report") || q.contains("ram") || q.contains("storage")) { systemReport(); return; }
         else if (q.contains("wifi") || q.contains("wi-fi")) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
         else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
@@ -589,6 +602,50 @@ public class MainActivity extends Activity {
                 memory.getString("groq_model","openai/gpt-oss-120b"),note.trim());
         return true;
     }
+    private void setFlashlight(boolean enabled) {
+        if (android.os.Build.VERSION.SDK_INT < 23) {
+            respond("Is Android version par torch API supported nahi hai.");
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            memory.edit().putBoolean("pending_torch_enabled",enabled).apply();
+            requestPermissions(new String[]{Manifest.permission.CAMERA},REQUEST_CAMERA_TORCH);
+            respond("Flashlight control ke liye Camera permission allow karein.");
+            return;
+        }
+        try {
+            android.hardware.camera2.CameraManager manager =
+                (android.hardware.camera2.CameraManager)getSystemService(Context.CAMERA_SERVICE);
+            if (manager == null) { respond("Camera service unavailable."); return; }
+            String selected = null;
+            for (String id : manager.getCameraIdList()) {
+                android.hardware.camera2.CameraCharacteristics info = manager.getCameraCharacteristics(id);
+                Boolean flash = info.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                if (Boolean.TRUE.equals(flash)) { selected=id; break; }
+            }
+            if (selected == null) { respond("Is phone mein flashlight hardware nahi mila."); return; }
+            manager.setTorchMode(selected,enabled);
+            respond(enabled ? "Flashlight ON." : "Flashlight OFF.");
+        } catch (Exception e) {
+            respond("Flashlight control failed: "+e.getClass().getSimpleName());
+        }
+    }
+
+    private void adjustVolume(int direction) {
+        try {
+            android.media.AudioManager audio = (android.media.AudioManager)getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) { respond("Audio service unavailable."); return; }
+            if (direction > 0) audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                android.media.AudioManager.ADJUST_RAISE,android.media.AudioManager.FLAG_SHOW_UI);
+            else if (direction < 0) audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                android.media.AudioManager.ADJUST_LOWER,android.media.AudioManager.FLAG_SHOW_UI);
+            else if (android.os.Build.VERSION.SDK_INT >= 23) audio.adjustStreamVolume(
+                android.media.AudioManager.STREAM_MUSIC,android.media.AudioManager.ADJUST_MUTE,
+                android.media.AudioManager.FLAG_SHOW_UI);
+            respond(direction>0 ? "Media volume increased." : direction<0 ? "Media volume decreased." : "Media volume muted.");
+        } catch (Exception e) { respond("Volume control failed: "+e.getMessage()); }
+    }
+
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
     private void memoryDialog() {
