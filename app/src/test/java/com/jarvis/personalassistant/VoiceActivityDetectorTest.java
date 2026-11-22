@@ -32,4 +32,15 @@ public class VoiceActivityDetectorTest {
         vad.reset();
         assertFalse(vad.isSpeechActive());
     }
+    @Test public void doesNotLearnSpeechTailAsAmbientNoise() {
+        VoiceActivityDetector vad = new VoiceActivityDetector();
+        short[] voice = new short[1600];
+        for (int i = 0; i < voice.length; i++) voice[i] = (short) ((i % 2 == 0) ? 1800 : -1800);
+        vad.update(voice, voice.length);
+        float beforeHangover = vad.getNoiseFloor();
+        short[] silence = new short[1600];
+        for (int i = 0; i < 4; i++) vad.update(silence, silence.length);
+        assertEquals(beforeHangover, vad.getNoiseFloor(), 0.000001f);
+    }
+
 }
