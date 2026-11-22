@@ -31,29 +31,6 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
-      - name: Download Sherpa ONNX Android AAR
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p app/libs
-          curl -fL --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar -o app/libs/sherpa-onnx-2.0.1.aar
-          test -s app/libs/sherpa-onnx-2.0.1.aar
-
-      - name: Fetch wake word model
-        shell: bash
-        run: |
-          set -euo pipefail
-          MODEL=sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
-          curl -fL --retry 3 https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/${MODEL}.tar.bz2 -o /tmp/kws-model.tar.bz2
-          mkdir -p /tmp/kws-model
-          tar -xjf /tmp/kws-model.tar.bz2 -C /tmp/kws-model
-          mkdir -p app/src/main/assets/${MODEL}
-          cp -a /tmp/kws-model/${MODEL}/. app/src/main/assets/${MODEL}/
-          printf 'JARVIS :2.0 #0.25 @JARVIS\n' > /tmp/keywords_raw.txt
-          python -m pip install --disable-pip-version-check sherpa-onnx==2.0.1 sentencepiece pypinyin
-          sherpa-onnx-cli text2token --tokens app/src/main/assets/${MODEL}/tokens.txt --tokens-type bpe --bpe-model app/src/main/assets/${MODEL}/bpe.model /tmp/keywords_raw.txt /tmp/keywords.txt
-          cp /tmp/keywords.txt app/src/main/assets/${MODEL}/keywords.txt
-
       - name: Run memory unit tests
         run: gradle testDebugUnitTest
 
