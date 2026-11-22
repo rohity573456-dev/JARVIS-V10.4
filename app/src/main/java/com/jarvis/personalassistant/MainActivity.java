@@ -513,25 +513,25 @@ public class MainActivity extends Activity {
         if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
         if (!privateMode) autoLearnMemory(raw);
         String q=raw.toLowerCase(Locale.ROOT); show("COMMANDER",raw); String answer;
-        if (q.contains("time") || q.contains("samay") || q.contains("समय") || q.contains("kitne baje")) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
-        else if (q.contains("date") || q.contains("tareekh") || q.contains("तारीख") || q.contains("aaj ki date")) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
-        else if (q.contains("battery") || q.contains("बैटरी")) answer=batteryReport();
-        else if (q.contains("flashlight") || q.contains("torch")) { setFlashlight(q.contains("on") || q.contains("enable") || q.contains("chalu")); return; }
-        else if (q.contains("volume up") || q.contains("volume badhao")) { adjustVolume(1); return; }
-        else if (q.contains("volume down") || q.contains("volume kam")) { adjustVolume(-1); return; }
-        else if (q.contains("mute volume") || q.equals("mute")) { adjustVolume(0); return; }
-        else if (q.contains("brightness") || q.contains("screen brightness")) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
-        else if (q.contains("system status") || q.contains("system report") || q.contains("ram") || q.contains("storage")) { systemReport(); return; }
-        else if (q.contains("wifi") || q.contains("wi-fi")) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
-        else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
-        else if (q.contains("settings") || q.contains("सेटिंग")) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
-        else if (q.contains("youtube")) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
+        if (JarvisIntentRouter.isTimeQuery(raw)) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
+        else if (JarvisIntentRouter.isDateQuery(raw)) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
+        else if (JarvisIntentRouter.isBatteryStatusQuery(raw)) answer=batteryReport();
+        else if (JarvisIntentRouter.isFlashlightCommand(raw)) { setFlashlight(q.contains("on") || q.contains("enable") || q.contains("chalu")); return; }
+        else if (JarvisIntentRouter.isVolumeUpCommand(raw)) { adjustVolume(1); return; }
+        else if (JarvisIntentRouter.isVolumeDownCommand(raw)) { adjustVolume(-1); return; }
+        else if (JarvisIntentRouter.isMuteCommand(raw)) { adjustVolume(0); return; }
+        else if (JarvisIntentRouter.isBrightnessSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
+        else if (JarvisIntentRouter.isSystemReportQuery(raw)) { systemReport(); return; }
+        else if (JarvisIntentRouter.isWifiSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
+        else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
+        else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
+        else if (JarvisIntentRouter.isOpenYoutubeCommand(raw)) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
         else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw); return; }
-        else if (q.startsWith("search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
-        else if (q.contains("camera") || q.contains("कैमरा")) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
-        else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
-        else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
-        else if (q.contains("alarm")) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
+        else if (JarvisIntentRouter.isWebSearchCommand(raw)) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
+        else if (JarvisIntentRouter.isOpenCameraCommand(raw)) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
+        else if (JarvisIntentRouter.isMapsCommand(raw)) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
+        else if (JarvisIntentRouter.isOpenTranslateCommand(raw)) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
+        else if (JarvisIntentRouter.isAlarmCommand(raw)) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
         else if (q.startsWith("memory useful ")) { long id=parseLong(raw.replaceFirst("(?i)^memory useful\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,1,raw); answer="Memory usefulness feedback saved for #"+id+"."; }
         else if (q.startsWith("memory wrong ")) { long id=parseLong(raw.replaceFirst("(?i)^memory wrong\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,-1,raw); answer="Memory reliability feedback saved for #"+id+"; its retrieval priority was reduced."; }
         else if (q.startsWith("memory forget ")) { long id=parseLong(raw.replaceFirst("(?i)^memory forget\\s*","")); answer=longTermMemory!=null&&longTermMemory.deleteMemory(id)?"Memory #"+id+" permanently deleted with its indexes.":"Memory ID not found."; }
