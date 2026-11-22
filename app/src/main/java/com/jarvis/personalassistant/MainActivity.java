@@ -10,6 +10,8 @@ import android.os.Looper;
 import android.view.inputmethod.EditorInfo;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -25,11 +27,11 @@ import android.provider.AlarmClock;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.content.IntentFilter;
@@ -57,19 +59,24 @@ public class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 4102;
     private static final int REQUEST_CAMERA_TORCH = 4104;
     private String localModelPath = "";
-    private TextView status, conversation, dashboard;
+    private TextView status;
+    private LinearLayout conversationList;
+    private ScrollView conversationScroll;
     private JarvisOrbView orbView;
     private TextToSpeech tts;
     private SpeechRecognizer recognizer;
     private SharedPreferences memory;
     private SecureStore secureStore;
     private JarvisMemoryStore longTermMemory;
+    private JarvisToolRegistry agentToolRegistry;
+    private JarvisAgentEngine.RunHandle activeAgentRun;
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private EditText commandInput;
     private String lastResponse = "I am ready, Pratik Boss.";
+    private String lastUserPrompt = "";
     private android.content.BroadcastReceiver wakeReceiver;
     private boolean wakeReceiverRegistered = false;
     private String pendingSpeech = null;
@@ -94,9 +101,11 @@ public class MainActivity extends Activity {
                 String command = intent.getStringExtra(WakeWordService.EXTRA_COMMAND);
                 if (command == null || command.trim().isEmpty()) {
                     if (status != null) status.setText("● JARVIS ACTIVATED");
+                    if (orbView != null) orbView.setState("LISTENING");
                     // Wake acknowledgement is spoken by the foreground service to avoid duplicates.
                 } else {
                     if (status != null) status.setText("● COMMAND RECEIVED");
+                    if (orbView != null) orbView.setState("THINKING");
                     handle(command);
                 }
             }
@@ -112,9 +121,16 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
+        getWindow().setNavigationBarColor(Color.rgb(5, 7, 14));
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            android.view.WindowManager.LayoutParams displayParams = getWindow().getAttributes();
+            displayParams.preferredRefreshRate = 90.0f; // Request 90 Hz when the device/display supports it.
+            getWindow().setAttributes(displayParams);
+        }
         memory = getSharedPreferences("jarvis_memory", MODE_PRIVATE);
         secureStore = new SecureStore(this);
+        agentToolRegistry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(this).registerInto(agentToolRegistry);
         longTermMemory = new JarvisMemoryStore(this);
         longTermMemory.expireTransientMemories();
         longTermMemory.indexMissingLocalVectors(500);
@@ -142,126 +158,139 @@ public class MainActivity extends Activity {
                 if (pendingSpeech != null) { String queued = pendingSpeech; pendingSpeech = null; speak(queued); }
             }
         });
-        refreshDashboard();
+        refreshUiStatus();
         show("JARVIS CORE", "V9 foundation online. Voice, memory and command modules ready.");
         speak("JARVIS systems online. At your service, Pratik Boss.");
     }
 
+    private android.graphics.drawable.GradientDrawable panel(int fill, int stroke, int radiusDp) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setColor(fill);
+        d.setCornerRadius(radiusDp * getResources().getDisplayMetrics().density);
+        d.setStroke(Math.max(1, (int)getResources().getDisplayMetrics().density), stroke);
+        return d;
+    }
+
     private void buildUi() {
-        // Responsive, scroll-safe dashboard: small phones no longer clip the lower controls.
-        ScrollView page = new ScrollView(this);
-        page.setFillViewport(true);
-        page.setClipToPadding(false);
-        LinearLayout root = new LinearLayout(this);
+        final float d=getResources().getDisplayMetrics().density;
+        final int pad=(int)(18*d);
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(16,18,16,20);
-        root.setBackgroundColor(BG);
+        root.setPadding(pad,(int)(10*d),pad,(int)(12*d));
+        root.setClipToPadding(false);
+        root.setBackground(new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(5,10,24),Color.rgb(8,19,37),Color.rgb(3,8,19)}));
+        LinearLayout header=new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout brand=new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        TextView wordmark=new TextView(this);
+        wordmark.setText("JARVIS"); wordmark.setTextColor(Color.rgb(242,248,255));
+        wordmark.setTextSize(21); wordmark.setLetterSpacing(0.20f);
+        wordmark.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        brand.addView(wordmark,new LinearLayout.LayoutParams(-2,-2));
+        status=new TextView(this); status.setText("● SYSTEM READY");
+        status.setTextColor(Color.rgb(107,231,210)); status.setTextSize(10); status.setLetterSpacing(0.10f);
+        brand.addView(status,new LinearLayout.LayoutParams(-2,-2));
+        header.addView(brand,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView menu=new TextView(this); menu.setText("···"); menu.setTextColor(Color.rgb(185,220,246));
+        menu.setTextSize(27); menu.setGravity(Gravity.CENTER);
+        menu.setBackground(panel(Color.rgb(17,31,51),Color.rgb(43,76,108),18));
+        header.addView(menu,new LinearLayout.LayoutParams((int)(46*d),(int)(42*d)));
+        menu.setOnClickListener(v->openSettingsMenu());
+        root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
 
-        TextView title = new TextView(this);
-        title.setText("J.A.R.V.I.S  //  ULTIMATE");
-        title.setTextColor(CYAN);
-        title.setTextSize(22);
-        title.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title,new LinearLayout.LayoutParams(-1,54));
+        conversationScroll=new ScrollView(this);
+        conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false);
+        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
+        conversationList=new LinearLayout(this); conversationList.setOrientation(LinearLayout.VERTICAL);
+        conversationList.setPadding((int)(2*d),(int)(4*d),(int)(2*d),(int)(12*d));
+        conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
+        root.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
 
-        status = new TextView(this);
-        status.setText("● CORE ONLINE  |  VOICE STANDBY");
-        status.setTextColor(CYAN);
-        status.setTextSize(11);
-        status.setGravity(Gravity.CENTER);
-        root.addView(status,new LinearLayout.LayoutParams(-1,30));
+        orbView=new JarvisOrbView(this); orbView.setState("STANDBY");
+        LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(88*d));
+        orbLp.topMargin=(int)(2*d); orbLp.bottomMargin=(int)(2*d);
+        root.addView(orbView,orbLp);
 
-        orbView = new JarvisOrbView(this);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1,190);
-        orbParams.topMargin = 2;
-        root.addView(orbView,orbParams);
-
-        dashboard = new TextView(this);
-        dashboard.setTextColor(Color.LTGRAY);
-        dashboard.setTextSize(11);
-        dashboard.setTypeface(Typeface.MONOSPACE);
-        dashboard.setPadding(12,12,12,12);
-        dashboard.setBackgroundColor(Color.rgb(10,25,42));
-        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,-2);
-        dp.topMargin=8;
-        root.addView(dashboard,dp);
-
-        LinearLayout typeRow = new LinearLayout(this);
-        typeRow.setOrientation(LinearLayout.HORIZONTAL);
-        typeRow.setGravity(Gravity.CENTER_VERTICAL);
-        commandInput = new EditText(this);
-        commandInput.setSingleLine(true);
-        commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.GRAY);
-        commandInput.setHint("Ask JARVIS or enter a command...");
-        commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
-        commandInput.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
-                submitTypedCommand();
-                return true;
-            }
-            return false;
+        LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
+        composer.setBackground(panel(Color.rgb(14,27,46),Color.rgb(46,83,119),27));
+        TextView mic=new TextView(this); mic.setText("◉"); mic.setTextColor(Color.rgb(135,225,255));
+        mic.setTextSize(21); mic.setGravity(Gravity.CENTER);
+        composer.addView(mic,new LinearLayout.LayoutParams((int)(44*d),(int)(46*d)));
+        mic.setOnClickListener(v->listen());
+        commandInput=new EditText(this); commandInput.setSingleLine(true);
+        commandInput.setTextColor(Color.rgb(244,249,255)); commandInput.setHintTextColor(Color.rgb(125,151,180));
+        commandInput.setHint("Ask JARVIS anything"); commandInput.setTextSize(15);
+        commandInput.setPadding((int)(8*d),0,(int)(4*d),0); commandInput.setBackgroundColor(Color.TRANSPARENT);
+        commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        commandInput.setOnEditorActionListener((v,actionId,event)->{
+            if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){
+                submitTypedCommand(); return true;
+            } return false;
         });
-        typeRow.addView(commandInput,new LinearLayout.LayoutParams(0,52,1));
-        Button run = button("RUN");
-        typeRow.addView(run,new LinearLayout.LayoutParams(66,52));
-        run.setOnClickListener(v -> submitTypedCommand());
-        Button search = button("SEARCH");
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(82,52);
-        searchParams.leftMargin = 5;
-        typeRow.addView(search,searchParams);
-        search.setOnClickListener(v -> searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
-        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-1,-2);
-        trp.topMargin = 8;
-        root.addView(typeRow,trp);
+        composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(46*d),1f));
+        TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(5,16,30));
+        send.setTextSize(19); send.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(132,235,255),Color.rgb(77,174,232)});
+        sendBg.setCornerRadius(22*d); send.setBackground(sendBg);
+        composer.addView(send,new LinearLayout.LayoutParams((int)(44*d),(int)(44*d)));
+        send.setOnClickListener(v->submitTypedCommand());
+        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(58*d));
+        composerLp.topMargin=(int)(8*d); root.addView(composer,composerLp);
+        setContentView(root);
+    }
 
-        ScrollView conversationScroll = new ScrollView(this);
-        conversationScroll.setFillViewport(false);
-        conversation = new TextView(this);
-        conversation.setTextColor(Color.WHITE);
-        conversation.setTextSize(14);
-        conversation.setPadding(12,14,12,14);
-        conversationScroll.addView(conversation);
-        int conversationHeight = Math.max(145,Math.min(230,(int)(getResources().getDisplayMetrics().heightPixels*0.22f)));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1,conversationHeight);
-        cp.topMargin=10;
-        cp.bottomMargin=8;
-        root.addView(conversationScroll,cp);
+    private void openSettingsMenu() {
+        final String[] items = {
+            "AI brain / model", "Online AI setup", "Memory center",
+            "Tasks & reminders", "Vision / image", "System status",
+            "Floating orb setup"
+        };
+        new AlertDialog.Builder(this).setTitle("JARVIS SETTINGS").setItems(items, (dialog, which) -> {
+            switch (which) {
+                case 0: aiBrainDialog(); break;
+                case 1: onlineAiDialog(); break;
+                case 2: memoryDialog(); break;
+                case 3: taskDialog(); break;
+                case 4: pickImage(); break;
+                case 5: systemReport(); break;
+                case 6: requestFloatingOrbPermission(); break;
+                default: break;
+            }
+        }).setNegativeButton("CLOSE", null).show();
+    }
 
-        Button listen = button("TAP TO SPEAK  •  VOICE COMMAND");
-        root.addView(listen,new LinearLayout.LayoutParams(-1,52));
-        listen.setOnClickListener(v -> listen());
-
-        LinearLayout row1 = new LinearLayout(this);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row1,"MEMORY",v->memoryDialog());
-        addSmall(row1,"TASKS",v->taskDialog());
-        addSmall(row1,"CUSTOM COMMAND",v->customCommandDialog());
-        root.addView(row1);
-
-        LinearLayout row2 = new LinearLayout(this);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row2,"CAMERA",v->launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"));
-        addSmall(row2,"MAPS",v->open("https://maps.google.com"));
-        addSmall(row2,"REPEAT",v->speak(lastResponse));
-        root.addView(row2);
-
-        LinearLayout row3 = new LinearLayout(this);
-        row3.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row3,"AI BRAIN / MODEL",v->aiBrainDialog());
-        addSmall(row3,"ONLINE AI SETUP",v->onlineAiDialog());
-        root.addView(row3);
-
-        LinearLayout row4 = new LinearLayout(this);
-        row4.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row4,"VISION / IMAGE",v->pickImage());
-        addSmall(row4,"WEB SEARCH",v->searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
-        addSmall(row4,"SYSTEM STATUS",v->systemReport());
-        root.addView(row4);
-
-        page.addView(root,new ScrollView.LayoutParams(-1,-2));
-        setContentView(page);
+    private void requestFloatingOrbPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 23) {
+            respond("Floating orb overlay requires Android 6.0 or newer.");
+            return;
+        }
+        if (Settings.canDrawOverlays(this)) {
+            respond("Floating orb permission already enabled. Say Jarvis while the app is in background to test it.");
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("ALLOW JARVIS FLOATING ORB")
+            .setMessage("Android requires your permission to show the small JARVIS orb over other apps after the wake word is detected. The orb appears only during a wake interaction and hides after the response. Allow 'Display over other apps' on the next screen.")
+            .setPositiveButton("OPEN SETTINGS", (dialog, which) -> {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    respond("Overlay permission settings could not be opened.");
+                }
+            })
+            .setNegativeButton("CANCEL", null)
+            .show();
     }
 
     private void pickImage() {
@@ -323,18 +352,12 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Button button(String label) { Button b=new Button(this); b.setText(label); b.setTextColor(Color.BLACK); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CYAN)); return b; }
-    private void addSmall(LinearLayout row,String label,View.OnClickListener listener) {
-        Button b=new Button(this); b.setText(label); b.setTextSize(9); b.setPadding(2,2,2,2); b.setOnClickListener(listener);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,48,1); p.setMargins(2,4,2,0); row.addView(b,p);
+    private void refreshUiStatus() {
+        if(status==null)return;
+        boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty());
+        status.setText("● "+(WakeWordService.isRunning?"VOICE ACTIVE":"SYSTEM READY")+(cloudReady?"  ·  AI CONNECTED":""));
     }
-    private void refreshDashboard() {
-        int battery=-1; try { Intent i=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); if(i!=null) battery=i.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); } catch(Exception ignored) {}
-        Runtime rt=Runtime.getRuntime(); long freeRam=(rt.maxMemory()-rt.totalMemory()+rt.freeMemory())/(1024*1024);
-        StatFs fs=new StatFs(Environment.getDataDirectory().getPath()); long freeStorage=(fs.getAvailableBytes()/(1024*1024*1024));
-        String brain = !localModelPath.isEmpty() && new File(localModelPath).exists() ? "LOCAL LLM MODEL READY" : "LOCAL LLM MODEL NOT LOADED";
-        dashboard.setText("SYSTEM TELEMETRY\nBATTERY: "+(battery<0?"N/A":battery+"%")+"     FREE APP HEAP: "+freeRam+" MB\nAVAILABLE STORAGE: "+freeStorage+" GB\nAI MODE: HYBRID ROUTER\nOFFLINE BRAIN: "+brain+"\nONLINE BRAIN: "+((!secureStore.get("gemini_key").isEmpty() || !secureStore.get("groq_key").isEmpty())?"HYBRID READY":"KEYS NOT SET")+"\nWAKE LISTENING: "+(WakeWordService.isRunning?"ACTIVE":"NOT RUNNING"));
-    }
+
     private void requestNotificationPermissionIfNeeded() {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -484,6 +507,7 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        lastUserPrompt = raw == null ? "" : raw;
         if (orbView != null) orbView.setState("THINKING");
         boolean privateMode = memory.getBoolean("memory_private_mode", false);
         if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
@@ -502,7 +526,8 @@ public class MainActivity extends Activity {
         else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (q.contains("settings") || q.contains("सेटिंग")) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
         else if (q.contains("youtube")) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.startsWith("search ") || q.startsWith("web search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
+        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw); return; }
+        else if (q.startsWith("search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
         else if (q.contains("camera") || q.contains("कैमरा")) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
@@ -540,10 +565,14 @@ public class MainActivity extends Activity {
         else if (runCustomCommand(raw)) return;
         else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Pratik Boss. JARVIS systems are ready.";
         else {
+            if (isAgentActionIntent(q)) {
+                runAgent(raw);
+                return;
+            }
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
-            if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
-                status.setText("● HYBRID AI CONNECTING...");
+            if (!geminiKey.isEmpty() || !groqKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
+                status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
                 new Thread(() -> {
@@ -551,34 +580,123 @@ public class MainActivity extends Activity {
                     final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
-                    final String prompt = memoryContext + "\nLegacy saved note: " + legacyNote + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
-                    String result = "ERROR: No provider key configured.";
-                    if (!geminiKey.isEmpty()) {
-                        result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai", geminiKey,
-                            memory.getString("gemini_model", "gemini-2.5-flash"), prompt);
-                    }
-                    if (result.startsWith("ERROR") && !groqKey.isEmpty()) {
-                        result = OnlineAiClient.ask("https://api.groq.com/openai/v1", groqKey,
-                            memory.getString("groq_model", "openai/gpt-oss-120b"), prompt);
-                    }
-                    if (result.startsWith("ERROR") && !localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                        LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), localResult -> { runOnUiThread(() -> respond("Online providers unavailable. Offline response: " + localResult)); return kotlin.Unit.INSTANCE; });
-                        return;
-                    }
-                    final String finalResult = result.startsWith("ERROR") ? "Gemini aur Groq dono abhi unavailable hain. Details: " + result : result;
-                    runOnUiThread(() -> respond(finalResult));
-                }).start();
-                return;
-            }
-            if (!localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                status.setText("● OFFLINE AI THINKING...");
-                LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), result -> { runOnUiThread(() -> respond(result)); return kotlin.Unit.INSTANCE; });
+                    final String prompt = memoryContext + "\\nLegacy saved note: " + legacyNote +
+                        "\\nPrevious response: " + lastResponse + "\\nCommander says: " + raw;
+                    JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
+                        groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
+                        localModelPath, prompt, raw, result -> runOnUiThread(() -> respond(result)));
+                }, "Jarvis-HybridBrain").start();
                 return;
             }
             answer="AI brain configure nahi hai, Pratik Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
         }
         respond(answer);
     }
+    private boolean isAgentActionIntent(String q) {
+        return JarvisActionIntentRouter.isExplicitAction(q);
+    }
+
+    private void runAgent(String objective) {
+        String geminiKey = secureStore.get("gemini_key");
+        String groqKey = secureStore.get("groq_key");
+        if (geminiKey.isEmpty() && groqKey.isEmpty()) {
+            respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
+            return;
+        }
+        if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+            respond("JARVIS is already handling an agent task. Pehle current task complete hone do.");
+            return;
+        }
+        status.setText("● AGENT PLANNING...");
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            new JarvisStructuredPlanner(agentToolRegistry, geminiKey,
+                memory.getString("gemini_model", "gemini-2.5-flash"),
+                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b")),
+            agentToolRegistry, this::requestAgentApproval);
+        activeAgentRun = engine.submit(objective, new JarvisAgentEngine.Listener() {
+            @Override public void onState(JarvisAgentEngine.State state, String detail) {
+                runOnUiThread(() -> {
+                    if (status == null || isFinishing()) return;
+                    if (state == JarvisAgentEngine.State.AWAITING_APPROVAL) status.setText("● WAITING FOR YOUR APPROVAL");
+                    else if (state == JarvisAgentEngine.State.RUNNING) status.setText("● EXECUTING APPROVED ACTION");
+                    else if (state == JarvisAgentEngine.State.PLANNING) status.setText("● AI ACTION PLANNING...");
+                    else if (state == JarvisAgentEngine.State.VERIFYING) status.setText("● VERIFYING ACTION...");
+                });
+            }
+            @Override public void onComplete(JarvisAgentEngine.AgentReport report) {
+                runOnUiThread(() -> {
+                    activeAgentRun = null;
+                    if (isFinishing()) return;
+                    if (report.finalState == JarvisAgentEngine.State.COMPLETED && report.steps.isEmpty()) {
+                        respond("Is request ke liye koi supported Android action identify nahi hua. App ka exact naam batao, ya normal question ki tarah pucho.");
+                        return;
+                    }
+                    StringBuilder message = new StringBuilder();
+                    message.append(report.finalState == JarvisAgentEngine.State.COMPLETED
+                        ? "Agent task complete. " : report.finalState == JarvisAgentEngine.State.CANCELLED
+                        ? "Agent task cancelled or approval denied. " : "Agent task stopped safely. ");
+                    for (JarvisAgentEngine.StepReport step : report.steps) {
+                        message.append("\n").append(step.toolName).append(": ")
+                            .append(step.output);
+                        if (step.success && step.verified) message.append(" ✓");
+                    }
+                    respond(message.toString().trim());
+                });
+            }
+        });
+    }
+
+    private boolean requestAgentApproval(JarvisAgentEngine.AgentStep step) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicBoolean resolved = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final java.util.concurrent.atomic.AtomicBoolean allowed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final AlertDialog[] dialog = new AlertDialog[1];
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || !hasWindowFocus()) {
+                resolved.set(true);
+                latch.countDown();
+                return;
+            }
+            StringBuilder details = new StringBuilder();
+            details.append("Action: ").append(step.toolName).append("\n");
+            if (!step.purpose.isEmpty()) details.append("Reason: ").append(step.purpose).append("\n");
+            if (!step.arguments.isEmpty()) details.append("Arguments: ").append(step.arguments);
+            details.append("\n\nJARVIS will perform this action only once if you allow it.");
+            dialog[0] = new AlertDialog.Builder(MainActivity.this)
+                .setTitle("JARVIS APPROVAL REQUIRED")
+                .setMessage(details.toString())
+                .setPositiveButton("ALLOW ONCE", (d, which) -> {
+                    if (resolved.compareAndSet(false, true)) {
+                        allowed.set(true);
+                        latch.countDown();
+                    }
+                })
+                .setNegativeButton("DENY", (d, which) -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                })
+                .setOnCancelListener(d -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                })
+                .create();
+            dialog[0].show();
+        });
+        try {
+            if (!latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (resolved.compareAndSet(false, true)) runOnUiThread(() -> {
+                    if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+                });
+                return false;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (resolved.compareAndSet(false, true)) runOnUiThread(() -> {
+                if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+            });
+            return false;
+        }
+        return allowed.get();
+    }
+
     private boolean runCustomCommand(String raw) {
         Map<String,?> all=memory.getAll();
         for(String key:all.keySet()) if(key.startsWith("custom_")) {
@@ -647,7 +765,7 @@ public class MainActivity extends Activity {
     }
 
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
-    private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
+    private void systemReport() { refreshUiStatus(); respond("System report. "+batteryReport()+" Storage and memory information are available in the system report."); }
     private void memoryDialog() {
         String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile","Memory temporary note"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
@@ -762,7 +880,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("JARVIS OFFLINE AI BRAIN")
             .setMessage(state + "\n\nSelect a compatible .litertlm model file. Model files are large and are not included in the APK.")
             .setPositiveButton("SELECT MODEL", (d,w) -> { Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT); i.setType("*/*"); i.addCategory(Intent.CATEGORY_OPENABLE); startActivityForResult(i,PICK_MODEL); })
-            .setNeutralButton("UNLOAD MODEL", (d,w) -> { localModelPath=""; memory.edit().remove("local_model_path").apply(); LocalAiEngine.close(); refreshDashboard(); respond("Offline model unloaded."); })
+            .setNeutralButton("UNLOAD MODEL", (d,w) -> { localModelPath=""; memory.edit().remove("local_model_path").apply(); LocalAiEngine.close(); refreshUiStatus(); respond("Offline model unloaded."); })
             .setNegativeButton("CLOSE",null).show();
     }
 
@@ -783,9 +901,9 @@ public class MainActivity extends Activity {
                     String gm = geminiModel.getText().toString().trim(); String gr = groqModel.getText().toString().trim();
                     memory.edit().putString("gemini_model", gm.isEmpty()?"gemini-2.5-flash":gm)
                         .putString("groq_model", gr.isEmpty()?"openai/gpt-oss-120b":gr).apply();
-                    refreshDashboard(); respond("Hybrid AI settings saved. Gemini primary, Groq backup.");
+                    refreshUiStatus(); respond("Hybrid AI settings saved. Gemini primary, Groq backup.");
                 } catch (Exception e) { respond("Secure key storage failed: " + e.getMessage()); }
-            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); refreshDashboard(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
+            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); refreshUiStatus(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
             .setNegativeButton("CANCEL", null).show();
     }
 
@@ -803,9 +921,9 @@ public class MainActivity extends Activity {
                     if(in==null) throw new Exception("Cannot open selected model file"); byte[] buf=new byte[PICK_MODEL_COPY_BUFFER]; int n; while((n=in.read(buf))>0) out.write(buf,0,n);
                 }
                 localModelPath=target.getAbsolutePath(); memory.edit().putString("local_model_path",localModelPath).apply();
-                refreshDashboard();
+                refreshUiStatus();
                 status.setText("● LOADING OFFLINE MODEL...");
-                LocalAiEngine.load(localModelPath, result -> { runOnUiThread(() -> { status.setText("● CORE ONLINE"); respond(result); refreshDashboard(); }); return kotlin.Unit.INSTANCE; });
+                LocalAiEngine.load(localModelPath, result -> { runOnUiThread(() -> { status.setText("● CORE ONLINE"); respond(result); refreshUiStatus(); }); return kotlin.Unit.INSTANCE; });
             } catch(Exception e) { respond("Model import failed: "+e.getMessage()); }
         }
     }
@@ -813,18 +931,89 @@ public class MainActivity extends Activity {
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
     private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
-    private void speak(String s) { if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
+    private void speak(String s) { if (orbView != null) orbView.setState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
     } }
-    private void show(String who,String s) { if (conversation != null) conversation.append("\n"+who+"\n"+s+"\n"); }
+    private void show(String who,String s) {
+        if(conversationList==null)return;
+        final float d=getResources().getDisplayMetrics().density;
+        boolean fromUser=who!=null&&(who.equalsIgnoreCase("YOU")||who.equalsIgnoreCase("COMMANDER"));
+        LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL);
+        row.setGravity(fromUser?Gravity.END:Gravity.START); row.setPadding(0,(int)(4*d),0,(int)(4*d));
+        TextView label=new TextView(this); label.setText(fromUser?"YOU":"JARVIS");
+        label.setTextColor(fromUser?Color.rgb(104,203,255):Color.rgb(111,226,207));
+        label.setTextSize(9); label.setLetterSpacing(0.12f);
+        label.setPadding((int)(10*d),0,(int)(10*d),(int)(4*d));
+        row.addView(label,new LinearLayout.LayoutParams(-2,-2));
+        TextView message=new TextView(this); message.setText(s==null?"":s);
+        message.setTextColor(Color.rgb(232,241,252)); message.setTextSize(14);
+        message.setLineSpacing(3*d,1.04f); message.setPadding((int)(13*d),(int)(10*d),(int)(13*d),(int)(10*d));
+        message.setBackground(panel(fromUser?Color.rgb(19,49,75):Color.rgb(14,29,49),
+            fromUser?Color.rgb(44,107,148):Color.rgb(35,70,99),18));
+        LinearLayout.LayoutParams bubble=new LinearLayout.LayoutParams(
+            fromUser?(int)(getResources().getDisplayMetrics().widthPixels*0.78f):-2,-2);
+        bubble.setMargins(fromUser?(int)(34*d):0,0,fromUser?0:(int)(34*d),0);
+        row.addView(message,bubble);
+        message.setOnLongClickListener(v -> { copyResponse(message.getText().toString()); return true; });
+        if (!fromUser) {
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            actions.setGravity(Gravity.CENTER_VERTICAL);
+            actions.setPadding((int)(8*d), (int)(3*d), 0, 0);
+            addMessageAction(actions, "Copy", () -> copyResponse(message.getText().toString()));
+            addMessageAction(actions, "Like", () -> saveResponseFeedback("like"));
+            addMessageAction(actions, "Dislike", () -> saveResponseFeedback("dislike"));
+            addMessageAction(actions, "Read", () -> speak(message.getText().toString()));
+            addMessageAction(actions, "Share", () -> shareResponse(message.getText().toString()));
+            addMessageAction(actions, "Retry", () -> { if (!lastUserPrompt.isEmpty()) handle(lastUserPrompt); });
+            row.addView(actions, new LinearLayout.LayoutParams(-2, (int)(34*d)));
+        }
+        conversationList.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        conversationScroll.post(()->conversationScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void addMessageAction(LinearLayout parent, String title, Runnable action) {
+        final float d = getResources().getDisplayMetrics().density;
+        TextView button = new TextView(this);
+        button.setText(title);
+        button.setTextColor(Color.rgb(139, 171, 199));
+        button.setTextSize(11);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding((int)(7*d), 0, (int)(7*d), 0);
+        button.setOnClickListener(v -> action.run());
+        parent.addView(button, new LinearLayout.LayoutParams(-2, -1));
+    }
+
+    private void copyResponse(String text) {
+        ClipboardManager clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("JARVIS response", text == null ? "" : text));
+            Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareResponse(String text) {
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+        startActivity(Intent.createChooser(share, "Share JARVIS response"));
+    }
+
+    private void saveResponseFeedback(String type) {
+        String key = "response_feedback_" + type;
+        int count = memory.getInt(key, 0) + 1;
+        memory.edit().putInt(key, count).apply();
+        Toast.makeText(this, type.equals("like") ? "Thanks for the feedback" : "Feedback saved", Toast.LENGTH_SHORT).show();
+    }
     @Override protected void onResume() {
         super.onResume();
+        wakeReceiverActive = wakeReceiverRegistered;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && !WakeWordService.isRunning)
             startAlwaysOnWakeService();
-        if (dashboard != null) refreshDashboard();
+        refreshUiStatus();
     }
-    @Override protected void onPause() { super.onPause(); }
-    @Override protected void onDestroy() { if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; wakeReceiverActive=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
+    @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
+    @Override protected void onDestroy() { if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }

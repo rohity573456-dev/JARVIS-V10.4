@@ -42,19 +42,23 @@ public final class JarvisOrbView extends View {
         float cx=w*0.5f, cy=h*0.48f;
         float radius=Math.min(w*0.29f,h*0.43f);
         float t=(SystemClock.uptimeMillis()-startedAt)/1000f;
+        float pulse=1.0f+0.035f*(float)Math.sin(t*2.35f);
         boolean active="LISTENING".equals(state) || "THINKING".equals(state);
-        int core= "SPEAKING".equals(state) ? Color.rgb(80,245,255) :
-            ("LISTENING".equals(state) ? Color.rgb(80,255,180) : Color.rgb(30,185,255));
+        int core= "SPEAKING".equals(state) ? Color.rgb(190,170,255) :
+            ("LISTENING".equals(state) ? Color.rgb(130,225,255) : Color.rgb(110,170,255));
 
         paint.setStyle(Paint.Style.FILL);
         paint.setShader(new RadialGradient(cx,cy,radius*1.55f,
             new int[]{0x4430dfff,0x1820aaff,0x00000000},null,Shader.TileMode.CLAMP));
-        canvas.drawCircle(cx,cy,radius*1.55f,paint);
+        canvas.drawCircle(cx,cy,radius*1.55f*pulse,paint);
         paint.setShader(null);
 
         paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.1f);
+        paint.setColor(0x3330dfff);
+        canvas.drawCircle(cx,cy,radius*1.38f*pulse,paint);
         paint.setStrokeWidth(2.0f);
-        paint.setColor(0x5530dfff);
+        paint.setColor(0x6630dfff);
         canvas.drawCircle(cx,cy,radius*1.22f,paint);
 
         paint.setStrokeWidth(2.5f);
@@ -96,13 +100,18 @@ public final class JarvisOrbView extends View {
         canvas.drawText(state,cx,cy+radius*0.28f,paint);
 
         paint.setColor(0xffb9f7ff);
-        for(int i=0;i<8;i++) {
-            double a=t*(active?1.5:0.75)+i*Math.PI/4.0;
-            float px=cx+(float)Math.cos(a)*radius*1.17f;
-            float py=cy+(float)Math.sin(a)*radius*0.70f;
-            canvas.drawCircle(px,py,2.0f+(i%3)*0.65f,paint);
+        for(int i=0;i<12;i++) {
+            double a=t*(active?1.5:0.75)+i*Math.PI/6.0;
+            float orbit=radius*(1.13f+(i%3)*0.055f);
+            float px=cx+(float)Math.cos(a)*orbit;
+            float py=cy+(float)Math.sin(a)*orbit*0.72f;
+            paint.setAlpha(115+(int)(100*(0.5+0.5*Math.sin(t*2.0+i))));
+            canvas.drawCircle(px,py,1.4f+(i%3)*0.55f,paint);
         }
-        if (isAttachedToWindow()) postInvalidateDelayed(32);
+        paint.setAlpha(255);
+        // Follow the display vsync instead of a fixed 32 ms timer (about 31 FPS).
+        // Android will schedule this at the supported panel cadence, including 90 Hz.
+        if (isAttachedToWindow()) postInvalidateOnAnimation();
     }
 
     @Override protected void onDetachedFromWindow() {
