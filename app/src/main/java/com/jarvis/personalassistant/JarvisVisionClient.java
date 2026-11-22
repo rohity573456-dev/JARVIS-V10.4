@@ -51,13 +51,14 @@ public final class JarvisVisionClient {
 
             String safeModel = model == null || model.trim().isEmpty() ? "gemini-2.5-flash" : model.trim();
             String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/"
-                + safeModel + ":generateContent?key=" + java.net.URLEncoder.encode(apiKey,"UTF-8");
+                + safeModel + ":generateContent";
             connection = (HttpURLConnection)new URL(endpoint).openConnection();
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(60000);
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type","application/json");
+            connection.setRequestProperty("x-goog-api-key",apiKey);
 
             JSONObject inline = new JSONObject();
             inline.put("mime_type","image/jpeg");
