@@ -21,8 +21,6 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.util.Locale;
 
 public class WakeWordService extends Service {
@@ -195,8 +193,6 @@ public class WakeWordService extends Service {
                 if (recorder == null) break;
                 int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
                 if (count > 0) {
-                    float[] samples = new float[count];
-                    for (int i = 0; i < count; i++) samples[i] = pcm[i] / 32768.0f;
                     if (wakeWordEngine != null && wakeWordEngine.acceptAudio(pcm, count)) {
                         wakeDetected = true;
                         android.util.Log.i("JARVIS-OWW", "Wake word detected");
