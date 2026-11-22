@@ -59,6 +59,8 @@ public class WakeWordService extends Service {
     private volatile boolean running = false;
     private volatile boolean wakeDetected = false;
     private volatile boolean recording = false;
+    private volatile boolean speechPlaying = false;
+    private volatile String activeUtteranceId = "";
     private AudioRecord audioRecord;
     private Thread audioThread;
     private KeywordSpotter keywordSpotter;
@@ -77,6 +79,12 @@ public class WakeWordService extends Service {
                 tts.setLanguage(new Locale("en", "IN"));
                 tts.setPitch(0.78f);
                 tts.setSpeechRate(0.90f);
+                tts.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
+                    @Override public void onStart(String utteranceId) { speechPlaying = true; }
+                    @Override public void onDone(String utteranceId) { finishSpeech(utteranceId); }
+                    @Override public void onError(String utteranceId) { finishSpeech(utteranceId); }
+                    @Override public void onStop(String utteranceId, boolean interrupted) { finishSpeech(utteranceId); }
+                });
                 ttsReady = true;
                 if (pendingSpeech != null) {
                     String queued = pendingSpeech;
@@ -219,7 +227,7 @@ public class WakeWordService extends Service {
     }
 
     private void startAudioCapture() {
-        if (!running || recording || wakeDetected) return;
+        if (!running || recording || wakeDetected || speechPlaying) return;
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
             stopSelf();
@@ -513,7 +521,21 @@ public class WakeWordService extends Service {
             pendingSpeech = text;
             return;
         }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-service");
+        String id = "jarvis-service-" + System.nanoTime();
+        activeUtteranceId = id;
+        speechPlaying = true;
+        int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
+        if (result == TextToSpeech.ERROR) finishSpeech(id);
+    }
+
+    private void finishSpeech(String utteranceId) {
+        if (utteranceId == null || !utteranceId.equals(activeUtteranceId)) return;
+        handler.post(() -> {
+            if (!utteranceId.equals(activeUtteranceId)) return;
+            speechPlaying = false;
+            activeUtteranceId = "";
+            if (running && !recording && !wakeDetected) startAudioCapture();
+        });
     }
 
     @Override public void onDestroy() {
