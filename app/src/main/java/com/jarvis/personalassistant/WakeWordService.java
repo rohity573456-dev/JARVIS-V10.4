@@ -54,6 +54,8 @@ public class WakeWordService extends Service {
     private TextToSpeech tts;
     private boolean ttsReady = false;
     private String pendingSpeech;
+    private Intent pendingCommandSpeechIntent;
+    private int audioRecoveryAttempts = 0;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -186,6 +188,7 @@ public class WakeWordService extends Service {
 
             recording = true;
             isRunning = true;
+            audioRecoveryAttempts = 0;
             audioThread = new Thread(this::processAudio, "Jarvis-Continuous-KWS");
             audioThread.start();
         } catch (SecurityException e) {
@@ -284,7 +287,8 @@ public class WakeWordService extends Service {
     private void beginCommandCapture() {
         if (!running || !wakeDetected) return;
         commandCaptureFinished = false;
-        speak("Yes, Pratik Boss.");
+        pendingCommandSpeechIntent = null;
+
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             commandCaptureFinished = true;
             wakeDetected = false;
@@ -326,15 +330,32 @@ public class WakeWordService extends Service {
             speech.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
             speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
             speech.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+            speech.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L);
+            speech.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L);
+            speech.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L);
 
-            // Allow the spoken acknowledgement to finish before command capture.
-            handler.postDelayed(() -> {
-                if (running && commandRecognizer != null) {
-                    try { commandRecognizer.startListening(speech); }
-                    catch (Exception e) { finishCommandCapture(); }
-                }
-            }, 900);
+            // Start command recognition immediately after the spoken acknowledgement
+            // finishes, instead of relying on a fixed 900 ms delay.
+            pendingCommandSpeechIntent = speech;
+            speak("Yes, Pratik Boss.");
+            if (pendingCommandSpeechIntent != null && ttsReady && !speechPlaying) {
+                startPendingCommandRecognition();
+            }
         } catch (Exception e) {
+            finishCommandCapture();
+        }
+    }
+
+    private void startPendingCommandRecognition() {
+        Intent speech = pendingCommandSpeechIntent;
+        pendingCommandSpeechIntent = null;
+        if (!running || !wakeDetected || commandCaptureFinished || commandRecognizer == null || speech == null) {
+            return;
+        }
+        try {
+            commandRecognizer.startListening(speech);
+        } catch (Exception e) {
+            android.util.Log.w("JARVIS-ASR", "Command recognizer start failed", e);
             finishCommandCapture();
         }
     }
@@ -344,6 +365,7 @@ public class WakeWordService extends Service {
         // Finish this wake cycle only once.
         if (commandCaptureFinished) return;
         commandCaptureFinished = true;
+        pendingCommandSpeechIntent = null;
         if (commandRecognizer != null) {
             try { commandRecognizer.cancel(); } catch (Exception ignored) {}
             try { commandRecognizer.destroy(); } catch (Exception ignored) {}
@@ -483,7 +505,11 @@ public class WakeWordService extends Service {
         recording = false;
         isRunning = false;
         releaseAudioRecord();
-        restartStandby(1500);
+        audioRecoveryAttempts = Math.min(audioRecoveryAttempts + 1, 6);
+        long retryDelayMs = Math.min(1500L << (audioRecoveryAttempts - 1), 30000L);
+        android.util.Log.i("JARVIS-KWS", "Retrying microphone in " + retryDelayMs
+                + " ms (attempt " + audioRecoveryAttempts + ")");
+        restartStandby(retryDelayMs);
     }
 
     private synchronized void releaseAudioRecord() {
@@ -517,7 +543,12 @@ public class WakeWordService extends Service {
             if (!utteranceId.equals(activeUtteranceId)) return;
             speechPlaying = false;
             activeUtteranceId = "";
-            if (running && !recording && !wakeDetected) startAudioCapture();
+            if (running && wakeDetected && !commandCaptureFinished
+                    && pendingCommandSpeechIntent != null) {
+                startPendingCommandRecognition();
+            } else if (running && !recording && !wakeDetected) {
+                startAudioCapture();
+            }
         });
     }
 
@@ -526,6 +557,7 @@ public class WakeWordService extends Service {
         isRunning = false;
         recording = false;
         wakeDetected = false;
+        pendingCommandSpeechIntent = null;
         handler.removeCallbacksAndMessages(null);
 
         if (commandRecognizer != null) {
