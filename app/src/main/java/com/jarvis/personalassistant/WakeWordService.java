@@ -26,6 +26,11 @@ import com.k2fsa.sherpa.onnx.KeywordSpotterConfig;
 import com.k2fsa.sherpa.onnx.OnlineModelConfig;
 import com.k2fsa.sherpa.onnx.OnlineStream;
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
+import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
+import com.k2fsa.sherpa.onnx.OnlineZipformer2CtcModelConfig;
+import com.k2fsa.sherpa.onnx.OnlineNeMoCtcModelConfig;
+import com.k2fsa.sherpa.onnx.OnlineToneCtcModelConfig;
+import com.k2fsa.sherpa.onnx.QnnConfig;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -155,31 +160,40 @@ public class WakeWordService extends Service {
             }
 
             String prefix = dir.getAbsolutePath() + "/";
-            OnlineTransducerModelConfig transducer = OnlineTransducerModelConfig.builder()
-                    .setEncoder(prefix + MODEL_FILES[0])
-                    .setDecoder(prefix + MODEL_FILES[1])
-                    .setJoiner(prefix + MODEL_FILES[2])
-                    .build();
-            OnlineModelConfig model = OnlineModelConfig.builder()
-                    .setTransducer(transducer)
-                    .setTokens(prefix + "tokens.txt")
-                    .setNumThreads(2)
-                    .setDebug(false)
-                    .setProvider("cpu")
-                    .build();
-            FeatureConfig features = FeatureConfig.builder()
-                    .setSampleRate(SAMPLE_RATE).setFeatureDim(80).build();
-            KeywordSpotterConfig config = KeywordSpotterConfig.builder()
-                    .setFeatureConfig(features)
-                    .setOnlineModelConfig(model)
-                    .setKeywordsFile(prefix + "keywords.txt")
-                    .setKeywordsThreshold(0.40f)
-                    .setKeywordsScore(1.5f)
-                    .setMaxActivePaths(4)
-                    .build();
+            // sherpa-onnx 2.0.1 Android AAR exposes Kotlin data-class
+            // constructors (not the Java builder API).
+            OnlineTransducerModelConfig transducer = new OnlineTransducerModelConfig(
+                    prefix + MODEL_FILES[0],
+                    prefix + MODEL_FILES[1],
+                    prefix + MODEL_FILES[2],
+                    new QnnConfig("", "", ""));
+            OnlineModelConfig model = new OnlineModelConfig(
+                    transducer,
+                    new OnlineParaformerModelConfig("", ""),
+                    new OnlineZipformer2CtcModelConfig(""),
+                    new OnlineNeMoCtcModelConfig(""),
+                    new OnlineToneCtcModelConfig(""),
+                    prefix + "tokens.txt",
+                    2,
+                    false,
+                    "cpu",
+                    "zipformer2",
+                    "",
+                    "");
+            FeatureConfig features = new FeatureConfig(SAMPLE_RATE, 80, 0.0f);
+            KeywordSpotterConfig config = new KeywordSpotterConfig(
+                    features,
+                    model,
+                    4,
+                    prefix + "keywords.txt",
+                    1.5f,
+                    0.40f,
+                    2);
 
-            keywordSpotter = new KeywordSpotter(config);
-            keywordStream = keywordSpotter.createStream();
+            // Null AssetManager selects file-path loading because model files
+            // have already been copied to this app's private files directory.
+            keywordSpotter = new KeywordSpotter(null, config);
+            keywordStream = keywordSpotter.createStream("");
             handler.post(this::startAudioCapture);
         } catch (Exception e) {
             android.util.Log.e("JARVIS-KWS", "Offline wake engine initialization failed", e);
