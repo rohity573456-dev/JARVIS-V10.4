@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId 'com.jarvis.personalassistant'
-        minSdk 24
+        minSdk 26
         targetSdk 35
         versionCode 22
         versionName '10.4-onnx-wake-migration'
