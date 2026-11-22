@@ -388,12 +388,14 @@ public class WakeWordService extends Service {
                 @Override public void onResults(android.os.Bundle results) {
                     java.util.ArrayList<String> matches =
                             results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                    String command = matches == null || matches.isEmpty() ? "" : matches.get(0).trim();
                     float[] confidenceScores = results.getFloatArray("confidence_scores");
-                    float confidence = confidenceScores == null || confidenceScores.length == 0
-                            ? Float.NaN : confidenceScores[0];
-                    if (CommandResultGuard.isUsable(command, confidence)) dispatchCommand(command);
-                    else android.util.Log.i("JARVIS-ASR", "Rejected low-confidence, empty, or wake-only transcript");
+                    String command = CommandResultGuard.selectBest(matches, confidenceScores);
+                    if (!command.isEmpty()) {
+                        dispatchCommand(command);
+                    } else {
+                        android.util.Log.i("JARVIS-ASR",
+                                "Rejected low-confidence, empty, or wake-only transcript alternatives");
+                    }
                     stopInjectedCommandAudio();
                     finishCommandCapture();
                 }
