@@ -31,4 +31,11 @@ public class JarvisHybridBrainTest {
         assertFalse(JarvisHybridBrain.shouldUseAstra("Explain relativity simply", true));
     }
 
+    @Test public void onlyComplexAstraTasksTriggerSecondPassVerification() {
+        assertTrue(JarvisHybridBrain.shouldVerifyAstraAnswer("Debug this Java crash", true));
+        assertTrue(JarvisHybridBrain.shouldVerifyAstraAnswer("Research current battery chemistry", true));
+        assertFalse(JarvisHybridBrain.shouldVerifyAstraAnswer("Hello", true));
+        assertFalse(JarvisHybridBrain.shouldVerifyAstraAnswer("Debug this Java crash", false));
+    }
+
 }
