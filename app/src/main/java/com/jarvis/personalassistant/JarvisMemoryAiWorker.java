@@ -11,28 +11,51 @@ public final class JarvisMemoryAiWorker {
     private static final ExecutorService EXECUTOR=Executors.newSingleThreadExecutor();
     private JarvisMemoryAiWorker(){}
 
+    public interface ConsentGate { boolean isAllowed(); }
+    private static final ConsentGate DENY_BY_DEFAULT = () -> false;
+
+    /** Legacy callers fail closed; production callers must supply a live consent gate. */
     public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,String text){
-        if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text))return;
-        if(empty(gKey)&&empty(rKey)&&empty(openAiKey))return;
-        EXECUTOR.execute(()->storeFacts(db,parseArray(ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text))),"ai-conversation"));
+        learnAsync(db,gKey,gModel,rKey,rModel,openAiKey,text,DENY_BY_DEFAULT);
     }
 
-    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey){
-        if(db==null||(empty(gKey)&&empty(rKey)&&empty(openAiKey)))return;
+    public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,String text,ConsentGate consent){
+        if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text)||
+                consent==null||!consent.isAllowed())return;
+        if(empty(gKey)&&empty(rKey)&&empty(openAiKey))return;
         EXECUTOR.execute(()->{
+            if(!consent.isAllowed())return;
+            String result=ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text));
+            if(!consent.isAllowed())return;
+            storeFacts(db,parseArray(result),"ai-conversation");
+        });
+    }
+
+    /** Legacy callers fail closed; production callers must supply a live consent gate. */
+    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey){
+        reflectPendingAsync(db,gKey,gModel,rKey,rModel,openAiKey,DENY_BY_DEFAULT);
+    }
+
+    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,ConsentGate consent){
+        if(db==null||(empty(gKey)&&empty(rKey)&&empty(openAiKey))||consent==null||!consent.isAllowed())return;
+        EXECUTOR.execute(()->{
+            if(!consent.isAllowed())return;
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
             for(JarvisMemoryStore.PendingSession session:sessions){
+                if(!consent.isAllowed())return;
                 String prompt="Review this completed conversation session. Return JSON only: "+
-                    "{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\","+
-                    "\"type\":\"core|semantic|procedural|episodic\",\"key\":\"stable.key\",\"content\":\"durable fact\","+
-                    "\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} "+
+                    "{\\"summary\\":\\"short factual summary\\",\\"facts\\":[{\\"category\\":\\"profile|preference|goal|project|general\\","+
+                    "\\"type\\":\\"core|semantic|procedural|episodic\\",\\"key\\":\\"stable.key\\",\\"content\\":\\"durable fact\\","+
+                    "\\"subject\\":\\"entity\\",\\"relation\\":\\"relation\\",\\"object\\":\\"value\\",\\"confidence\\":0.8,\\"importance\\":60,\\"pinned\\":false}]} "+
                     "Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. "+
-                    "Summary under 600 chars. Session:\n"+session.transcript;
+                    "Summary under 600 chars. Session:\\n"+session.transcript;
                 JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,openAiKey,prompt));
+                if(!consent.isAllowed())return;
                 if(root==null)continue;
                 String summary=root.optString("summary","").trim();
-                if(!summary.isEmpty() && summary.length()<=600 && !sensitive(summary))
+                if(!summary.isEmpty() && summary.length()<=600 && !sensitive(summary) && consent.isAllowed())
                     db.saveAiSessionReflection(session.sessionId,summary);
+                if(!consent.isAllowed())return;
                 storeFacts(db,root.optJSONArray("facts"),"ai-reflection");
             }
         });
