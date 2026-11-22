@@ -1,0 +1,3 @@
+trial_id,split,expected_wake,phrase_or_negative_type,speaker_id,distance_m,speech_level,noise_condition,noise_level_db,device_model,android_version,screen_state,service_active,detected,wake_latency_ms,false_wake_count,trial_duration_s,apk_commit,model_version,gate_config,notes
+P001,evaluation,1,Jarvis,S01,0.5,quiet,quiet_room,, , ,on,1,,,,, ,Jarvis_20260313_215039,Phase4_adaptive,
+N001,evaluation,0,conversation,S01,1.5,normal,fan,, , ,on,1,,,,, ,Jarvis_20260313_215039,Phase4_adaptive,
