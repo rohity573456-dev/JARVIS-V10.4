@@ -367,7 +367,7 @@ public class MainActivity extends Activity {
         else if (q.equals("tasks") || q.equals("task list") || q.equals("reminders") || q.equals("show tasks")) { answer=longTermMemory==null?"Task store unavailable.":longTermMemory.getTasksText(false); }
         else if (q.startsWith("task done ") || q.startsWith("task complete ")) { long id=parseLong(raw.replaceFirst("(?i)^task (done|complete)\\s*","").trim()); boolean done=longTermMemory!=null && longTermMemory.completeTask(id); if(done)JarvisReminderScheduler.cancel(this,id); answer=done?"Task #"+id+" complete mark kar diya.":"Task ID nahi mili."; }
         else if (q.startsWith("task delete ")) { long id=parseLong(raw.replaceFirst("(?i)^task delete\\s*","").trim()); boolean removed=longTermMemory!=null && longTermMemory.deleteTask(id); if(removed)JarvisReminderScheduler.cancel(this,id); answer=removed?"Task #"+id+" delete kar diya.":"Task ID nahi mili."; }
-        else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); saveNote(note); answer="Memory mein save kar diya: "+note; }
+        else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); answer=saveNote(note)?"Memory mein save kar diya: "+note:"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai."; }
         else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
@@ -383,7 +383,8 @@ public class MainActivity extends Activity {
                     float[] queryVector = useCloudVector ? JarvisEmbeddingClient.embed(geminiKey, raw, true) : null;
                     final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
-                    final String prompt = memoryContext + "\nLegacy saved note: " + memory.getString("note", "none") + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
+                    final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
+                    final String prompt = memoryContext + "\nLegacy saved note: " + legacyNote + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
                     String result = "ERROR: No provider key configured.";
                     if (!geminiKey.isEmpty()) {
                         result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai", geminiKey,
@@ -421,10 +422,14 @@ public class MainActivity extends Activity {
             }
         } return false;
     }
-    private void saveNote(String note) {
-        if (note == null || note.trim().isEmpty()) return;
+    private boolean saveNote(String note) {
+        if (note == null || note.trim().isEmpty() || longTermMemory == null) return false;
+        long id = longTermMemory.saveMemory("personal", note.trim());
+        if (id <= 0) return false;
+        // Keep the legacy backup only after the secure memory store accepted the content.
         memory.edit().putString("note",note.trim()).apply();
-        if (longTermMemory != null && longTermMemory.saveMemory("personal", note.trim()) > 0) indexSemanticMemoryIfEnabled(1);
+        indexSemanticMemoryIfEnabled(1);
+        return true;
     }
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
@@ -432,7 +437,7 @@ public class MainActivity extends Activity {
         String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
             .setItems(options,(d,which)->{
-                if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->{saveNote(in.getText().toString());respond("Memory saved locally.");}).setNegativeButton("CANCEL",null).show();}
+                if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->respond(saveNote(in.getText().toString())?"Memory saved locally.":"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai.")).setNegativeButton("CANCEL",null).show();}
                 else if(which==1){EditText in=new EditText(this);in.setHint("Search word or phrase");new AlertDialog.Builder(this).setTitle("SEARCH MEMORY").setView(in).setPositiveButton("SEARCH",(x,y)->show("MEMORY RESULTS",longTermMemory==null?"Unavailable":longTermMemory.searchMemories(in.getText().toString(),50))).setNegativeButton("CANCEL",null).show();}
                 else if(which==2){EditText in=new EditText(this);in.setHint("ID | replacement text");new AlertDialog.Builder(this).setTitle("EDIT MEMORY").setMessage("Format: 4 | My favourite colour is blue").setView(in).setPositiveButton("UPDATE",(x,y)->{String[] p=in.getText().toString().split("\\|",2);if(p.length==2&&longTermMemory!=null&&longTermMemory.updateMemory(parseLong(p[0].trim()),"personal",p[1].trim()))respond("Memory updated.");else respond("Format or ID invalid.");}).setNegativeButton("CANCEL",null).show();}
                 else if(which==3){EditText in=new EditText(this);in.setHint("Memory ID");new AlertDialog.Builder(this).setTitle("DELETE MEMORY").setView(in).setPositiveButton("DELETE",(x,y)->respond(longTermMemory!=null&&longTermMemory.deleteMemory(parseLong(in.getText().toString()))?"Memory deleted.":"Memory ID not found.")).setNegativeButton("CANCEL",null).show();}
@@ -479,7 +484,7 @@ public class MainActivity extends Activity {
         String tasks=longTermMemory==null?"Unavailable":longTermMemory.getTasksText(true);
         new AlertDialog.Builder(this).setTitle("TASKS & REMINDERS").setMessage(tasks).setView(in)
             .setPositiveButton("ADD TASK",(d,w)->{long id=longTermMemory==null?-1:longTermMemory.addTask(in.getText().toString(),0);respond(id>0?"Task saved as #"+id+". Say task done "+id+" when completed.":"Enter a task first.");})
-            .setNeutralButton("MARK DONE",(d,w)->{EditText id=new EditText(this);id.setHint("Task ID");new AlertDialog.Builder(this).setTitle("COMPLETE TASK").setView(id).setPositiveButton("DONE",(x,y)->respond(longTermMemory!=null&&longTermMemory.completeTask(parseLong(id.getText().toString()))?"Task completed.":"Task ID not found.")).setNegativeButton("CANCEL",null).show();})
+            .setNeutralButton("MARK DONE",(d,w)->{EditText id=new EditText(this);id.setHint("Task ID");new AlertDialog.Builder(this).setTitle("COMPLETE TASK").setView(id).setPositiveButton("DONE",(x,y)->{long taskId=parseLong(id.getText().toString()); boolean done=longTermMemory!=null&&longTermMemory.completeTask(taskId); if(done)JarvisReminderScheduler.cancel(this,taskId); respond(done?"Task completed.":"Task ID not found.");}).setNegativeButton("CANCEL",null).show();})
             .setNegativeButton("CLOSE",null).show();
     }
     private long parseLong(String s){try{return Long.parseLong(s.trim());}catch(Exception e){return -1;}}
