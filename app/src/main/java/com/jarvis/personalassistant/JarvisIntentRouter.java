@@ -48,7 +48,7 @@ final class JarvisIntentRouter {
         String q = normalize(raw);
         if (oneOf(q, "system status", "system report", "show system report",
                 "show system status", "phone status", "device status",
-                "phone system status", "ram status", "storage status",
+                "phone system status", "ram", "storage", "phone ram", "phone storage",\n                "ram kitni hai", "ram kitna free hai", "storage kitna bacha", "storage kitni bachi hai",\n                "ram status", "storage status",
                 "available storage", "free storage", "ram usage",
                 "system report dikhao", "phone ka status batao",
                 "system status batao", "system report batao", "phone ka status batao")) return true;
