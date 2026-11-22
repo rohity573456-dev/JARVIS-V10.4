@@ -61,8 +61,10 @@ public final class JarvisMemoryAiWorker {
             if(content.length()<4||content.length()>500||key.isEmpty()||sensitive(content))continue;
             String type=f.optString("type","semantic");
             if(!("core".equals(type)||"semantic".equals(type)||"procedural".equals(type)||"episodic".equals(type)))type="semantic";
+            long validFrom=f.optLong("valid_from",0),validUntil=f.optLong("valid_until",0);
             long id=db.upsertFact(f.optString("category","general"),type,key,content,
                 f.optDouble("confidence",0.70),f.optInt("importance",55),f.optBoolean("pinned",false),source);
+            if(id>0&&(validFrom>0||validUntil>0))db.setMemoryValidity(id,validFrom,validUntil);
             String object=f.optString("object","").trim();
             if(id>0&&!object.isEmpty())db.addGraphRelation(id,f.optString("subject","Commander"),
                 f.optString("relation","related_to"),object,f.optDouble("confidence",0.70),

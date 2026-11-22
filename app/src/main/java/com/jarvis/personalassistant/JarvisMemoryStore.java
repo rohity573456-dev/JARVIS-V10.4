@@ -24,7 +24,7 @@ import java.util.UUID;
  */
 public final class JarvisMemoryStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "jarvis_long_term_memory.db";
-    private static final int DB_VERSION = 5;
+    private static final int DB_VERSION = 6;
     private static final String MEMORIES = "memories";
     private static final String CONVERSATIONS = "conversations";
     private static final String TASKS = "tasks";
@@ -113,6 +113,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS memory_sessions (" +
             "session_id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, ended_at INTEGER NOT NULL, " +
             "turn_count INTEGER NOT NULL DEFAULT 0, summary TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE TABLE IF NOT EXISTS memory_ai_reflections (session_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS memory_summaries (" +
             "id INTEGER PRIMARY KEY AUTOINCREMENT, summary_type TEXT NOT NULL, summary_key TEXT NOT NULL UNIQUE, " +
             "content TEXT NOT NULL, importance INTEGER NOT NULL DEFAULT 50, created_at INTEGER NOT NULL)");
@@ -288,6 +289,16 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
             db.setTransactionSuccessful();
             return deleted;
         } finally { db.endTransaction(); }
+    }
+
+    public synchronized void setMemoryValidity(long id,long validFrom,long validUntil) {
+        if(id<=0)return;
+        ContentValues v=new ContentValues();
+        if(validFrom>0)v.put("valid_from",validFrom);
+        v.put("valid_until",Math.max(0,validUntil));
+        if(validUntil>0&&validUntil<System.currentTimeMillis())v.put("is_active",0);
+        else v.put("is_active",1);
+        getWritableDatabase().update(MEMORIES,v,"id=?",new String[]{String.valueOf(id)});
     }
 
     public synchronized boolean setMemoryPinned(long id, boolean pinned) {
@@ -484,7 +495,9 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         List<PendingSession> out=new ArrayList<>();
         long cutoff=System.currentTimeMillis()-20L*60L*1000L;
         Cursor sessions=getReadableDatabase().rawQuery(
-            "SELECT session_id FROM memory_sessions WHERE summary='' AND turn_count>=4 AND ended_at<=? ORDER BY ended_at ASC LIMIT ?",
+            "SELECT s.session_id FROM memory_sessions s WHERE s.turn_count>=4 AND s.ended_at<=? " +
+            "AND NOT EXISTS(SELECT 1 FROM memory_ai_reflections r WHERE r.session_id=s.session_id) " +
+            "ORDER BY s.ended_at ASC LIMIT ?",
             new String[]{String.valueOf(cutoff),String.valueOf(Math.max(1,Math.min(10,limit)))});
         List<String> ids=new ArrayList<>();
         try{while(sessions.moveToNext())ids.add(sessions.getString(0));}finally{sessions.close();}
@@ -505,8 +518,11 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         if(sessionId==null||summary==null||summary.trim().isEmpty())return;
         String clean=summary.trim();ContentValues v=new ContentValues();v.put("summary",clean);
         getWritableDatabase().update("memory_sessions",v,"session_id=?",new String[]{sessionId});
+        long now=System.currentTimeMillis();
+        ContentValues marker=new ContentValues();marker.put("session_id",sessionId);marker.put("created_at",now);
+        getWritableDatabase().insertWithOnConflict("memory_ai_reflections",null,marker,SQLiteDatabase.CONFLICT_REPLACE);
         ContentValues s=new ContentValues();s.put("summary_type","ai-session");s.put("summary_key","ai-session:"+sessionId);
-        s.put("content",clean);s.put("importance",65);s.put("created_at",System.currentTimeMillis());
+        s.put("content",clean);s.put("importance",65);s.put("created_at",now);
         getWritableDatabase().insertWithOnConflict("memory_summaries",null,s,SQLiteDatabase.CONFLICT_REPLACE);
     }
 
@@ -792,7 +808,8 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         db.delete(CONVERSATIONS, null, null);
         db.delete("memory_sessions", null, null);
-        db.delete("memory_summaries", "summary_type='session'", null);
+        db.delete("memory_ai_reflections",null,null);
+        db.delete("memory_summaries", "summary_type IN ('session','ai-session')", null);
     }
 
     public synchronized int getConversationCount() { return count(getReadableDatabase(), "SELECT COUNT(*) FROM conversations"); }
