@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     private SpeechRecognizer recognizer;
     private SharedPreferences memory;
     private SecureStore secureStore;
+    private JarvisMemoryStore longTermMemory;
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -109,6 +110,7 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarColor(BG);
         memory = getSharedPreferences("jarvis_memory", MODE_PRIVATE);
         secureStore = new SecureStore(this);
+        longTermMemory = new JarvisMemoryStore(this);
         lastResponse = memory.getString("last_response", lastResponse);
         localModelPath = memory.getString("local_model_path", "");
         if (!localModelPath.isEmpty() && !new File(localModelPath).exists()) localModelPath = "";
@@ -326,6 +328,7 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        if (longTermMemory != null) longTermMemory.addConversation("Commander", raw);
         String q=raw.toLowerCase(Locale.ROOT); show("COMMANDER",raw); String answer;
         if (q.contains("time") || q.contains("samay") || q.contains("समय") || q.contains("kitne baje")) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
         else if (q.contains("date") || q.contains("tareekh") || q.contains("तारीख") || q.contains("aaj ki date")) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
@@ -341,7 +344,8 @@ public class MainActivity extends Activity {
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
         else if (q.contains("alarm")) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
         else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); saveNote(note); answer="Memory mein save kar diya: "+note; }
-        else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.contains("memory")) { answer="Aapki saved memory: "+memory.getString("note","Abhi koi note save nahi hai."); }
+        else if (q.startsWith("memory search") || q.startsWith("search memory") || q.startsWith("find memory")) { String term=raw.replaceFirst("(?i)^(memory search|search memory|find memory)\\s*", "").trim(); answer=longTermMemory == null ? "Memory database unavailable." : longTermMemory.searchMemories(term, 30); }
+        else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { answer="Aapki saved long-term memory:\n"+(longTermMemory == null ? memory.getString("note","Abhi koi note save nahi hai.") : longTermMemory.getAllMemoriesText()); }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
         else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Commander. JARVIS systems are ready.";
@@ -350,7 +354,8 @@ public class MainActivity extends Activity {
             String groqKey = secureStore.get("groq_key");
             if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
                 status.setText("● HYBRID AI CONNECTING...");
-                final String prompt = "Saved personal note: " + memory.getString("note", "none") + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
+                final String memoryContext = longTermMemory == null ? "" : longTermMemory.getMemoryContext(raw, 10);
+                final String prompt = memoryContext + "\nLegacy saved note: " + memory.getString("note", "none") + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
                 new Thread(() -> {
                     String result = "ERROR: No provider key configured.";
                     if (!geminiKey.isEmpty()) {
@@ -389,12 +394,21 @@ public class MainActivity extends Activity {
             }
         } return false;
     }
-    private void saveNote(String note) { if(note.length()>0) memory.edit().putString("note",note).apply(); }
+    private void saveNote(String note) {
+        if (note == null || note.trim().isEmpty()) return;
+        memory.edit().putString("note",note.trim()).apply();
+        if (longTermMemory != null) longTermMemory.saveMemory("personal", note.trim());
+    }
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
     private void memoryDialog() {
-        EditText input=new EditText(this); input.setHint("JARVIS ko kya yaad rakhna hai?"); input.setText(memory.getString("note",""));
-        new AlertDialog.Builder(this).setTitle("LONG-TERM MEMORY").setView(input).setPositiveButton("SAVE",(d,w)->{saveNote(input.getText().toString().trim());respond("Memory updated, Commander.");}).setNeutralButton("CLEAR",(d,w)->{memory.edit().remove("note").apply();respond("Saved note cleared.");}).setNegativeButton("CANCEL",null).show();
+        EditText input=new EditText(this); input.setHint("JARVIS ko kya yaad rakhna hai?"); input.setMinLines(2);
+        String saved = longTermMemory == null ? memory.getString("note","No saved memory") : longTermMemory.getAllMemoriesText();
+        new AlertDialog.Builder(this).setTitle("LONG-TERM MEMORY • "+(longTermMemory == null ? 0 : longTermMemory.getMemoryCount())+" SAVED")
+            .setMessage(saved).setView(input)
+            .setPositiveButton("SAVE NEW",(d,w)->{saveNote(input.getText().toString().trim());respond("Memory saved permanently on this device, Commander.");})
+            .setNeutralButton("CLEAR MEMORIES",(d,w)->new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("This permanently clears saved long-term memories. Conversation history is kept.").setPositiveButton("DELETE",(x,y)->{if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("Long-term memories cleared.");}).setNegativeButton("CANCEL",null).show())
+            .setNegativeButton("CLOSE",null).show();
     }
     private void customCommandDialog() {
         LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(24,8,24,8);
@@ -457,7 +471,7 @@ public class MainActivity extends Activity {
 
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
-    private void respond(String s) { lastResponse=s; show("JARVIS",s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
+    private void respond(String s) { lastResponse=s; show("JARVIS",s); if (longTermMemory != null) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
     private void speak(String s) { if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
