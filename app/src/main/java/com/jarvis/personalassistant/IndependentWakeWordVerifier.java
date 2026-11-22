@@ -89,11 +89,16 @@ final class IndependentWakeWordVerifier implements AutoCloseable {
         this.inputShape = tensorInfo.getShape();
         this.melFrames = info.optInt("mel_time", 98);
         this.melBins = info.optInt("n_mels", 32);
+        boolean hasTimeDimension = false;
+        for (int i = 1; i < inputShape.length - 1; i++) {
+            if (inputShape[i] == melFrames) hasTimeDimension = true;
+        }
         if (inputShape.length < 3 || inputShape.length > 4
                 || inputShape[inputShape.length - 1] != melBins
-                || inputShape[inputShape.length - 2] != melFrames) {
+                || !hasTimeDimension) {
             loaded.close();
-            throw new IllegalStateException("Unsupported verifier input shape");
+            throw new IllegalStateException("Unsupported verifier input shape: "
+                    + java.util.Arrays.toString(inputShape));
         }
         this.keywordIndex = foundIndex;
         this.threshold = (float) info.optDouble("threshold", 0.5);
