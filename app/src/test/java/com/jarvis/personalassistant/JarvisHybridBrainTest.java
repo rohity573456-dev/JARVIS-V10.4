@@ -19,4 +19,16 @@ public class JarvisHybridBrainTest {
     @Test public void specialistDirectiveDoesNotClaimTools() {
         assertTrue(JarvisHybridBrain.systemDirective("build my app").contains("Never invent tool results"));
     }
+    @Test public void complexTasksUseAstraOnlyWhenConfigured() {
+        assertTrue(JarvisHybridBrain.shouldUseAstra("Help me debug this Java compile error", true));
+        assertTrue(JarvisHybridBrain.shouldUseAstra("Research the latest battery technology", true));
+        assertFalse(JarvisHybridBrain.shouldUseAstra("Hello JARVIS", true));
+        assertFalse(JarvisHybridBrain.shouldUseAstra("Help me debug this Java compile error", false));
+    }
+
+    @Test public void explicitAstraPrefixRequestsAstraForGeneralQuestions() {
+        assertTrue(JarvisHybridBrain.shouldUseAstra("Astra explain relativity simply", true));
+        assertFalse(JarvisHybridBrain.shouldUseAstra("Explain relativity simply", true));
+    }
+
 }
