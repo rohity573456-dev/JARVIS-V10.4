@@ -898,6 +898,7 @@ public class MainActivity extends Activity {
             startAlwaysOnWakeService();
         if (dashboard != null) refreshDashboard();
     }
-    @Override protected void onPause() { super.onPause(); }
-    @Override protected void onDestroy() { if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; wakeReceiverActive=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
+    @Override protected void onResume() { super.onResume(); wakeReceiverActive = wakeReceiverRegistered; }
+    @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
+    @Override protected void onDestroy() { wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }
