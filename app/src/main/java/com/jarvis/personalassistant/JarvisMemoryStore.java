@@ -406,33 +406,38 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     /** Conversation turns are grouped into sessions (30-minute idle boundary). */
+    /** Conversation turns are grouped into sessions (30-minute idle boundary). */
     public synchronized void addConversation(String speaker, String content) {
         if (content == null || content.trim().isEmpty() || isSensitiveContent(content)) return;
         SQLiteDatabase db = getWritableDatabase();
-        long now = System.currentTimeMillis();
-        String sessionId = null;
-        Cursor last = db.rawQuery("SELECT session_id,created_at FROM conversations ORDER BY created_at DESC LIMIT 1", null);
+        db.beginTransaction();
         try {
-            if (last.moveToFirst() && now - last.getLong(1) <= 30L * 60L * 1000L &&
-                    !"legacy".equals(last.getString(0))) sessionId = last.getString(0);
-        } finally { last.close(); }
-        if (sessionId == null) {
-            sessionId = UUID.randomUUID().toString();
-            ContentValues session = new ContentValues();
-            session.put("session_id", sessionId); session.put("started_at", now);
-            session.put("ended_at", now); session.put("turn_count", 0); session.put("summary", "");
-            db.insertWithOnConflict("memory_sessions", null, session, SQLiteDatabase.CONFLICT_IGNORE);
-        }
-        ContentValues v = new ContentValues();
-        v.put("speaker", speaker == null ? "unknown" : speaker);
-        v.put("content", content.trim());
-        v.put("created_at", now);
-        v.put("session_id", sessionId);
-        db.insert(CONVERSATIONS, null, v);
-        db.execSQL("UPDATE memory_sessions SET ended_at=?,turn_count=turn_count+1 WHERE session_id=?",
-            new Object[]{now, sessionId});
-        db.execSQL("DELETE FROM conversations WHERE id NOT IN (SELECT id FROM conversations ORDER BY created_at DESC,id DESC LIMIT 3000)");
-        pruneOrphanSessions(db);
+            long now = System.currentTimeMillis();
+            String sessionId = null;
+            Cursor last = db.rawQuery("SELECT session_id,created_at FROM conversations ORDER BY created_at DESC,id DESC LIMIT 1", null);
+            try {
+                if (last.moveToFirst() && now - last.getLong(1) <= 30L * 60L * 1000L &&
+                        !"legacy".equals(last.getString(0))) sessionId = last.getString(0);
+            } finally { last.close(); }
+            if (sessionId == null) {
+                sessionId = UUID.randomUUID().toString();
+                ContentValues session = new ContentValues();
+                session.put("session_id", sessionId); session.put("started_at", now);
+                session.put("ended_at", now); session.put("turn_count", 0); session.put("summary", "");
+                db.insertWithOnConflict("memory_sessions", null, session, SQLiteDatabase.CONFLICT_IGNORE);
+            }
+            ContentValues v = new ContentValues();
+            v.put("speaker", speaker == null ? "unknown" : speaker);
+            v.put("content", content.trim());
+            v.put("created_at", now);
+            v.put("session_id", sessionId);
+            db.insert(CONVERSATIONS, null, v);
+            db.execSQL("UPDATE memory_sessions SET ended_at=?,turn_count=turn_count+1 WHERE session_id=?",
+                new Object[]{now, sessionId});
+            db.execSQL("DELETE FROM conversations WHERE id NOT IN (SELECT id FROM conversations ORDER BY created_at DESC,id DESC LIMIT 3000)");
+            pruneOrphanSessions(db);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
 
     private String buildExtractiveSummary(String sessionId) {
@@ -700,8 +705,8 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
             "\nPinned core facts: "+pinned+"\nCloud neural vectors: "+vectors+"\nOffline feature vectors (not neural): "+localVectors+
             "\nConversation turns: "+turns+"\nSessions: "+sessions+"\nSession digests: "+summaries+
             "\nOpen tasks/reminders: "+tasks+"\nTotal stored fact versions: "+total+
-            "\\nOrphan indexes (cloud/local/feedback/edges): "+orphanCloud+"/"+orphanLocal+"/"+orphanFeedback+"/"+orphanEdges+
-            "\\nSessions without conversation turns: "+orphanSessions+
+            "\nOrphan indexes (cloud/local/feedback/edges): "+orphanCloud+"/"+orphanLocal+"/"+orphanFeedback+"/"+orphanEdges+
+            "\nSessions without conversation turns: "+orphanSessions+
             "\nStorage: on-device SQLite (offline-first)";
     }
 
@@ -852,12 +857,11 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     private void pruneOrphanSessions(SQLiteDatabase db) {
+        db.execSQL("DELETE FROM memory_sessions WHERE session_id NOT IN (SELECT DISTINCT session_id FROM conversations)");
         db.execSQL("DELETE FROM memory_ai_reflections WHERE session_id NOT IN (SELECT session_id FROM memory_sessions)");
         db.execSQL("DELETE FROM memory_summaries WHERE summary_type IN ('session','ai-session') " +
             "AND summary_key NOT IN (SELECT 'session:'||session_id FROM memory_sessions) " +
             "AND summary_key NOT IN (SELECT 'ai-session:'||session_id FROM memory_sessions)");
-        db.execSQL("DELETE FROM memory_sessions WHERE session_id NOT IN (SELECT DISTINCT session_id FROM conversations)");
-        db.execSQL("DELETE FROM memory_ai_reflections WHERE session_id NOT IN (SELECT session_id FROM memory_sessions)");
     }
 
     private void pruneOrphanKnowledgeNodes(SQLiteDatabase db) {
