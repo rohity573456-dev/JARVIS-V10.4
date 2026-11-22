@@ -255,8 +255,19 @@ public class WakeWordService extends Service {
                     wakeDetected = true;
                     android.util.Log.i("JARVIS-KWS",
                             "Custom ONNX Jarvis wake word detected: " + confidence);
-                    try { onnxWakeEngine.stop(); } catch (Exception ignored) {}
-                    handler.postDelayed(this::beginCommandCapture, 250);
+                    // OpenWakeWord.stop() joins its audio thread. Never block the
+                    // main-thread detection callback; wait for microphone release off-thread.
+                    new Thread(() -> {
+                        try {
+                            if (onnxWakeEngine != null) onnxWakeEngine.stop();
+                        } catch (Exception stopError) {
+                            android.util.Log.w("JARVIS-KWS",
+                                    "ONNX microphone stop reported an error", stopError);
+                        }
+                        handler.postDelayed(() -> {
+                            if (running && wakeDetected) beginCommandCapture();
+                        }, 250);
+                    }, "Jarvis-ONNX-Stop").start();
                 });
             }
         } catch (Exception error) {
@@ -425,16 +436,17 @@ public class WakeWordService extends Service {
             pendingSpeech = null;
             if (tts != null && speechPlaying) {
                 try { tts.stop(); } catch (Exception ignored) {}
+                // Invalidate a late onStop callback after forcing the timeout path.
+                speechPlaying = false;
+                activeUtteranceId = "";
             }
-            if (!speechPlaying) {
-                try {
-                    commandRecognizer.startListening(speech);
-                } catch (Exception error) {
-                    android.util.Log.e("JARVIS-KWS", "SpeechRecognizer start failed", error);
-                    finishCommandCapture();
-                }
-                return;
+            try {
+                commandRecognizer.startListening(speech);
+            } catch (Exception error) {
+                android.util.Log.e("JARVIS-KWS", "SpeechRecognizer start failed", error);
+                finishCommandCapture();
             }
+            return;
         }
 
         handler.postDelayed(
