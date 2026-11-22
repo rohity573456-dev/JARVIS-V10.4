@@ -1,0 +1,52 @@
+name: JARVIS Public Wake Corpus Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_clips:
+        description: "Optional clip cap for smoke test (0 = entire public corpus)"
+        required: false
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate-public-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout JARVIS
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install audio and ONNX dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install "datasets[audio]" soundfile numpy onnxruntime
+
+      - name: Download licensed public wake corpus
+        run: python tools/prepare_public_wake_corpus.py --limit "${{ inputs.max_clips }}"
+
+      - name: Replay corpus through JARVIS ONNX pipeline
+        run: python tools/evaluate_public_wake_corpus.py
+
+      - name: Calculate labeled-trial metrics
+        run: |
+          python tools/wake_benchmark.py benchmark_data/picovoice/jarvis_onnx_trials.csv \
+            --json benchmark_data/picovoice/jarvis_onnx_report.json
+
+      - name: Upload offline corpus evaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-public-wake-corpus-report
+          path: benchmark_data/picovoice/
+          if-no-files-found: error
+          retention-days: 14

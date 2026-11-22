@@ -213,7 +213,7 @@ def main():
                 "service_active":0,"detected":int(detected),
                 "wake_latency_ms":round(detected_at*1000,1) if detected_at is not None else "",
                 "false_wake_count":int(detected and not positive),
-                "trial_duration_s":round(duration,4),"apk_commit":"88abee5fcdbdb88d97858d8b5ba748f42d4ed405",
+                "trial_duration_s":round(duration,4),"apk_commit":"offline_replay_no_apk",
                 "model_version":"repo_openwakeword_assets","gate_config":GATE_CONFIG,
                 "notes":"Public offline corpus; not live phone mic; speaker identity absent; no background speech/noise claim."
             })
