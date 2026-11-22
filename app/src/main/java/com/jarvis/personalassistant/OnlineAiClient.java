@@ -87,7 +87,6 @@ public final class OnlineAiClient {
             body.put("temperature", 0.1);
             body.put("max_tokens", 2048);
             body.put("tool_choice", "auto");
-            body.put("parallel_tool_calls", false);
             body.put("tools", tools == null ? new JSONArray() : tools);
             JSONArray messages = new JSONArray();
             messages.put(new JSONObject().put("role", "system").put("content",
