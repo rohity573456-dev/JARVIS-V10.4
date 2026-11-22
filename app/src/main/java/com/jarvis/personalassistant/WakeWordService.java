@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -38,6 +39,8 @@ public class WakeWordService extends Service {
     private volatile boolean wakeDetected = false;
     private volatile boolean recording = false;
     private volatile boolean speechPlaying = false;
+    private volatile long ignoreWakeUntilMs = 0L;
+    private boolean commandCaptureFinished = true;
     private volatile String activeUtteranceId = "";
     private AudioRecord audioRecord;
     private Thread audioThread;
@@ -194,6 +197,10 @@ public class WakeWordService extends Service {
                 int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
                 if (count > 0) {
                     if (wakeWordEngine != null && wakeWordEngine.acceptAudio(pcm, count)) {
+                        // Ignore stale classifier confidence briefly after a command.
+                        // The rolling OpenWakeWord feature window still contains the
+                        // previous "Jarvis" until fresh microphone frames replace it.
+                        if (SystemClock.elapsedRealtime() < ignoreWakeUntilMs) continue;
                         wakeDetected = true;
                         android.util.Log.i("JARVIS-OWW", "Wake word detected");
                         break;
@@ -219,9 +226,12 @@ public class WakeWordService extends Service {
 
     private void beginCommandCapture() {
         if (!running || !wakeDetected) return;
+        commandCaptureFinished = false;
         speak("Yes, Pratik Boss.");
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            commandCaptureFinished = true;
             wakeDetected = false;
+            ignoreWakeUntilMs = SystemClock.elapsedRealtime() + 1800L;
             restartStandby(1000);
             return;
         }
@@ -273,12 +283,18 @@ public class WakeWordService extends Service {
     }
 
     private void finishCommandCapture() {
+        // SpeechRecognizer may report both an error and a completion callback.
+        // Finish this wake cycle only once.
+        if (commandCaptureFinished) return;
+        commandCaptureFinished = true;
         if (commandRecognizer != null) {
             try { commandRecognizer.cancel(); } catch (Exception ignored) {}
             try { commandRecognizer.destroy(); } catch (Exception ignored) {}
             commandRecognizer = null;
         }
         wakeDetected = false;
+        // Let the previous wake-word audio age out of the rolling classifier window.
+        ignoreWakeUntilMs = SystemClock.elapsedRealtime() + 1800L;
         restartStandby(700);
     }
 
