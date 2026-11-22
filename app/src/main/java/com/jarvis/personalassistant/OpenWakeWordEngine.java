@@ -39,6 +39,7 @@ final class OpenWakeWordEngine implements AutoCloseable {
 
     private final short[] pendingChunk = new short[AUDIO_CHUNK];
     private int pendingCount;
+    private int liveFeatureFrames;
 
     private final ArrayList<float[]> melHistory = new ArrayList<>();
     private final ArrayDeque<float[]> featureHistory = new ArrayDeque<>();
@@ -79,11 +80,14 @@ final class OpenWakeWordEngine implements AutoCloseable {
         rawWrite = 0;
         rawCount = 0;
         pendingCount = 0;
+        liveFeatureFrames = 0;
         melHistory.clear();
         featureHistory.clear();
 
         for (int i = 0; i < MEL_WINDOW; i++) {
-            melHistory.add(new float[MEL_BINS]);
+            float[] initialMel = new float[MEL_BINS];
+            java.util.Arrays.fill(initialMel, 1.0f);
+            melHistory.add(initialMel);
         }
         // Fill the initial classifier context; live embeddings replace these
         // as the microphone stream advances.
@@ -111,9 +115,10 @@ final class OpenWakeWordEngine implements AutoCloseable {
                     appendMelFrames();
                     float[] embedding = makeEmbedding();
                     featureHistory.addLast(embedding);
+                    liveFeatureFrames++;
                     while (featureHistory.size() > 120) featureHistory.removeFirst();
 
-                    if (featureHistory.size() >= CLASSIFIER_WINDOW) {
+                    if (liveFeatureFrames >= CLASSIFIER_WINDOW) {
                         float score = predict();
                         Log.d(TAG, "Wake confidence=" + score);
                         if (score >= THRESHOLD) {
