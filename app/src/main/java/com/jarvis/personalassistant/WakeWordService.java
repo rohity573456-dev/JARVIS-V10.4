@@ -20,18 +20,6 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 
-import com.k2fsa.sherpa.onnx.FeatureConfig;
-import com.k2fsa.sherpa.onnx.KeywordSpotter;
-import com.k2fsa.sherpa.onnx.KeywordSpotterConfig;
-import com.k2fsa.sherpa.onnx.OnlineModelConfig;
-import com.k2fsa.sherpa.onnx.OnlineStream;
-import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig;
-import com.k2fsa.sherpa.onnx.OnlineParaformerModelConfig;
-import com.k2fsa.sherpa.onnx.OnlineZipformer2CtcModelConfig;
-import com.k2fsa.sherpa.onnx.OnlineNeMoCtcModelConfig;
-import com.k2fsa.sherpa.onnx.OnlineToneCtcModelConfig;
-import com.k2fsa.sherpa.onnx.QnnConfig;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -42,16 +30,8 @@ public class WakeWordService extends Service {
     public static final String EXTRA_COMMAND = "command";
     private static final String CHANNEL_ID = "jarvis_wake_channel";
     private static final int NOTIFICATION_ID = 991;
-    private static final String MODEL_DIR = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
     private static final int SAMPLE_RATE = 16000;
     private static final int FRAME_SAMPLES = 1600; // 100 ms
-    private static final String[] MODEL_FILES = {
-            "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
-            "decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
-            "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
-            "tokens.txt",
-            "keywords.txt"
-    };
 
     public static volatile boolean isRunning = false;
 
@@ -63,8 +43,7 @@ public class WakeWordService extends Service {
     private volatile String activeUtteranceId = "";
     private AudioRecord audioRecord;
     private Thread audioThread;
-    private KeywordSpotter keywordSpotter;
-    private OnlineStream keywordStream;
+    private OpenWakeWordEngine wakeWordEngine;
     private SpeechRecognizer commandRecognizer;
     private PowerManager.WakeLock wakeLock;
     private TextToSpeech tts;
@@ -138,7 +117,7 @@ public class WakeWordService extends Service {
                 : new Notification.Builder(this);
         return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentTitle("JARVIS voice standby")
-                .setContentText("Offline wake detection active — say Jarvis")
+                .setContentText("OpenWakeWord offline detection active — say Jarvis")
                 .setContentIntent(pending).setOngoing(true).build();
     }
 
@@ -154,75 +133,14 @@ public class WakeWordService extends Service {
 
     private void initializeAndStart() {
         try {
-            File dir = new File(getFilesDir(), MODEL_DIR);
-            if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create KWS model folder");
-
-            for (String name : MODEL_FILES) {
-                File target = new File(dir, name);
-                if (!target.exists() || target.length() == 0) {
-                    copyAsset(MODEL_DIR + "/" + name, target);
-                }
-                if (!target.exists() || target.length() == 0) {
-                    throw new IllegalStateException("Missing wake model file: " + name);
-                }
-            }
-
-            String prefix = dir.getAbsolutePath() + "/";
-            // sherpa-onnx 2.0.1 Android AAR exposes Kotlin data-class
-            // constructors (not the Java builder API).
-            OnlineTransducerModelConfig transducer = new OnlineTransducerModelConfig(
-                    prefix + MODEL_FILES[0],
-                    prefix + MODEL_FILES[1],
-                    prefix + MODEL_FILES[2],
-                    new QnnConfig("", "", ""));
-            OnlineModelConfig model = new OnlineModelConfig(
-                    transducer,
-                    new OnlineParaformerModelConfig("", ""),
-                    new OnlineZipformer2CtcModelConfig(""),
-                    new OnlineNeMoCtcModelConfig(""),
-                    new OnlineToneCtcModelConfig(""),
-                    prefix + "tokens.txt",
-                    2,
-                    false,
-                    "cpu",
-                    "zipformer2",
-                    "",
-                    "");
-            FeatureConfig features = new FeatureConfig(SAMPLE_RATE, 80, 0.0f);
-            KeywordSpotterConfig config = new KeywordSpotterConfig(
-                    features,
-                    model,
-                    4,
-                    prefix + "keywords.txt",
-                    2.0f,
-                    0.25f,
-                    2);
-
-            // Null AssetManager selects file-path loading because model files
-            // have already been copied to this app's private files directory.
-            keywordSpotter = new KeywordSpotter(null, config);
-            keywordStream = keywordSpotter.createStream("");
+            wakeWordEngine = new OpenWakeWordEngine(getAssets());
             handler.post(this::startAudioCapture);
         } catch (Exception e) {
-            android.util.Log.e("JARVIS-KWS", "Offline wake engine initialization failed", e);
+            android.util.Log.e("JARVIS-OWW", "OpenWakeWord initialization failed", e);
             handler.post(() -> {
                 speak("Offline wake engine could not start. Please reopen JARVIS.");
                 stopSelf();
             });
-        }
-    }
-
-    private void copyAsset(String assetPath, File target) throws Exception {
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IllegalStateException("Cannot create model directory");
-        }
-        try (InputStream in = getAssets().open(assetPath);
-             FileOutputStream out = new FileOutputStream(target)) {
-            byte[] buffer = new byte[65536];
-            int count;
-            while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
-            out.flush();
         }
     }
 
@@ -279,17 +197,10 @@ public class WakeWordService extends Service {
                 if (count > 0) {
                     float[] samples = new float[count];
                     for (int i = 0; i < count; i++) samples[i] = pcm[i] / 32768.0f;
-                    keywordStream.acceptWaveform(samples, SAMPLE_RATE);
-
-                    while (keywordSpotter.isReady(keywordStream)) {
-                        keywordSpotter.decode(keywordStream);
-                        String keyword = keywordSpotter.getResult(keywordStream).getKeyword();
-                        if (keyword != null && !keyword.trim().isEmpty()) {
-                            keywordSpotter.reset(keywordStream);
-                            wakeDetected = true;
-                            android.util.Log.i("JARVIS-KWS", "Wake word detected: " + keyword);
-                            break;
-                        }
+                    if (wakeWordEngine != null && wakeWordEngine.acceptAudio(pcm, count)) {
+                        wakeDetected = true;
+                        android.util.Log.i("JARVIS-OWW", "Wake word detected");
+                        break;
                     }
                 } else if (count < 0) {
                     throw new IllegalStateException("AudioRecord read error: " + count);
@@ -463,7 +374,7 @@ public class WakeWordService extends Service {
             } finally {
                 if (store != null) store.close();
             }
-            final String prompt = memoryContext + "\n\nYou are JARVIS running in background voice mode. Answer naturally in Hindi/Hinglish or the language used. Be concise. Do not claim a phone action was performed unless confirmed. If a task requires opening an app or screen, explain that the user must open JARVIS.\nCommander says: " + raw;
+            final String prompt = memoryContext + "\n\nYou are JARVIS running in background voice mode. Answer naturally in Hindi/Hinglish or the language used. Be concise. Do not claim a phone action was performed unless confirmed. If a task requires opening an app or screen, explain that the user must open JARVIS.\nPratik Boss says: " + raw;
             String result = "ERROR: no online provider configured.";
             if (!gemini.isEmpty()) {
                 result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gemini,
@@ -552,13 +463,9 @@ public class WakeWordService extends Service {
         }
 
         releaseAudioRecord();
-        if (keywordStream != null) {
-            try { keywordStream.release(); } catch (Exception ignored) {}
-            keywordStream = null;
-        }
-        if (keywordSpotter != null) {
-            try { keywordSpotter.release(); } catch (Exception ignored) {}
-            keywordSpotter = null;
+        if (wakeWordEngine != null) {
+            try { wakeWordEngine.close(); } catch (Exception ignored) {}
+            wakeWordEngine = null;
         }
         if (wakeLock != null && wakeLock.isHeld()) {
             try { wakeLock.release(); } catch (Exception ignored) {}
