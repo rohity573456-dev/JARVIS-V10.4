@@ -96,6 +96,7 @@ class JarvisOnnxPipeline:
         self.verifier, self.verifier_index, self.verifier_threshold, self.verifier_shape = self._load_verifier(assets)
 
     def _load_verifier(self, assets):
+        import onnxruntime as ort
         archive = assets/"multi_jarvis_v9.3.zip"
         with zipfile.ZipFile(archive) as zf:
             info = json.loads(zf.read("model_info.json").decode("utf-8"))
