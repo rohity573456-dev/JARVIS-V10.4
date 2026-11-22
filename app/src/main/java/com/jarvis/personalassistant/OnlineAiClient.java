@@ -65,4 +65,71 @@ public final class OnlineAiClient {
             if (c != null) c.disconnect();
         }
     }
+    /**
+     * Calls an OpenAI-compatible model with native tool schemas. Returns only
+     * normalized tool-call requests; this method never executes a tool.
+     */
+    public static String askForToolCalls(String endpoint, String apiKey, String model,
+            String prompt, String systemPrompt, JSONArray tools) {
+        HttpURLConnection c = null;
+        try {
+            String base = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length()-1) : endpoint;
+            String url = base.endsWith("/chat/completions") ? base : base + "/chat/completions";
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(90000);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json");
+            c.setRequestProperty("Authorization", "Bearer " + apiKey);
+            JSONObject body = new JSONObject();
+            body.put("model", model);
+            body.put("temperature", 0.1);
+            body.put("max_tokens", 2048);
+            body.put("tool_choice", "auto");
+            body.put("parallel_tool_calls", false);
+            body.put("tools", tools == null ? new JSONArray() : tools);
+            JSONArray messages = new JSONArray();
+            messages.put(new JSONObject().put("role", "system").put("content",
+                systemPrompt == null ? "Use only supplied tools. Never invent tool results." : systemPrompt));
+            messages.put(new JSONObject().put("role", "user").put("content", prompt));
+            body.put("messages", messages);
+            byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
+            int code = c.getResponseCode();
+            InputStream stream = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
+            StringBuilder raw = new StringBuilder();
+            if (stream != null) try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) raw.append(line);
+            }
+            if (code < 200 || code >= 300) return "ERROR " + code + ": " + raw;
+            JSONObject response = new JSONObject(raw.toString());
+            JSONArray choices = response.optJSONArray("choices");
+            if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
+            JSONObject message = choices.getJSONObject(0).optJSONObject("message");
+            if (message == null) return "ERROR: Provider response format was unexpected.";
+            JSONArray calls = message.optJSONArray("tool_calls");
+            JSONArray normalized = new JSONArray();
+            if (calls == null) return normalized.toString();
+            for (int i = 0; i < calls.length() && i < JarvisAgentEngine.MAX_STEPS; i++) {
+                JSONObject call = calls.optJSONObject(i);
+                JSONObject function = call == null ? null : call.optJSONObject("function");
+                if (function == null) continue;
+                String name = function.optString("name", "");
+                Object rawArgs = function.opt("arguments");
+                JSONObject args;
+                if (rawArgs instanceof JSONObject) args = (JSONObject) rawArgs;
+                else if (rawArgs instanceof String) args = new JSONObject((String) rawArgs);
+                else continue;
+                normalized.put(new JSONObject().put("name", name).put("arguments", args));
+            }
+            return normalized.toString();
+        } catch (Exception e) {
+            return "ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
 }
