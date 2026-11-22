@@ -47,6 +47,8 @@ public final class JarvisHybridBrain {
             "Respond in the user's language, including natural Hindi-English code switching. " +
             mode + " " +
             "For complex requests, give a concise plan, state important assumptions, then provide the result. " +
+            "Before answering, silently check that the response addresses every part, follows supplied memory, " +
+            "has consistent dates, units and calculations, and does not contradict earlier turns. Correct obvious errors. " +
             "Do not reveal private chain-of-thought; provide conclusions and a brief rationale instead. " +
             "Never invent tool results, current facts, files, API access, phone actions, or completed work. " +
             "If a task requires a tool that is unavailable, say so and give the next actionable step. " +
@@ -104,7 +106,7 @@ public final class JarvisHybridBrain {
                 LocalAiEngine.ask(localModelPath, directive + "\n\n" + contextPrompt, localResult -> {
                     String answer = localResult == null || localResult.trim().isEmpty()
                         ? "Cloud AI unavailable (" + cloudFailure + "). Offline model returned no answer."
-                        : "Cloud AI unavailable; using the offline brain.\\n" + localResult;
+                        : "Cloud AI unavailable; using the offline brain.\n" + localResult;
                     callback.onResult(answer);
                     return kotlin.Unit.INSTANCE;
                 });
