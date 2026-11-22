@@ -20,9 +20,17 @@ Phase 2 adds the safe execution foundation required to evolve the Phase 1 provid
 - Sending messages, payments, deleting/sharing files, account changes and other external or irreversible actions must require an explicit user confirmation in the UI. Never auto-approve from model output.
 - Background jobs require durable persistence and lifecycle-aware scheduling; this engine currently runs in-process and is not a durable WorkManager job system.
 
+## Android adapter added in this increment
+- `JarvisAndroidToolAdapter` registers read-only battery status, allow-listed settings panels, exact-package app launch, one-step media volume controls, and web search.
+- UI/framework calls are marshalled to the Android main thread with a bounded wait; timeout, interruption and activity teardown fail closed.
+- Web search is tagged `EXTERNAL`, so the agent engine's approval gate must approve it before launch.
+- No shell, arbitrary intent action, package installation, message sending, payment, or unrestricted device setting is exposed.
+- The registry is created and populated by `MainActivity`; provider-native planning and a user-facing approval dialog are still pending, so these tools are not yet autonomously invoked from chat.
+
 ## Not yet wired / next increments
 - Provider-native function calling and structured plan generation from Gemini/Groq/OpenAI-compatible models.
-- Android UI approval dialog and registration of real Android tools.
+- Provider-native function calling and model-generated typed plans.
+- Android UI approval dialog; the initial allow-listed Android adapter is now registered by `MainActivity`.
 - Durable task journal, WorkManager recovery and notification controls.
 - Web search connector and source-citation pipeline.
 - Vision/document tools and sandboxed code/data workspace.
