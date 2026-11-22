@@ -25,7 +25,7 @@ final class OpenWakeWordEngine implements AutoCloseable {
     private static final int CLASSIFIER_WINDOW = 16;
     private static final int RAW_HISTORY = SAMPLE_RATE * 10;
     private static final int MEL_HISTORY = 970;
-    private static final float THRESHOLD = 0.30f;
+    private final WakeWordConfidenceGate confidenceGate = new WakeWordConfidenceGate();
 
     private final OrtEnvironment environment;
     private final OrtSession melSession;
@@ -83,6 +83,7 @@ final class OpenWakeWordEngine implements AutoCloseable {
         liveFeatureFrames = 0;
         melHistory.clear();
         featureHistory.clear();
+        confidenceGate.reset();
 
         for (int i = 0; i < MEL_WINDOW; i++) {
             float[] initialMel = new float[MEL_BINS];
@@ -121,8 +122,10 @@ final class OpenWakeWordEngine implements AutoCloseable {
                     if (liveFeatureFrames >= CLASSIFIER_WINDOW) {
                         float score = predict();
                         Log.d(TAG, "Wake confidence=" + score);
-                        if (score >= THRESHOLD) {
+                        if (confidenceGate.add(score)) {
                             detected = true;
+                            confidenceGate.reset();
+                            Log.i(TAG, "Wake word temporally verified");
                             break;
                         }
                     }
