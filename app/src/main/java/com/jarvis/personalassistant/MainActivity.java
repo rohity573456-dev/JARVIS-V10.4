@@ -298,8 +298,38 @@ public class MainActivity extends Activity {
         addSmall(row4, "SYSTEM STATUS", v -> systemReport());
         root.addView(row4);
 
+        LinearLayout row5 = new LinearLayout(this);
+        row5.setOrientation(LinearLayout.HORIZONTAL);
+        addSmall(row5, "FLOATING ORB SETUP", v -> requestFloatingOrbPermission());
+        root.addView(row5);
+
         page.addView(root, new ScrollView.LayoutParams(-1, -2));
         setContentView(page);
+    }
+
+    private void requestFloatingOrbPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 23) {
+            respond("Floating orb overlay requires Android 6.0 or newer.");
+            return;
+        }
+        if (Settings.canDrawOverlays(this)) {
+            respond("Floating orb permission already enabled. Say Jarvis while the app is in background to test it.");
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("ALLOW JARVIS FLOATING ORB")
+            .setMessage("Android requires your permission to show the small JARVIS orb over other apps after the wake word is detected. The orb appears only during a wake interaction and hides after the response. Allow 'Display over other apps' on the next screen.")
+            .setPositiveButton("OPEN SETTINGS", (dialog, which) -> {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    respond("Overlay permission settings could not be opened.");
+                }
+            })
+            .setNegativeButton("CANCEL", null)
+            .show();
     }
 
     private void pickImage() {
