@@ -64,6 +64,7 @@ public class WakeWordService extends Service {
     private AudioRecord audioRecord;
     private Thread audioThread;
     private KeywordSpotter keywordSpotter;
+    private JarvisOnnxWakeEngine onnxWakeEngine;
     private OnlineStream keywordStream;
     private SpeechRecognizer commandRecognizer;
     private PowerManager.WakeLock wakeLock;
@@ -153,6 +154,21 @@ public class WakeWordService extends Service {
     }
 
     private void initializeAndStart() {
+        // Prefer the custom single-word ONNX detector when its trained model is installed.
+        // Keep Sherpa as a safe fallback until that model is supplied and validated.
+        if (Build.VERSION.SDK_INT >= 26) {
+            try {
+                onnxWakeEngine = new JarvisOnnxWakeEngine(getApplicationContext());
+                handler.post(this::startWakeDetection);
+                android.util.Log.i("JARVIS-KWS", "Custom ONNX wake engine selected");
+                return;
+            } catch (Exception unavailable) {
+                onnxWakeEngine = null;
+                android.util.Log.w("JARVIS-KWS",
+                        "Custom Jarvis ONNX model unavailable; using Sherpa fallback", unavailable);
+            }
+        }
+
         try {
             File dir = new File(getFilesDir(), MODEL_DIR);
             if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create KWS model folder");
@@ -223,6 +239,42 @@ public class WakeWordService extends Service {
             int count;
             while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
             out.flush();
+        }
+    }
+
+    private void startWakeDetection() {
+        if (!running || wakeDetected || speechPlaying) return;
+        if (onnxWakeEngine == null) {
+            startAudioCapture();
+            return;
+        }
+        try {
+            if (!onnxWakeEngine.isStarted()) {
+                onnxWakeEngine.start(confidence -> {
+                    if (!running || wakeDetected) return;
+                    wakeDetected = true;
+                    android.util.Log.i("JARVIS-KWS",
+                            "Custom ONNX Jarvis wake word detected: " + confidence);
+                    // OpenWakeWord.stop() joins its audio thread. Never block the
+                    // main-thread detection callback; wait for microphone release off-thread.
+                    new Thread(() -> {
+                        try {
+                            if (onnxWakeEngine != null) onnxWakeEngine.stop();
+                        } catch (Exception stopError) {
+                            android.util.Log.w("JARVIS-KWS",
+                                    "ONNX microphone stop reported an error", stopError);
+                        }
+                        handler.postDelayed(() -> {
+                            if (running && wakeDetected) beginCommandCapture();
+                        }, 250);
+                    }, "Jarvis-ONNX-Stop").start();
+                });
+            }
+        } catch (Exception error) {
+            android.util.Log.e("JARVIS-KWS", "ONNX wake engine start failed", error);
+            try { onnxWakeEngine.release(); } catch (Exception ignored) {}
+            onnxWakeEngine = null;
+            startAudioCapture();
         }
     }
 
@@ -311,6 +363,9 @@ public class WakeWordService extends Service {
 
     private void beginCommandCapture() {
         if (!running || !wakeDetected) return;
+        if (onnxWakeEngine != null) {
+            try { onnxWakeEngine.stop(); } catch (Exception ignored) {}
+        }
         speak("Yes, Commander.");
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             wakeDetected = false;
@@ -352,16 +407,50 @@ public class WakeWordService extends Service {
             speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
             speech.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
 
-            // Allow the spoken acknowledgement to finish before command capture.
-            handler.postDelayed(() -> {
-                if (running && commandRecognizer != null) {
-                    try { commandRecognizer.startListening(speech); }
-                    catch (Exception e) { finishCommandCapture(); }
-                }
-            }, 900);
+            // Do not let SpeechRecognizer compete with the acknowledgement audio.
+            // TTS startup and utterance duration vary by device, so wait for the real
+            // onDone/onError callback instead of assuming a fixed 900 ms is enough.
+            waitForAcknowledgementThenListen(
+                    speech, android.os.SystemClock.elapsedRealtime() + 10000L);
         } catch (Exception e) {
             finishCommandCapture();
         }
+    }
+
+    private void waitForAcknowledgementThenListen(Intent speech, long deadlineElapsed) {
+        if (!running || commandRecognizer == null) return;
+
+        if (ttsReady && !speechPlaying && pendingSpeech == null) {
+            try {
+                commandRecognizer.startListening(speech);
+            } catch (Exception error) {
+                android.util.Log.e("JARVIS-KWS", "SpeechRecognizer start failed", error);
+                finishCommandCapture();
+            }
+            return;
+        }
+
+        if (android.os.SystemClock.elapsedRealtime() >= deadlineElapsed) {
+            // If TTS never becomes ready, or gets stuck, do not leave the command
+            // session permanently blocked. Stop any lingering acknowledgement first.
+            pendingSpeech = null;
+            if (tts != null && speechPlaying) {
+                try { tts.stop(); } catch (Exception ignored) {}
+                // Invalidate a late onStop callback after forcing the timeout path.
+                speechPlaying = false;
+                activeUtteranceId = "";
+            }
+            try {
+                commandRecognizer.startListening(speech);
+            } catch (Exception error) {
+                android.util.Log.e("JARVIS-KWS", "SpeechRecognizer start failed", error);
+                finishCommandCapture();
+            }
+            return;
+        }
+
+        handler.postDelayed(
+                () -> waitForAcknowledgementThenListen(speech, deadlineElapsed), 100L);
     }
 
     private void finishCommandCapture() {
@@ -492,7 +581,7 @@ public class WakeWordService extends Service {
     private void restartStandby(long delayMs) {
         if (!running) return;
         handler.postDelayed(() -> {
-            if (running && !recording && !wakeDetected) startAudioCapture();
+            if (running && !recording && !wakeDetected) startWakeDetection();
         }, delayMs);
     }
 
@@ -534,7 +623,7 @@ public class WakeWordService extends Service {
             if (!utteranceId.equals(activeUtteranceId)) return;
             speechPlaying = false;
             activeUtteranceId = "";
-            if (running && !recording && !wakeDetected) startAudioCapture();
+            if (running && !recording && !wakeDetected) startWakeDetection();
         });
     }
 
@@ -552,6 +641,10 @@ public class WakeWordService extends Service {
         }
 
         releaseAudioRecord();
+        if (onnxWakeEngine != null) {
+            try { onnxWakeEngine.release(); } catch (Exception ignored) {}
+            onnxWakeEngine = null;
+        }
         if (keywordStream != null) {
             try { keywordStream.release(); } catch (Exception ignored) {}
             keywordStream = null;

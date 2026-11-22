@@ -4,7 +4,10 @@ name: Build JARVIS V10.4 APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, feature/jarvis-onnx-wakeword-migration ]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
 
 permissions:
   contents: read
