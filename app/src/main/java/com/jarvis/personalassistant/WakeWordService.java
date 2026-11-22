@@ -319,6 +319,10 @@ public class WakeWordService extends Service {
                             continue;
                         }
                         wakeDetected = true;
+                        if (!MainActivity.isWakeReceiverActive()) {
+                            JarvisWakeOrbOverlay.show(this);
+                            handler.postDelayed(JarvisWakeOrbOverlay::hide, 30000L);
+                        }
                         wakeWordMetrics.onWakeAccepted();
                         lastWakePreRoll = audioPreRollBuffer.snapshot();
                         android.util.Log.i("JARVIS-OWW",
@@ -575,6 +579,7 @@ public class WakeWordService extends Service {
     }
 
     private void dispatchCommand(String command) {
+        JarvisWakeOrbOverlay.setState("THINKING");
         if (MainActivity.isWakeReceiverActive()) {
             Intent event = new Intent(ACTION_WAKE_COMMAND);
             event.setPackage(getPackageName());
@@ -757,6 +762,7 @@ public class WakeWordService extends Service {
 
     private void speak(String text) {
         if (text == null || text.trim().isEmpty()) return;
+        JarvisWakeOrbOverlay.setState("SPEAKING");
         if (!ttsReady || tts == null) {
             pendingSpeech = text;
             return;
@@ -774,6 +780,7 @@ public class WakeWordService extends Service {
             if (!utteranceId.equals(activeUtteranceId)) return;
             speechPlaying = false;
             activeUtteranceId = "";
+            if (!wakeDetected) JarvisWakeOrbOverlay.hide();
             if (running && wakeDetected && !commandCaptureFinished
                     && pendingCommandSpeechIntent != null) {
                 startPendingCommandRecognition();

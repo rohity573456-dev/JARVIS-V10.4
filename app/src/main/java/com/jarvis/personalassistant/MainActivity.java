@@ -64,6 +64,8 @@ public class MainActivity extends Activity {
     private SharedPreferences memory;
     private SecureStore secureStore;
     private JarvisMemoryStore longTermMemory;
+    private JarvisToolRegistry agentToolRegistry;
+    private JarvisAgentEngine.RunHandle activeAgentRun;
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -94,9 +96,11 @@ public class MainActivity extends Activity {
                 String command = intent.getStringExtra(WakeWordService.EXTRA_COMMAND);
                 if (command == null || command.trim().isEmpty()) {
                     if (status != null) status.setText("● JARVIS ACTIVATED");
+                    if (orbView != null) orbView.setState("LISTENING");
                     // Wake acknowledgement is spoken by the foreground service to avoid duplicates.
                 } else {
                     if (status != null) status.setText("● COMMAND RECEIVED");
+                    if (orbView != null) orbView.setState("THINKING");
                     handle(command);
                 }
             }
@@ -112,9 +116,16 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
+        getWindow().setNavigationBarColor(Color.rgb(5, 7, 14));
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            android.view.WindowManager.LayoutParams displayParams = getWindow().getAttributes();
+            displayParams.preferredRefreshRate = 90.0f; // Request 90 Hz when the device/display supports it.
+            getWindow().setAttributes(displayParams);
+        }
         memory = getSharedPreferences("jarvis_memory", MODE_PRIVATE);
         secureStore = new SecureStore(this);
+        agentToolRegistry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(this).registerInto(agentToolRegistry);
         longTermMemory = new JarvisMemoryStore(this);
         longTermMemory.expireTransientMemories();
         longTermMemory.indexMissingLocalVectors(500);
@@ -147,54 +158,95 @@ public class MainActivity extends Activity {
         speak("JARVIS systems online. At your service, Pratik Boss.");
     }
 
+    private android.graphics.drawable.GradientDrawable panel(int fill, int stroke, int radiusDp) {
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setColor(fill);
+        d.setCornerRadius(radiusDp * getResources().getDisplayMetrics().density);
+        d.setStroke(Math.max(1, (int)getResources().getDisplayMetrics().density), stroke);
+        return d;
+    }
+
     private void buildUi() {
-        // Responsive, scroll-safe dashboard: small phones no longer clip the lower controls.
+        // Minimal iOS-inspired glass layout. Existing JARVIS actions and their order remain available.
         ScrollView page = new ScrollView(this);
         page.setFillViewport(true);
         page.setClipToPadding(false);
+        page.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(16,18,16,20);
-        root.setBackgroundColor(BG);
+        root.setPadding(18, 18, 18, 22);
+        root.setBackgroundColor(Color.rgb(5, 7, 14));
 
         TextView title = new TextView(this);
-        title.setText("J.A.R.V.I.S  //  ULTIMATE");
-        title.setTextColor(CYAN);
-        title.setTextSize(22);
-        title.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
+        title.setText("JARVIS");
+        title.setTextColor(Color.rgb(238, 243, 255));
+        title.setTextSize(25);
+        title.setLetterSpacing(0.12f);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         title.setGravity(Gravity.CENTER);
-        root.addView(title,new LinearLayout.LayoutParams(-1,54));
+        root.addView(title, new LinearLayout.LayoutParams(-1, 42));
 
         status = new TextView(this);
-        status.setText("● CORE ONLINE  |  VOICE STANDBY");
-        status.setTextColor(CYAN);
+        status.setText("● ONLINE  ·  VOICE STANDBY");
+        status.setTextColor(Color.rgb(126, 220, 190));
         status.setTextSize(11);
+        status.setLetterSpacing(0.08f);
         status.setGravity(Gravity.CENTER);
-        root.addView(status,new LinearLayout.LayoutParams(-1,30));
+        root.addView(status, new LinearLayout.LayoutParams(-1, 28));
 
         orbView = new JarvisOrbView(this);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1,190);
-        orbParams.topMargin = 2;
-        root.addView(orbView,orbParams);
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1, 184);
+        orbParams.topMargin = 4;
+        root.addView(orbView, orbParams);
 
         dashboard = new TextView(this);
-        dashboard.setTextColor(Color.LTGRAY);
+        dashboard.setTextColor(Color.rgb(211, 220, 239));
         dashboard.setTextSize(11);
-        dashboard.setTypeface(Typeface.MONOSPACE);
-        dashboard.setPadding(12,12,12,12);
-        dashboard.setBackgroundColor(Color.rgb(10,25,42));
-        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,-2);
-        dp.topMargin=8;
-        root.addView(dashboard,dp);
+        dashboard.setLineSpacing(3f, 1.0f);
+        dashboard.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        dashboard.setPadding(16, 13, 16, 13);
+        dashboard.setBackground(panel(Color.rgb(17, 21, 34), Color.rgb(48, 57, 82), 20));
+        LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(-1, -2);
+        dp.topMargin = 10;
+        root.addView(dashboard, dp);
+
+        TextView chatLabel = new TextView(this);
+        chatLabel.setText("CONVERSATION");
+        chatLabel.setTextColor(Color.rgb(153, 169, 197));
+        chatLabel.setTextSize(10);
+        chatLabel.setLetterSpacing(0.13f);
+        chatLabel.setPadding(4, 16, 4, 7);
+        root.addView(chatLabel);
+
+        ScrollView conversationScroll = new ScrollView(this);
+        conversationScroll.setFillViewport(false);
+        conversationScroll.setBackground(panel(Color.rgb(13, 17, 29), Color.rgb(42, 50, 72), 20));
+        conversationScroll.setClipToPadding(false);
+        conversation = new TextView(this);
+        conversation.setTextColor(Color.rgb(242, 245, 252));
+        conversation.setTextSize(14);
+        conversation.setLineSpacing(4f, 1.0f);
+        conversation.setPadding(16, 15, 16, 15);
+        conversationScroll.addView(conversation);
+        int conversationHeight = Math.max(150, Math.min(220,
+                (int)(getResources().getDisplayMetrics().heightPixels * 0.21f)));
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, conversationHeight);
+        root.addView(conversationScroll, cp);
 
         LinearLayout typeRow = new LinearLayout(this);
         typeRow.setOrientation(LinearLayout.HORIZONTAL);
         typeRow.setGravity(Gravity.CENTER_VERTICAL);
+        typeRow.setPadding(12, 2, 6, 2);
+        typeRow.setBackground(panel(Color.rgb(20, 25, 40), Color.rgb(67, 82, 117), 28));
         commandInput = new EditText(this);
         commandInput.setSingleLine(true);
         commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.GRAY);
-        commandInput.setHint("Ask JARVIS or enter a command...");
+        commandInput.setHintTextColor(Color.rgb(139, 151, 177));
+        commandInput.setHint("Message JARVIS...");
+        commandInput.setTextSize(14);
+        commandInput.setBackgroundColor(Color.TRANSPARENT);
+        commandInput.setPadding(8, 0, 4, 0);
         commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
         commandInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
@@ -203,65 +255,87 @@ public class MainActivity extends Activity {
             }
             return false;
         });
-        typeRow.addView(commandInput,new LinearLayout.LayoutParams(0,52,1));
-        Button run = button("RUN");
-        typeRow.addView(run,new LinearLayout.LayoutParams(66,52));
+        typeRow.addView(commandInput, new LinearLayout.LayoutParams(0, 52, 1));
+        Button run = button("➤");
+        typeRow.addView(run, new LinearLayout.LayoutParams(48, 46));
         run.setOnClickListener(v -> submitTypedCommand());
-        Button search = button("SEARCH");
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(82,52);
-        searchParams.leftMargin = 5;
-        typeRow.addView(search,searchParams);
-        search.setOnClickListener(v -> searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
-        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-1,-2);
-        trp.topMargin = 8;
-        root.addView(typeRow,trp);
+        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-1, -2);
+        trp.topMargin = 12;
+        root.addView(typeRow, trp);
 
-        ScrollView conversationScroll = new ScrollView(this);
-        conversationScroll.setFillViewport(false);
-        conversation = new TextView(this);
-        conversation.setTextColor(Color.WHITE);
-        conversation.setTextSize(14);
-        conversation.setPadding(12,14,12,14);
-        conversationScroll.addView(conversation);
-        int conversationHeight = Math.max(145,Math.min(230,(int)(getResources().getDisplayMetrics().heightPixels*0.22f)));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1,conversationHeight);
-        cp.topMargin=10;
-        cp.bottomMargin=8;
-        root.addView(conversationScroll,cp);
-
-        Button listen = button("TAP TO SPEAK  •  VOICE COMMAND");
-        root.addView(listen,new LinearLayout.LayoutParams(-1,52));
+        Button listen = button("  MIC  ·  TALK TO JARVIS  ");
+        LinearLayout.LayoutParams listenParams = new LinearLayout.LayoutParams(-1, 48);
+        listenParams.topMargin = 9;
+        root.addView(listen, listenParams);
         listen.setOnClickListener(v -> listen());
+
+        TextView toolsLabel = new TextView(this);
+        toolsLabel.setText("QUICK ACTIONS");
+        toolsLabel.setTextColor(Color.rgb(153, 169, 197));
+        toolsLabel.setTextSize(10);
+        toolsLabel.setLetterSpacing(0.13f);
+        toolsLabel.setPadding(4, 15, 4, 6);
+        root.addView(toolsLabel);
 
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row1,"MEMORY",v->memoryDialog());
-        addSmall(row1,"TASKS",v->taskDialog());
-        addSmall(row1,"CUSTOM COMMAND",v->customCommandDialog());
+        addSmall(row1, "MEMORY", v -> memoryDialog());
+        addSmall(row1, "TASKS", v -> taskDialog());
+        addSmall(row1, "CUSTOM COMMAND", v -> customCommandDialog());
         root.addView(row1);
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row2,"CAMERA",v->launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"));
-        addSmall(row2,"MAPS",v->open("https://maps.google.com"));
-        addSmall(row2,"REPEAT",v->speak(lastResponse));
+        addSmall(row2, "CAMERA", v -> launch(new Intent("android.media.action.IMAGE_CAPTURE"), "Camera"));
+        addSmall(row2, "MAPS", v -> open("https://maps.google.com"));
+        addSmall(row2, "REPEAT", v -> speak(lastResponse));
         root.addView(row2);
 
         LinearLayout row3 = new LinearLayout(this);
         row3.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row3,"AI BRAIN / MODEL",v->aiBrainDialog());
-        addSmall(row3,"ONLINE AI SETUP",v->onlineAiDialog());
+        addSmall(row3, "AI BRAIN / MODEL", v -> aiBrainDialog());
+        addSmall(row3, "ONLINE AI SETUP", v -> onlineAiDialog());
         root.addView(row3);
 
         LinearLayout row4 = new LinearLayout(this);
         row4.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row4,"VISION / IMAGE",v->pickImage());
-        addSmall(row4,"WEB SEARCH",v->searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
-        addSmall(row4,"SYSTEM STATUS",v->systemReport());
+        addSmall(row4, "VISION / IMAGE", v -> pickImage());
+        addSmall(row4, "WEB SEARCH", v -> searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
+        addSmall(row4, "SYSTEM STATUS", v -> systemReport());
         root.addView(row4);
 
-        page.addView(root,new ScrollView.LayoutParams(-1,-2));
+        LinearLayout row5 = new LinearLayout(this);
+        row5.setOrientation(LinearLayout.HORIZONTAL);
+        addSmall(row5, "FLOATING ORB SETUP", v -> requestFloatingOrbPermission());
+        root.addView(row5);
+
+        page.addView(root, new ScrollView.LayoutParams(-1, -2));
         setContentView(page);
+    }
+
+    private void requestFloatingOrbPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 23) {
+            respond("Floating orb overlay requires Android 6.0 or newer.");
+            return;
+        }
+        if (Settings.canDrawOverlays(this)) {
+            respond("Floating orb permission already enabled. Say Jarvis while the app is in background to test it.");
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("ALLOW JARVIS FLOATING ORB")
+            .setMessage("Android requires your permission to show the small JARVIS orb over other apps after the wake word is detected. The orb appears only during a wake interaction and hides after the response. Allow 'Display over other apps' on the next screen.")
+            .setPositiveButton("OPEN SETTINGS", (dialog, which) -> {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    respond("Overlay permission settings could not be opened.");
+                }
+            })
+            .setNegativeButton("CANCEL", null)
+            .show();
     }
 
     private void pickImage() {
@@ -323,10 +397,31 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Button button(String label) { Button b=new Button(this); b.setText(label); b.setTextColor(Color.BLACK); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CYAN)); return b; }
-    private void addSmall(LinearLayout row,String label,View.OnClickListener listener) {
-        Button b=new Button(this); b.setText(label); b.setTextSize(9); b.setPadding(2,2,2,2); b.setOnClickListener(listener);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,48,1); p.setMargins(2,4,2,0); row.addView(b,p);
+    private Button button(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextColor(Color.rgb(245, 248, 255));
+        b.setTextSize(13);
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setBackground(panel(Color.rgb(36, 49, 75), Color.rgb(92, 125, 177), 22));
+        if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
+        return b;
+    }
+    private void addSmall(LinearLayout row, String label, View.OnClickListener listener) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(10);
+        b.setTextColor(Color.rgb(220, 229, 247));
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setPadding(3, 2, 3, 2);
+        b.setBackground(panel(Color.rgb(19, 24, 39), Color.rgb(51, 62, 88), 17));
+        if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
+        b.setOnClickListener(listener);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, 48, 1);
+        p.setMargins(3, 4, 3, 0);
+        row.addView(b, p);
     }
     private void refreshDashboard() {
         int battery=-1; try { Intent i=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); if(i!=null) battery=i.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); } catch(Exception ignored) {}
@@ -502,7 +597,8 @@ public class MainActivity extends Activity {
         else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (q.contains("settings") || q.contains("सेटिंग")) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
         else if (q.contains("youtube")) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.startsWith("search ") || q.startsWith("web search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
+        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw); return; }
+        else if (q.startsWith("search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
         else if (q.contains("camera") || q.contains("कैमरा")) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
@@ -540,10 +636,14 @@ public class MainActivity extends Activity {
         else if (runCustomCommand(raw)) return;
         else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Pratik Boss. JARVIS systems are ready.";
         else {
+            if (isAgentActionIntent(q)) {
+                runAgent(raw);
+                return;
+            }
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
-            if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
-                status.setText("● HYBRID AI CONNECTING...");
+            if (!geminiKey.isEmpty() || !groqKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
+                status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
                 new Thread(() -> {
@@ -551,34 +651,123 @@ public class MainActivity extends Activity {
                     final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
-                    final String prompt = memoryContext + "\nLegacy saved note: " + legacyNote + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
-                    String result = "ERROR: No provider key configured.";
-                    if (!geminiKey.isEmpty()) {
-                        result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai", geminiKey,
-                            memory.getString("gemini_model", "gemini-2.5-flash"), prompt);
-                    }
-                    if (result.startsWith("ERROR") && !groqKey.isEmpty()) {
-                        result = OnlineAiClient.ask("https://api.groq.com/openai/v1", groqKey,
-                            memory.getString("groq_model", "openai/gpt-oss-120b"), prompt);
-                    }
-                    if (result.startsWith("ERROR") && !localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                        LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), localResult -> { runOnUiThread(() -> respond("Online providers unavailable. Offline response: " + localResult)); return kotlin.Unit.INSTANCE; });
-                        return;
-                    }
-                    final String finalResult = result.startsWith("ERROR") ? "Gemini aur Groq dono abhi unavailable hain. Details: " + result : result;
-                    runOnUiThread(() -> respond(finalResult));
-                }).start();
-                return;
-            }
-            if (!localModelPath.isEmpty() && new File(localModelPath).exists()) {
-                status.setText("● OFFLINE AI THINKING...");
-                LocalAiEngine.ask(localModelPath, buildOfflineMemoryPrompt(raw), result -> { runOnUiThread(() -> respond(result)); return kotlin.Unit.INSTANCE; });
+                    final String prompt = memoryContext + "\\nLegacy saved note: " + legacyNote +
+                        "\\nPrevious response: " + lastResponse + "\\nCommander says: " + raw;
+                    JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
+                        groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
+                        localModelPath, prompt, raw, result -> runOnUiThread(() -> respond(result)));
+                }, "Jarvis-HybridBrain").start();
                 return;
             }
             answer="AI brain configure nahi hai, Pratik Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
         }
         respond(answer);
     }
+    private boolean isAgentActionIntent(String q) {
+        return JarvisActionIntentRouter.isExplicitAction(q);
+    }
+
+    private void runAgent(String objective) {
+        String geminiKey = secureStore.get("gemini_key");
+        String groqKey = secureStore.get("groq_key");
+        if (geminiKey.isEmpty() && groqKey.isEmpty()) {
+            respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
+            return;
+        }
+        if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+            respond("JARVIS is already handling an agent task. Pehle current task complete hone do.");
+            return;
+        }
+        status.setText("● AGENT PLANNING...");
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            new JarvisStructuredPlanner(agentToolRegistry, geminiKey,
+                memory.getString("gemini_model", "gemini-2.5-flash"),
+                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b")),
+            agentToolRegistry, this::requestAgentApproval);
+        activeAgentRun = engine.submit(objective, new JarvisAgentEngine.Listener() {
+            @Override public void onState(JarvisAgentEngine.State state, String detail) {
+                runOnUiThread(() -> {
+                    if (status == null || isFinishing()) return;
+                    if (state == JarvisAgentEngine.State.AWAITING_APPROVAL) status.setText("● WAITING FOR YOUR APPROVAL");
+                    else if (state == JarvisAgentEngine.State.RUNNING) status.setText("● EXECUTING APPROVED ACTION");
+                    else if (state == JarvisAgentEngine.State.PLANNING) status.setText("● AI ACTION PLANNING...");
+                    else if (state == JarvisAgentEngine.State.VERIFYING) status.setText("● VERIFYING ACTION...");
+                });
+            }
+            @Override public void onComplete(JarvisAgentEngine.AgentReport report) {
+                runOnUiThread(() -> {
+                    activeAgentRun = null;
+                    if (isFinishing()) return;
+                    if (report.finalState == JarvisAgentEngine.State.COMPLETED && report.steps.isEmpty()) {
+                        respond("Is request ke liye koi supported Android action identify nahi hua. App ka exact naam batao, ya normal question ki tarah pucho.");
+                        return;
+                    }
+                    StringBuilder message = new StringBuilder();
+                    message.append(report.finalState == JarvisAgentEngine.State.COMPLETED
+                        ? "Agent task complete. " : report.finalState == JarvisAgentEngine.State.CANCELLED
+                        ? "Agent task cancelled or approval denied. " : "Agent task stopped safely. ");
+                    for (JarvisAgentEngine.StepReport step : report.steps) {
+                        message.append("\n").append(step.toolName).append(": ")
+                            .append(step.output);
+                        if (step.success && step.verified) message.append(" ✓");
+                    }
+                    respond(message.toString().trim());
+                });
+            }
+        });
+    }
+
+    private boolean requestAgentApproval(JarvisAgentEngine.AgentStep step) {
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicBoolean resolved = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final java.util.concurrent.atomic.AtomicBoolean allowed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final AlertDialog[] dialog = new AlertDialog[1];
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || !hasWindowFocus()) {
+                resolved.set(true);
+                latch.countDown();
+                return;
+            }
+            StringBuilder details = new StringBuilder();
+            details.append("Action: ").append(step.toolName).append("\n");
+            if (!step.purpose.isEmpty()) details.append("Reason: ").append(step.purpose).append("\n");
+            if (!step.arguments.isEmpty()) details.append("Arguments: ").append(step.arguments);
+            details.append("\n\nJARVIS will perform this action only once if you allow it.");
+            dialog[0] = new AlertDialog.Builder(MainActivity.this)
+                .setTitle("JARVIS APPROVAL REQUIRED")
+                .setMessage(details.toString())
+                .setPositiveButton("ALLOW ONCE", (d, which) -> {
+                    if (resolved.compareAndSet(false, true)) {
+                        allowed.set(true);
+                        latch.countDown();
+                    }
+                })
+                .setNegativeButton("DENY", (d, which) -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                })
+                .setOnCancelListener(d -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                })
+                .create();
+            dialog[0].show();
+        });
+        try {
+            if (!latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (resolved.compareAndSet(false, true)) runOnUiThread(() -> {
+                    if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+                });
+                return false;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (resolved.compareAndSet(false, true)) runOnUiThread(() -> {
+                if (dialog[0] != null && dialog[0].isShowing()) dialog[0].dismiss();
+            });
+            return false;
+        }
+        return allowed.get();
+    }
+
     private boolean runCustomCommand(String raw) {
         Map<String,?> all=memory.getAll();
         for(String key:all.keySet()) if(key.startsWith("custom_")) {
@@ -813,7 +1002,7 @@ public class MainActivity extends Activity {
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
     private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
-    private void speak(String s) { if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
+    private void speak(String s) { if (orbView != null) orbView.setState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
@@ -821,10 +1010,11 @@ public class MainActivity extends Activity {
     private void show(String who,String s) { if (conversation != null) conversation.append("\n"+who+"\n"+s+"\n"); }
     @Override protected void onResume() {
         super.onResume();
+        wakeReceiverActive = wakeReceiverRegistered;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && !WakeWordService.isRunning)
             startAlwaysOnWakeService();
         if (dashboard != null) refreshDashboard();
     }
-    @Override protected void onPause() { super.onPause(); }
-    @Override protected void onDestroy() { if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; wakeReceiverActive=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
+    @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
+    @Override protected void onDestroy() { if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }
