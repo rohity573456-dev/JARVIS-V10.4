@@ -11,14 +11,14 @@ public final class JarvisMemoryAiWorker {
     private static final ExecutorService EXECUTOR=Executors.newSingleThreadExecutor();
     private JarvisMemoryAiWorker(){}
 
-    public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String text){
+    public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,String text){
         if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text))return;
-        if(empty(gKey)&&empty(rKey))return;
-        EXECUTOR.execute(()->storeFacts(db,parseArray(ask(gKey,gModel,rKey,rModel,extractPrompt(text))),"ai-conversation"));
+        if(empty(gKey)&&empty(rKey)&&empty(openAiKey))return;
+        EXECUTOR.execute(()->storeFacts(db,parseArray(ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text))),"ai-conversation"));
     }
 
-    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel){
-        if(db==null||(empty(gKey)&&empty(rKey)))return;
+    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey){
+        if(db==null||(empty(gKey)&&empty(rKey)&&empty(openAiKey)))return;
         EXECUTOR.execute(()->{
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
             for(JarvisMemoryStore.PendingSession session:sessions){
@@ -28,7 +28,7 @@ public final class JarvisMemoryAiWorker {
                     "\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} "+
                     "Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. "+
                     "Summary under 600 chars. Session:\n"+session.transcript;
-                JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,prompt));
+                JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,openAiKey,prompt));
                 if(root==null)continue;
                 String summary=root.optString("summary","").trim();
                 if(!summary.isEmpty())db.saveAiSessionReflection(session.sessionId,summary);
@@ -45,8 +45,10 @@ public final class JarvisMemoryAiWorker {
             "Never extract credentials, OTPs, government IDs, financial identifiers, health, religion, political beliefs, sexual or criminal information. "+
             "Confidence 0-1, importance 0-100, pinned only for durable identity and explicit standing instructions. If no fact qualifies return []. User: "+text;
     }
-    private static String ask(String gKey,String gModel,String rKey,String rModel,String prompt){
+    private static String ask(String gKey,String gModel,String rKey,String rModel,String openAiKey,String prompt){
         String result="ERROR: no provider";
+        if(!empty(openAiKey))result=OpenAiResponsesClient.ask(openAiKey,OpenAiResponsesClient.DEFAULT_MODEL,
+            "You are JARVIS memory curator. Extract only explicit, durable user facts. Return valid JSON only. Never infer sensitive information.",prompt,"medium");
         if(!empty(gKey))result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
             empty(gModel)?"gemini-2.5-flash":gModel,prompt);
         if(result.startsWith("ERROR")&&!empty(rKey))result=OnlineAiClient.ask("https://api.groq.com/openai/v1",rKey,
