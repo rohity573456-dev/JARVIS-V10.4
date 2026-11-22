@@ -31,6 +31,7 @@ final class OpenWakeWordEngine implements AutoCloseable {
     private final OrtSession embeddingSession;
     private final OrtSession classifierSession;
     private final String classifierInputName;
+    private final IndependentWakeWordVerifier independentVerifier;
 
     private final short[] rawHistory = new short[RAW_HISTORY];
     private int rawWrite;
@@ -73,8 +74,9 @@ final class OpenWakeWordEngine implements AutoCloseable {
         }
 
         classifierInputName = classifierSession.getInputNames().iterator().next();
+        independentVerifier = new IndependentWakeWordVerifier(assets, environment);
         reset();
-        Log.i(TAG, "OpenWakeWord ONNX sessions loaded");
+        Log.i(TAG, "OpenWakeWord primary and independent verifier sessions loaded");
     }
 
     private byte[] readAsset(AssetManager assets, String path) throws Exception {
@@ -140,10 +142,14 @@ final class OpenWakeWordEngine implements AutoCloseable {
                         // Avoid a log write for every 80 ms inference; it adds
                         // needless wakeups and I/O during continuous standby.
                         if (confidenceGate.add(score)) {
-                            detected = true;
                             confidenceGate.reset();
-                            Log.i(TAG, "Wake word temporally verified");
-                            break;
+                            if (independentVerifier.verify(melHistory, melWrite, melCount)) {
+                                detected = true;
+                                Log.i(TAG, "Wake word passed independent Jarvis neural verification");
+                                break;
+                            } else {
+                                Log.i(TAG, "Primary candidate rejected by independent Jarvis ONNX verifier");
+                            }
                         }
                     }
                 }
@@ -240,6 +246,7 @@ final class OpenWakeWordEngine implements AutoCloseable {
 
     @Override
     public void close() {
+        try { independentVerifier.close(); } catch (Exception ignored) {}
         try { classifierSession.close(); } catch (Exception ignored) {}
         try { embeddingSession.close(); } catch (Exception ignored) {}
         try { melSession.close(); } catch (Exception ignored) {}
