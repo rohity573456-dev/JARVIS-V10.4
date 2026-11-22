@@ -833,13 +833,15 @@ public class MainActivity extends Activity {
         if(memory.getBoolean("memory_ai_learning",false))
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),raw);
+                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),raw,
+                () -> memory.getBoolean("memory_ai_learning",false) && !memory.getBoolean("memory_private_mode",false));
     }
     private void runAiMemoryReflectionIfEnabled(){
         if(longTermMemory==null||memory.getBoolean("memory_private_mode",false)||!memory.getBoolean("memory_ai_learning",false))return;
         JarvisMemoryAiWorker.reflectPendingAsync(longTermMemory,secureStore.get("gemini_key"),
             memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-            memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"));
+            memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),
+            () -> memory.getBoolean("memory_ai_learning",false) && !memory.getBoolean("memory_private_mode",false));
     }
     private String buildOfflineMemoryPrompt(String raw){
         if(memory==null||memory.getBoolean("memory_private_mode",false)||longTermMemory==null)return raw;
