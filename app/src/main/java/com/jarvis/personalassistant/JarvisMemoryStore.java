@@ -749,7 +749,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     public synchronized String getRecentConversation(int limit) {
         StringBuilder out = new StringBuilder();
         Cursor c = getReadableDatabase().rawQuery(
-            "SELECT speaker,content FROM conversations ORDER BY created_at DESC LIMIT ?",
+            "SELECT speaker,content FROM conversations ORDER BY created_at DESC,id DESC LIMIT ?",
             new String[]{String.valueOf(Math.max(1, Math.min(200, limit)))});
         try {
             while (c.moveToNext()) {
@@ -783,8 +783,8 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         if (!graph.startsWith("No linked")) result.append("\n\nRELATED KNOWLEDGE GRAPH:\n").append(graph);
         if (!summaries.isEmpty()) result.append("\n\nPAST SESSION DIGESTS:\n").append(summaries);
         if (!recent.isEmpty()) result.append("\n\nRECENT EPISODIC CONTEXT:\n").append(recent);
-        if (result.length() > 8500) result.setLength(8500);
-        return result.toString();
+        // Keep the profile/relevant-fact prefix and newest conversation tail when trimming.
+        return JarvisPromptBudget.fit("", result.toString(), 8500).input;
     }
 
     public synchronized String getAllMemoriesText() { return searchMemories("", 100); }
