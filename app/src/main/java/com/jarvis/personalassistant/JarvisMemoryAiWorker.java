@@ -27,7 +27,7 @@ public final class JarvisMemoryAiWorker {
             if(!consent.isAllowed())return;
             String result=ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text));
             if(!consent.isAllowed())return;
-            storeFacts(db,parseArray(result),"ai-conversation");
+            storeFacts(db,parseArray(result),"ai-conversation",consent);
         });
     }
 
@@ -56,7 +56,7 @@ public final class JarvisMemoryAiWorker {
                 if(!summary.isEmpty() && summary.length()<=600 && !sensitive(summary) && consent.isAllowed())
                     db.saveAiSessionReflection(session.sessionId,summary);
                 if(!consent.isAllowed())return;
-                storeFacts(db,root.optJSONArray("facts"),"ai-reflection");
+                storeFacts(db,root.optJSONArray("facts"),"ai-reflection",consent);
             }
         });
     }
@@ -79,9 +79,10 @@ public final class JarvisMemoryAiWorker {
             empty(rModel)?"openai/gpt-oss-120b":rModel,prompt);
         return result;
     }
-    private static void storeFacts(JarvisMemoryStore db,JSONArray facts,String source){
-        if(db==null||facts==null)return;
+    private static void storeFacts(JarvisMemoryStore db,JSONArray facts,String source,ConsentGate consent){
+        if(db==null||facts==null||consent==null||!consent.isAllowed())return;
         for(int i=0;i<Math.min(20,facts.length());i++){
+            if(!consent.isAllowed())return;
             JSONObject f=facts.optJSONObject(i);if(f==null)continue;
             String content=f.optString("content","").trim(),key=f.optString("key","").trim();
             String category=f.optString("category","general").trim().toLowerCase(java.util.Locale.ROOT);
@@ -93,12 +94,13 @@ public final class JarvisMemoryAiWorker {
             double confidence=Math.max(0.0,Math.min(1.0,f.optDouble("confidence",0.70)));
             int importance=Math.max(0,Math.min(100,f.optInt("importance",55)));
             boolean pinned=f.optBoolean("pinned",false)&&isSafePinnedKey(key,category);
+            if(!consent.isAllowed())return;
             long id=db.upsertFact(category,type,key,content,confidence,importance,pinned,source);
             if(id>0&&(validFrom>0||validUntil>0))db.setMemoryValidity(id,validFrom,validUntil);
             String object=f.optString("object","").trim();
             String subject=f.optString("subject","Commander").trim();
             String relation=f.optString("relation","related_to").trim();
-            if(id>0&&!object.isEmpty()&&object.length()<=240&&subject.length()<=120&&
+            if(consent.isAllowed()&&id>0&&!object.isEmpty()&&object.length()<=240&&subject.length()<=120&&
                     relation.length()<=80&&!sensitive(object)&&!sensitive(subject)&&!sensitive(relation))
                 db.addGraphRelation(id,subject,relation,object,confidence,
                     f.optLong("valid_from",0),f.optLong("valid_until",0));
