@@ -25,6 +25,7 @@ final class WakeWordConfidenceGate {
     private int count;
     private int nextIndex;
     private int secondChanceFramesRemaining;
+    private boolean secondChanceArmedForEpisode;
 
     boolean add(float rawScore) {
         float score = Float.isFinite(rawScore)
@@ -51,8 +52,12 @@ final class WakeWordConfidenceGate {
         }
 
         // Arm only after repeated borderline evidence, never on one isolated spike.
-        if (count == WINDOW_SIZE && borderlineCount >= BORDERLINE_REQUIRED) {
+        if (borderlineCount < BORDERLINE_REQUIRED) {
+            secondChanceArmedForEpisode = false;
+        } else if (count == WINDOW_SIZE && !secondChanceArmedForEpisode
+                && secondChanceFramesRemaining == 0) {
             secondChanceFramesRemaining = SECOND_CHANCE_FRAMES;
+            secondChanceArmedForEpisode = true;
         }
 
         boolean adaptive = secondChanceFramesRemaining > 0;
@@ -82,5 +87,6 @@ final class WakeWordConfidenceGate {
         count = 0;
         nextIndex = 0;
         secondChanceFramesRemaining = 0;
+        secondChanceArmedForEpisode = false;
     }
 }
