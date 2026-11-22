@@ -311,3 +311,13 @@ Every project report must label each capability as:
 - Astra-assisted memory extraction/reflection is available only through the existing explicit cloud-memory consent. Local SQLite remains the source of truth for profile facts, semantic/procedural/episodic memory, session summaries, temporal validity, knowledge-graph relations and retrieval.
 - Private mode must suppress cloud memory extraction and memory-context injection. Sensitive categories remain excluded from automatic extraction. The user must be able to disable cloud learning and clear local memory independently.
 - The Responses API adapter uses the documented `reasoning.effort` field; complex tasks may use high effort while routine tasks remain on Gemini/Groq/local fallback.
+
+## Conversation, routing and token-safety implementation update
+
+- Conversation turns are persisted in the existing SQLite conversations table; each user request receives up to 12 recent chronological turns (six user/assistant pairs), relevant long-term facts, pinned profile facts, session digests and related knowledge-graph context.
+- Context ordering is deterministic for equal timestamps. If memory context must be shortened, preserve its useful opening facts and newest conversational tail instead of cutting off the latest turn.
+- A bounded context composer keeps follow-up instructions, prevents unsupported memory claims, and suppresses saved memory, legacy notes and previous-turn context in private mode.
+- Routing policy: optional Astra first for configured complex specialist work; Groq is preferred for coding/data-analysis/planning when available; Gemini is preferred for general/research; the other configured cloud provider is the fallback; local inference is the final offline fallback.
+- Cloud prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling to reduce provider TPM/context failures. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
+- All providers receive a silent answer self-check instruction. Complex Astra specialist responses may receive a second-pass audit; do not spend a second API call on routine conversation.
+- These changes are automated-test covered but remain pending latest CI completion and real-device validation. Character/token estimates are protective approximations, not exact tokenizer measurements.
