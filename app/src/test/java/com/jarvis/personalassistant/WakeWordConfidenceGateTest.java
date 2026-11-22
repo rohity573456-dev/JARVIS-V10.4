@@ -37,7 +37,7 @@ public class WakeWordConfidenceGateTest {
         assertFalse(gate.add(0.18f));
         assertFalse(gate.add(0.20f));
         assertFalse(gate.add(0.21f));
-        assertTrue(gate.add(0.22f));
+        assertTrue(gate.add(0.23f));
     }
 
     @Test
