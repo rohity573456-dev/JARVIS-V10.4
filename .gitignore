@@ -7,3 +7,6 @@ local.properties
 *.kt.backup
 *.kt.new
 app/libs/*.aar
+
+# Downloaded public evaluation audio (keep out of Git and APK)
+benchmark_data/

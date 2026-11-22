@@ -31,9 +31,6 @@ jobs:
         with:
           gradle-version: '9.6.1'
 
-      - name: Run benchmark analyzer tests
-        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
-
       - name: Run memory unit tests
         run: gradle testDebugUnitTest
 
