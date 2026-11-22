@@ -378,8 +378,11 @@ public class WakeWordService extends Service {
                     java.util.ArrayList<String> matches =
                             results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                     String command = matches == null || matches.isEmpty() ? "" : matches.get(0).trim();
-                    if (isUsableCommandResult(command)) dispatchCommand(command);
-                    else android.util.Log.i("JARVIS-ASR", "Ignored empty or wake-only recognition result");
+                    float[] confidenceScores = results.getFloatArray("confidence_scores");
+                    float confidence = confidenceScores == null || confidenceScores.length == 0
+                            ? Float.NaN : confidenceScores[0];
+                    if (CommandResultGuard.isUsable(command, confidence)) dispatchCommand(command);
+                    else android.util.Log.i("JARVIS-ASR", "Rejected low-confidence, empty, or wake-only transcript");
                     finishCommandCapture();
                 }
                 @Override public void onPartialResults(android.os.Bundle partialResults) {}
@@ -439,15 +442,6 @@ public class WakeWordService extends Service {
         // Let the previous wake-word audio age out of the rolling classifier window.
         ignoreWakeUntilMs = SystemClock.elapsedRealtime() + 1800L;
         restartStandby(700);
-    }
-
-    private boolean isUsableCommandResult(String command) {
-        if (command == null) return false;
-        String normalized = command.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z ]", " ").trim().replaceAll("\\s+", " ");
-        if (normalized.isEmpty() || normalized.length() < 2) return false;
-        return !normalized.equals("jarvis") && !normalized.equals("hey jarvis")
-                && !normalized.equals("ok jarvis") && !normalized.equals("okay jarvis");
     }
 
     private void dispatchCommand(String command) {
