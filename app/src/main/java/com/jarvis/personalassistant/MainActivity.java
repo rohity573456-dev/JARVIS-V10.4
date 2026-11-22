@@ -117,6 +117,7 @@ public class MainActivity extends Activity {
         localModelPath = memory.getString("local_model_path", "");
         if (!localModelPath.isEmpty() && !new File(localModelPath).exists()) localModelPath = "";
         buildUi();
+        if(memory.getBoolean("memory_cloud_embeddings",false)) indexSemanticMemoryIfEnabled(300);
         registerWakeReceiver();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             requestNotificationPermissionIfNeeded();
@@ -347,6 +348,14 @@ public class MainActivity extends Activity {
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
         else if (q.contains("alarm")) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
+        else if (q.startsWith("memory pin ")) { long id=parseLong(raw.replaceFirst("(?i)^memory pin\\s*","")); answer=longTermMemory!=null && longTermMemory.setMemoryPinned(id,true)?"Memory #"+id+" pinned as core memory.":"Memory ID nahi mili."; }
+        else if (q.startsWith("memory unpin ")) { long id=parseLong(raw.replaceFirst("(?i)^memory unpin\\s*","")); answer=longTermMemory!=null && longTermMemory.setMemoryPinned(id,false)?"Memory #"+id+" unpinned.":"Memory ID nahi mili."; }
+        else if (q.startsWith("memory history")) { String term=raw.replaceFirst("(?i)^memory history\\s*","").trim(); answer=longTermMemory==null?"Memory unavailable.":longTermMemory.getMemoryHistoryText(term); }
+        else if (q.equals("memory stats") || q.equals("memory status")) { answer=longTermMemory==null?"Memory unavailable.":longTermMemory.getMemoryStatsText(); }
+        else if (q.equals("memory consolidate") || q.equals("memory reflect") || q.equals("memory dreaming")) { int made=longTermMemory==null?0:longTermMemory.consolidateMemories(); answer="Memory reflection complete. "+made+" session digest(s) created. Existing facts were preserved."; }
+        else if (q.equals("memory embeddings on")) { memory.edit().putBoolean("memory_cloud_embeddings",true).apply(); indexSemanticMemoryIfEnabled(300); answer="Gemini semantic memory ON. Saved memory snippets and future search queries may be sent to Google for embedding. Local recall remains as fallback."; }
+        else if (q.equals("memory embeddings off")) { memory.edit().putBoolean("memory_cloud_embeddings",false).apply(); answer="Cloud semantic embeddings OFF. JARVIS will use on-device lexical, temporal and graph recall."; }
+        else if (q.equals("memory embeddings delete")) { if(longTermMemory!=null)longTermMemory.clearEmbeddings(); answer="Stored semantic vector index deleted. Your original memories are unchanged."; }
         else if (q.equals("memory privacy on") || q.equals("private mode on") || q.equals("memory band")) { memory.edit().putBoolean("memory_private_mode",true).apply(); answer="Privacy mode ON. Conversation history aur automatic learning save nahi honge."; }
         else if (q.equals("memory privacy off") || q.equals("private mode off") || q.equals("memory chalu")) { memory.edit().putBoolean("memory_private_mode",false).apply(); answer="Memory mode ON. Local history aur automatic learning resume."; }
         else if (q.startsWith("memory delete ")) { long id=parseMemoryId(raw); answer=longTermMemory!=null && longTermMemory.deleteMemory(id)?"Memory #"+id+" delete ho gayi.":"Memory ID nahi mili."; }
@@ -356,8 +365,8 @@ public class MainActivity extends Activity {
         else if (q.startsWith("remind me at ")) { answer=scheduleReminder(raw); }
         else if (q.startsWith("task add ") || q.startsWith("reminder add ") || q.startsWith("yaad dilana ")) { String task=raw.replaceFirst("(?i)^(task add|reminder add|yaad dilana)\\s*", "").trim(); long id=longTermMemory==null?-1:longTermMemory.addTask(task,0); answer=id>0?"Task/reminder #"+id+" local list mein save ho gaya. Due time set karne ke liye TASKS screen kholo.":"Task save nahi hua."; }
         else if (q.equals("tasks") || q.equals("task list") || q.equals("reminders") || q.equals("show tasks")) { answer=longTermMemory==null?"Task store unavailable.":longTermMemory.getTasksText(false); }
-        else if (q.startsWith("task done ") || q.startsWith("task complete ")) { long id=parseLong(raw.replaceFirst("(?i)^task (done|complete)\\s*","").trim()); answer=longTermMemory!=null && longTermMemory.completeTask(id)?"Task #"+id+" complete mark kar diya.":"Task ID nahi mili."; }
-        else if (q.startsWith("task delete ")) { long id=parseLong(raw.replaceFirst("(?i)^task delete\\s*","").trim()); answer=longTermMemory!=null && longTermMemory.deleteTask(id)?"Task #"+id+" delete kar diya.":"Task ID nahi mili."; }
+        else if (q.startsWith("task done ") || q.startsWith("task complete ")) { long id=parseLong(raw.replaceFirst("(?i)^task (done|complete)\\s*","").trim()); boolean done=longTermMemory!=null && longTermMemory.completeTask(id); if(done)JarvisReminderScheduler.cancel(this,id); answer=done?"Task #"+id+" complete mark kar diya.":"Task ID nahi mili."; }
+        else if (q.startsWith("task delete ")) { long id=parseLong(raw.replaceFirst("(?i)^task delete\\s*","").trim()); boolean removed=longTermMemory!=null && longTermMemory.deleteTask(id); if(removed)JarvisReminderScheduler.cancel(this,id); answer=removed?"Task #"+id+" delete kar diya.":"Task ID nahi mili."; }
         else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); saveNote(note); answer="Memory mein save kar diya: "+note; }
         else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
@@ -368,9 +377,13 @@ public class MainActivity extends Activity {
             String groqKey = secureStore.get("groq_key");
             if (!geminiKey.isEmpty() || !groqKey.isEmpty()) {
                 status.setText("● HYBRID AI CONNECTING...");
-                final String memoryContext = longTermMemory == null || memory.getBoolean("memory_private_mode", false) ? "No saved memory context. Respect privacy." : longTermMemory.getMemoryContext(raw, 10);
-                final String prompt = memoryContext + "\nLegacy saved note: " + memory.getString("note", "none") + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
+                final boolean privateContext = memory.getBoolean("memory_private_mode", false);
+                final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
                 new Thread(() -> {
+                    float[] queryVector = useCloudVector ? JarvisEmbeddingClient.embed(geminiKey, raw, true) : null;
+                    final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
+                        (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
+                    final String prompt = memoryContext + "\nLegacy saved note: " + memory.getString("note", "none") + "\nPrevious response: " + lastResponse + "\nCommander says: " + raw;
                     String result = "ERROR: No provider key configured.";
                     if (!geminiKey.isEmpty()) {
                         result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai", geminiKey,
@@ -411,12 +424,12 @@ public class MainActivity extends Activity {
     private void saveNote(String note) {
         if (note == null || note.trim().isEmpty()) return;
         memory.edit().putString("note",note.trim()).apply();
-        if (longTermMemory != null) longTermMemory.saveMemory("personal", note.trim());
+        if (longTermMemory != null && longTermMemory.saveMemory("personal", note.trim()) > 0) indexSemanticMemoryIfEnabled(1);
     }
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshDashboard(); respond("System report. "+batteryReport()+" Available storage aur memory dashboard par dikhayi gayi hai."); }
     private void memoryDialog() {
-        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders"};
+        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
             .setItems(options,(d,which)->{
                 if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->{saveNote(in.getText().toString());respond("Memory saved locally.");}).setNegativeButton("CANCEL",null).show();}
@@ -428,7 +441,19 @@ public class MainActivity extends Activity {
                 else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts and preferences will be permanently deleted.").setPositiveButton("DELETE",(x,y)->{if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All memories cleared.");}).setNegativeButton("CANCEL",null).show();}
                 else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
                 else if(which==8){show("KNOWLEDGE GRAPH",longTermMemory==null?"Unavailable":longTermMemory.getKnowledgeGraphText(""));}
-                else taskDialog();
+                else if(which==9) taskDialog();
+                else if(which==10) show("MEMORY HEALTH",longTermMemory==null?"Unavailable":longTermMemory.getMemoryStatsText());
+                else if(which==11){int made=longTermMemory==null?0:longTermMemory.consolidateMemories();respond("Memory reflection complete. "+made+" session digests created; facts preserved.");}
+                else if(which==12) show("PINNED CORE MEMORIES",longTermMemory==null?"Unavailable":longTermMemory.getPinnedMemoriesText(50));
+                else if(which==13){
+                    boolean enabled=memory.getBoolean("memory_cloud_embeddings",false);
+                    if(enabled){memory.edit().putBoolean("memory_cloud_embeddings",false).apply();respond("Gemini semantic vectors OFF. Local memory recall remains active.");}
+                    else new AlertDialog.Builder(this).setTitle("ENABLE GEMINI SEMANTIC MEMORY?")
+                        .setMessage("This optional feature sends saved memory snippets and future memory-search queries to Google Gemini Embeddings. Your memory database remains on this phone, and local search stays available as fallback. Enable only if you agree.")
+                        .setPositiveButton("ENABLE",(x,y)->{memory.edit().putBoolean("memory_cloud_embeddings",true).apply();indexSemanticMemoryIfEnabled(300);respond("Gemini semantic vectors enabled. Existing memories will be indexed in the background.");})
+                        .setNegativeButton("CANCEL",null).show();
+                }
+                else if(which==14){if(longTermMemory!=null)longTermMemory.clearEmbeddings();respond("Semantic vector index deleted. Saved facts remain.");}
             }).setNegativeButton("CLOSE",null).show();
     }
     private String scheduleReminder(String raw) {
@@ -445,19 +470,8 @@ public class MainActivity extends Activity {
         long dueAt=when.getTimeInMillis();
         long id=longTermMemory==null?-1:longTermMemory.addTask(title,dueAt);
         if(id<=0)return "Reminder save nahi ho paya.";
-        try {
-            Intent alarmIntent=new Intent(this,JarvisReminderReceiver.class);
-            alarmIntent.putExtra("reminder_title",title);
-            alarmIntent.putExtra("reminder_id",(int)id);
-            int requestCode=(int)(id & 0x7fffffff);
-            PendingIntent pending=PendingIntent.getBroadcast(this,requestCode,alarmIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            AlarmManager alarms=(AlarmManager)getSystemService(ALARM_SERVICE);
-            if(alarms==null)return "Reminder task list mein save hua, lekin Android Alarm service unavailable hai.";
-            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,dueAt,pending);
-        } catch(Exception e) {
-            return "Reminder task list mein save hua, lekin alarm schedule nahi hua: "+e.getMessage();
-        }
+        if(!JarvisReminderScheduler.schedule(this,id,title,dueAt))
+            return "Reminder list mein save hua, lekin Android Alarm service schedule nahi kar payi.";
         return "JARVIS reminder schedule ho gaya: "+title+" — "+new SimpleDateFormat("dd MMM, hh:mm a",Locale.getDefault()).format(new Date(dueAt))+". Notification permission ON rakhein.";
     }
     private void taskDialog() {
@@ -471,15 +485,12 @@ public class MainActivity extends Activity {
     private long parseLong(String s){try{return Long.parseLong(s.trim());}catch(Exception e){return -1;}}
     private long parseMemoryId(String s){return parseLong(s.replaceFirst("(?i)^memory delete\\s*","").trim());}
     private void autoLearnMemory(String raw){
-        if(longTermMemory==null||raw==null)return;
-        String s=raw.trim(),q=s.toLowerCase(Locale.ROOT);
-        if(q.length()<8||q.startsWith("memory ")||q.startsWith("task ")||q.startsWith("reminder "))return;
-        String[] blocked={"password","passcode","otp","cvv","bank account","aadhaar","pan number","medical","medicine","diagnosis","disease","sexual"};
-        for(String word:blocked)if(q.contains(word))return;
-        boolean learn=q.startsWith("my name is ")||q.startsWith("mera naam ")||q.startsWith("my favourite ")||q.startsWith("my favorite ")||q.startsWith("mera favourite ")||q.startsWith("meri favourite ")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer ")||q.startsWith("mujhe pasand hai ")||q.startsWith("my preference ")||q.startsWith("i live in ")||q.startsWith("i am from ")||q.startsWith("i am based in ")||q.startsWith("main rehta hoon ")||q.startsWith("main rehti hoon ")||q.startsWith("my goal is ")||q.startsWith("mera goal ")||q.startsWith("my dream is ")||q.startsWith("i work as ")||q.startsWith("my job is ")||q.startsWith("main kaam karta hoon ")||q.startsWith("main kaam karti hoon ")||q.startsWith("actually my ")||q.startsWith("actually, my ")||q.startsWith("correction: my ")||q.startsWith("nahi, mera ")||q.startsWith("nahi mera ");
-        if(!learn)return;
-        String category=(q.startsWith("my favourite")||q.startsWith("my favorite")||q.startsWith("mera favourite")||q.startsWith("meri favourite")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer ")||q.startsWith("mujhe pasand hai "))?"preference":"personal";
-        longTermMemory.saveMemory(category,s);
+        if(longTermMemory==null||raw==null||memory.getBoolean("memory_private_mode",false))return;
+        if(JarvisMemoryExtractor.learn(longTermMemory,raw)) indexSemanticMemoryIfEnabled(1);
+    }
+    private void indexSemanticMemoryIfEnabled(int maximum){
+        if(memory!=null && memory.getBoolean("memory_cloud_embeddings",false) && secureStore!=null)
+            JarvisEmbeddingWorker.indexPending(longTermMemory,secureStore,maximum);
     }
     private void customCommandDialog() {
         LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(24,8,24,8);
