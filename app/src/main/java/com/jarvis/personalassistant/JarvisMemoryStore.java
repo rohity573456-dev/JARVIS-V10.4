@@ -885,6 +885,18 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         }}finally{c.close();}
         return out.length()==0?"No structured profile facts yet.":out.toString();
     }
+    /** Save a temporary note that is automatically purged after its requested TTL. */
+    public synchronized long addTransientMemory(String content,long ttlMillis) {
+        if(content==null||content.trim().isEmpty()||ttlMillis<=0||ttlMillis>365L*24L*60L*60L*1000L||isSensitiveContent(content))return -1;
+        SQLiteDatabase db=getWritableDatabase();
+        long id=insertMemory(db,"temporary","transient","","Temporary note: "+content.trim(),0.65,20,false,"user-temporary");
+        if(id>0){
+            ContentValues v=new ContentValues();v.put("expires_at",System.currentTimeMillis()+ttlMillis);
+            db.update(MEMORIES,v,"id=?",new String[]{String.valueOf(id)});
+        }
+        return id;
+    }
+
     /** Only explicitly transient records expire; stable facts are never auto-erased. */
     public synchronized int expireTransientMemories(){
         SQLiteDatabase db=getWritableDatabase();long now=System.currentTimeMillis();

@@ -54,6 +54,9 @@ jobs:
           sherpa-onnx-cli text2token --tokens app/src/main/assets/${MODEL}/tokens.txt --tokens-type bpe --bpe-model app/src/main/assets/${MODEL}/bpe.model /tmp/keywords_raw.txt /tmp/keywords.txt
           cp /tmp/keywords.txt app/src/main/assets/${MODEL}/keywords.txt
 
+      - name: Run memory unit tests
+        run: gradle testDebugUnitTest
+
       - name: Build debug APK
         run: gradle assembleDebug
 
