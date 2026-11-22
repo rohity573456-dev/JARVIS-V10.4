@@ -600,15 +600,15 @@ public class WakeWordService extends Service {
         final String raw = command.trim();
         final String q = raw.toLowerCase(Locale.ROOT);
 
-        if (q.contains("time") || q.contains("samay") || q.contains("kitne baje")) {
+        if (JarvisIntentRouter.isTimeQuery(raw)) {
             speak("Abhi " + new java.text.SimpleDateFormat("hh:mm a",Locale.getDefault()).format(new java.util.Date()) + " baj rahe hain.");
             return;
         }
-        if (q.contains("date") || q.contains("tareekh") || q.contains("aaj ki date")) {
+        if (JarvisIntentRouter.isDateQuery(raw)) {
             speak("Aaj " + new java.text.SimpleDateFormat("dd MMMM yyyy",new Locale("hi","IN")).format(new java.util.Date()) + " hai.");
             return;
         }
-        if (q.contains("battery")) {
+        if (JarvisIntentRouter.isBatteryStatusQuery(raw)) {
             try {
                 Intent battery = registerReceiver(null,new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
                 int level = battery == null ? -1 : battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
@@ -616,19 +616,19 @@ public class WakeWordService extends Service {
             } catch (Exception e) { speak("Battery status unavailable."); }
             return;
         }
-        if (q.contains("volume up") || q.contains("volume down") || q.equals("mute")) {
+        if (JarvisIntentRouter.isVolumeUpCommand(raw) || JarvisIntentRouter.isVolumeDownCommand(raw) || JarvisIntentRouter.isMuteCommand(raw)) {
             try {
                 android.media.AudioManager audio = (android.media.AudioManager)getSystemService(AUDIO_SERVICE);
                 if (audio != null) {
-                    int direction = q.contains("up") ? android.media.AudioManager.ADJUST_RAISE :
-                        q.contains("down") ? android.media.AudioManager.ADJUST_LOWER : android.media.AudioManager.ADJUST_MUTE;
+                    int direction = JarvisIntentRouter.isVolumeUpCommand(raw) ? android.media.AudioManager.ADJUST_RAISE :
+                        JarvisIntentRouter.isVolumeDownCommand(raw) ? android.media.AudioManager.ADJUST_LOWER : android.media.AudioManager.ADJUST_MUTE;
                     audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,direction,android.media.AudioManager.FLAG_SHOW_UI);
                     speak("Media volume updated.");
                 }
             } catch (Exception e) { speak("Volume control unavailable."); }
             return;
         }
-        if (q.contains("flashlight") || q.contains("torch")) {
+        if (JarvisIntentRouter.isFlashlightCommand(raw)) {
             if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 speak("Flashlight ke liye JARVIS app kholkar Camera permission allow karein.");
                 return;
