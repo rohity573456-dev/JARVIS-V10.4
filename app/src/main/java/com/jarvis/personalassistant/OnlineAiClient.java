@@ -86,14 +86,16 @@ public final class OnlineAiClient {
             c.setRequestProperty("Authorization", "Bearer " + apiKey);
             JSONObject body = new JSONObject();
             body.put("model", model);
+            JarvisPromptBudget.Prompt budget = JarvisPromptBudget.fit(
+                    systemPrompt == null ? "Use only supplied tools. Never invent tool results." : systemPrompt,
+                    prompt, JarvisPromptBudget.STANDARD_MAX_CHARS);
             body.put("temperature", 0.1);
-            body.put("max_tokens", 2048);
+            body.put("max_tokens", 1536);
             body.put("tool_choice", "auto");
             body.put("tools", tools == null ? new JSONArray() : tools);
             JSONArray messages = new JSONArray();
-            messages.put(new JSONObject().put("role", "system").put("content",
-                systemPrompt == null ? "Use only supplied tools. Never invent tool results." : systemPrompt));
-            messages.put(new JSONObject().put("role", "user").put("content", prompt));
+            messages.put(new JSONObject().put("role", "system").put("content", budget.system));
+            messages.put(new JSONObject().put("role", "user").put("content", budget.input));
             body.put("messages", messages);
             byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
             try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
