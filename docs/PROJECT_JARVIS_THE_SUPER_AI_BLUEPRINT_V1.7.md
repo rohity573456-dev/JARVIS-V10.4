@@ -390,3 +390,18 @@ Every project report must label each capability as:
 2. Review Android agent approval timeout, cancellation and activity lifecycle behavior.
 3. Inspect foreground/background voice parity after the first routing fix.
 4. Complete all remaining divisions with evidence-backed status labels.
+
+### Audit pass 3 — asynchronous cloud-memory consent race
+
+**Issue found**
+- Cloud-memory consent and private mode were checked before enqueueing background extraction/reflection jobs, but a queued job could continue after the user switched private mode on or disabled AI memory learning.
+
+**Correction committed**
+- Added a live consent-gate callback to AI memory extraction and reflection.
+- Jobs now re-check consent before starting provider requests, before storing extracted facts, before saving session summaries, and before each reflected session.
+- Legacy worker overloads now fail closed unless a caller supplies an explicit live consent gate.
+- MainActivity supplies a gate that reads the current memory_ai_learning and memory_private_mode settings. The same protection now covers both normal user messages and saved-note extraction.
+
+**Verification**
+- Source committed to the active feature branch. Fresh GitHub Actions result is not yet available/confirmed.
+- Runtime race testing (turn private mode on while a cloud request is queued/in flight) remains a required device/integration test.
