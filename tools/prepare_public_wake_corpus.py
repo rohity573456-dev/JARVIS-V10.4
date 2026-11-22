@@ -1,86 +1,100 @@
 #!/usr/bin/env python3
-"""Download the Apache-2.0 Picovoice wake-word clips into a temporary workspace."""
+"""Download and prepare the public Picovoice wake-word benchmark corpus.
+
+Audio is stored locally under benchmark_data/ and is never copied into the APK
+or committed to Git. Jarvis-labelled clips are positives; the other wake-word
+classes are hard negatives, not conversational/background negatives.
+"""
 import argparse
 import csv
 import json
+import re
+import sys
 from pathlib import Path
 
-DATASET_ID = "Picovoice/wake-word-benchmark"
-LABELS = {0: "alexa", 1: "computer", 2: "jarvis", 3: "smart mirror", 4: "snowboy", 5: "view glass"}
+
+def safe_name(value):
+    return re.sub(r"[^a-z0-9_-]+", "_", str(value).lower()).strip("_") or "unknown"
+
+
+def label_name(dataset, value):
+    feature = dataset.features.get("label")
+    if hasattr(feature, "int2str"):
+        return str(feature.int2str(int(value))).lower()
+    return str(value).lower()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, default=0, help="0 downloads all clips")
-    parser.add_argument("--output-dir", default="benchmark_data/picovoice")
+    parser.add_argument("--output", default="benchmark_data/picovoice")
+    parser.add_argument("--limit", type=int, default=0, help="Optional per-class cap; 0 means all clips")
     args = parser.parse_args()
     if args.limit < 0:
-        parser.error("--limit must be zero or a positive integer")
+        parser.error("--limit cannot be negative")
+    try:
+        from datasets import load_dataset
+        import soundfile as sf
+    except ImportError as exc:
+        print("Install dependencies: python -m pip install 'datasets[audio]' soundfile", file=sys.stderr)
+        raise SystemExit(2) from exc
 
-    from datasets import Audio, load_dataset
-    import numpy as np
-    import soundfile as sf
-
-    out = Path(args.output_dir)
-    audio_dir = out / "audio"
-    audio_dir.mkdir(parents=True, exist_ok=True)
-    ds = load_dataset(DATASET_ID, split="train")
-    if "audio" not in ds.column_names or "label" not in ds.column_names:
-        raise RuntimeError(f"Unexpected dataset schema: {ds.column_names}")
-    ds = ds.cast_column("audio", Audio(decode=True))
-    total = len(ds) if args.limit == 0 else min(args.limit, len(ds))
-    manifest_path = out / "manifest.csv"
+    out = Path(args.output)
+    out.mkdir(parents=True, exist_ok=True)
+    print("Downloading public corpus metadata/audio from Hugging Face...")
+    dataset = load_dataset("domdomegg/picovoice-wake-word-benchmark", split="train")
+    counts = {}
     rows = []
-    for index in range(total):
-        item = ds[index]
-        label_value = item["label"]
-        if isinstance(label_value, str):
-            label = label_value.strip().lower()
-        else:
-            label = LABELS.get(int(label_value), str(label_value))
-        audio = item["audio"]
-        samples = np.asarray(audio["array"], dtype=np.float32)
+    for index, item in enumerate(dataset):
+        audio = item.get("audio")
+        if not isinstance(audio, dict) or audio.get("array") is None:
+            raise RuntimeError(f"Dataset row {index} has no decoded audio array")
+        label = label_name(dataset, item.get("label", "unknown"))
+        counts[label] = counts.get(label, 0) + 1
+        if args.limit and counts[label] > args.limit:
+            continue
+        positive = label == "jarvis"
+        category = "positive_jarvis" if positive else "hard_negative_other_wakeword"
+        folder = out / category
+        folder.mkdir(parents=True, exist_ok=True)
+        filename = f"{safe_name(label)}_{index:05d}.wav"
+        destination = folder / filename
+        samples = audio["array"]
         rate = int(audio["sampling_rate"])
-        if samples.ndim == 2:
-            # HF audio arrays are usually [samples, channels], but accept [channels, samples].
-            channel_axis = 0 if samples.shape[0] <= 8 and samples.shape[1] > 8 else 1
-            samples = samples.mean(axis=channel_axis)
-        if rate != 16000:
-            target_length = max(1, round(len(samples) * 16000 / rate))
-            old_x = np.arange(len(samples), dtype=np.float64)
-            new_x = np.linspace(0, max(0, len(samples) - 1), target_length)
-            samples = np.interp(new_x, old_x, samples).astype(np.float32)
-            rate = 16000
-        samples = np.clip(samples, -1.0, 1.0)
-        relative = Path("benchmark_data/picovoice/audio") / f"clip_{index:05d}.wav"
-        absolute = Path.cwd() / relative
-        absolute.parent.mkdir(parents=True, exist_ok=True)
-        sf.write(str(absolute), samples, rate, subtype="PCM_16")
+        sf.write(destination, samples, rate, subtype="PCM_16")
+        duration = len(samples) / rate if rate else 0.0
         rows.append({
             "clip_id": f"PV{index:05d}",
+            "expected_wake": 1 if positive else 0,
             "label": label,
-            "expected_wake": int(label == "jarvis"),
-            "negative_type": "" if label == "jarvis" else f"other_wakeword:{label}",
-            "relative_path": str(relative),
+            "negative_type": "" if positive else "other_wakeword",
+            "relative_path": str(destination.as_posix()),
+            "sample_rate_hz": rate,
+            "duration_s": round(duration, 4),
+            "speaker_id": "not_provided_by_source_manifest",
+            "source": "domdomegg/picovoice-wake-word-benchmark",
+            "license": "Apache-2.0",
         })
-        if (index + 1) % 100 == 0:
-            print(f"Downloaded {index + 1}/{total} clips")
-    with manifest_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]) if rows else [
-            "clip_id", "label", "expected_wake", "negative_type", "relative_path"])
+
+    manifest = out / "manifest.csv"
+    with manifest.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]) if rows else [
+            "clip_id","expected_wake","label","negative_type","relative_path",
+            "sample_rate_hz","duration_s","speaker_id","source","license"])
         writer.writeheader()
         writer.writerows(rows)
     summary = {
-        "dataset": DATASET_ID,
-        "license": "Apache-2.0",
-        "downloaded_clips": total,
-        "positive_jarvis_clips": sum(r["expected_wake"] for r in rows),
-        "negative_other_wakeword_clips": sum(not r["expected_wake"] for r in rows),
-        "manifest": str(manifest_path),
-        "note": "Keyword clips only; not continuous ambient audio or live Android trials."
+        "source": "https://huggingface.co/datasets/domdomegg/picovoice-wake-word-benchmark",
+        "license": "Apache-2.0 (verify source license before redistribution)",
+        "clips_written": len(rows),
+        "jarvis_positive_clips": sum(r["expected_wake"] == 1 for r in rows),
+        "other_wakeword_hard_negatives": sum(r["expected_wake"] == 0 for r in rows),
+        "classes_seen": counts,
+        "manifest": str(manifest.as_posix()),
+        "warning": "Offline public-corpus clips are not live POCO F5 microphone trials. Do not mix these with real-device accuracy metrics.",
     }
-    (out / "download_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
+    print("Audio remains local. Do not commit benchmark_data/ or package it in the Android APK.")
 
 
 if __name__ == "__main__":
