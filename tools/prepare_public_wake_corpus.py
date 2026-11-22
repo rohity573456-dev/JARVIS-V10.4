@@ -34,8 +34,9 @@ def main():
     try:
         from datasets import load_dataset
         import soundfile as sf
+        import numpy as np
     except ImportError as exc:
-        print("Install dependencies: python -m pip install 'datasets[audio]' soundfile", file=sys.stderr)
+        print("Install dependencies: python -m pip install 'datasets[audio]' soundfile numpy", file=sys.stderr)
         raise SystemExit(2) from exc
 
     out = Path(args.output)
@@ -46,8 +47,34 @@ def main():
     rows = []
     for index, item in enumerate(dataset):
         audio = item.get("audio")
-        if not isinstance(audio, dict) or audio.get("array") is None:
-            raise RuntimeError(f"Dataset row {index} has no decoded audio array")
+        if isinstance(audio, dict):
+            samples = audio.get("array")
+            rate = audio.get("sampling_rate")
+        elif audio is not None and hasattr(audio, "get_all_samples"):
+            # datasets >= 4 returns an AudioDecoder instead of the legacy dict.
+            decoded = audio.get_all_samples()
+            samples = decoded.data
+            rate = decoded.sample_rate
+            if hasattr(samples, "detach"):
+                samples = samples.detach().cpu().numpy()
+            else:
+                samples = np.asarray(samples)
+            # AudioSamples uses channels-first; soundfile expects frames-first.
+            if samples.ndim == 2 and samples.shape[0] <= 8 and samples.shape[1] > samples.shape[0]:
+                samples = samples.T
+        else:
+            raise RuntimeError(
+                f"Dataset row {index} has unsupported audio value: "
+                f"{type(audio).__name__}; expected legacy audio dict or AudioDecoder"
+            )
+
+        if samples is None or rate is None:
+            raise RuntimeError(f"Dataset row {index} decoded without samples or sample rate")
+        samples = np.asarray(samples)
+        if samples.size == 0:
+            raise RuntimeError(f"Dataset row {index} contains empty audio")
+        rate = int(rate)
+
         label = label_name(dataset, item.get("label", "unknown"))
         counts[label] = counts.get(label, 0) + 1
         if args.limit and counts[label] > args.limit:
@@ -58,8 +85,6 @@ def main():
         folder.mkdir(parents=True, exist_ok=True)
         filename = f"{safe_name(label)}_{index:05d}.wav"
         destination = folder / filename
-        samples = audio["array"]
-        rate = int(audio["sampling_rate"])
         sf.write(destination, samples, rate, subtype="PCM_16")
         duration = len(samples) / rate if rate else 0.0
         rows.append({
