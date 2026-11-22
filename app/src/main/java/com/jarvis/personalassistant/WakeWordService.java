@@ -396,16 +396,49 @@ public class WakeWordService extends Service {
             speech.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
             speech.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
 
-            // Allow the spoken acknowledgement to finish before command capture.
-            handler.postDelayed(() -> {
-                if (running && commandRecognizer != null) {
-                    try { commandRecognizer.startListening(speech); }
-                    catch (Exception e) { finishCommandCapture(); }
-                }
-            }, 900);
+            // Do not let SpeechRecognizer compete with the acknowledgement audio.
+            // TTS startup and utterance duration vary by device, so wait for the real
+            // onDone/onError callback instead of assuming a fixed 900 ms is enough.
+            waitForAcknowledgementThenListen(
+                    speech, android.os.SystemClock.elapsedRealtime() + 10000L);
         } catch (Exception e) {
             finishCommandCapture();
         }
+    }
+
+    private void waitForAcknowledgementThenListen(Intent speech, long deadlineElapsed) {
+        if (!running || commandRecognizer == null) return;
+
+        if (ttsReady && !speechPlaying && pendingSpeech == null) {
+            try {
+                commandRecognizer.startListening(speech);
+            } catch (Exception error) {
+                android.util.Log.e("JARVIS-KWS", "SpeechRecognizer start failed", error);
+                finishCommandCapture();
+            }
+            return;
+        }
+
+        if (android.os.SystemClock.elapsedRealtime() >= deadlineElapsed) {
+            // If TTS never becomes ready, or gets stuck, do not leave the command
+            // session permanently blocked. Stop any lingering acknowledgement first.
+            pendingSpeech = null;
+            if (tts != null && speechPlaying) {
+                try { tts.stop(); } catch (Exception ignored) {}
+            }
+            if (!speechPlaying) {
+                try {
+                    commandRecognizer.startListening(speech);
+                } catch (Exception error) {
+                    android.util.Log.e("JARVIS-KWS", "SpeechRecognizer start failed", error);
+                    finishCommandCapture();
+                }
+                return;
+            }
+        }
+
+        handler.postDelayed(
+                () -> waitForAcknowledgementThenListen(speech, deadlineElapsed), 100L);
     }
 
     private void finishCommandCapture() {
