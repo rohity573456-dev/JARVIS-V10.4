@@ -321,3 +321,35 @@ Every project report must label each capability as:
 - Cloud prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling to reduce provider TPM/context failures. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
 - All providers receive a silent answer self-check instruction. Complex Astra specialist responses may receive a second-pass audit; do not spend a second API call on routine conversation.
 - These changes are automated-test covered but remain pending latest CI completion and real-device validation. Character/token estimates are protective approximations, not exact tokenizer measurements.
+
+## Implementation audit log — 23 November 2026
+
+### Audit pass 1 — baseline and intent-routing safety
+
+**Scope:** Source-level inspection of the active development branch. This is not a full 107-division audit and is not device validation.
+
+**Confirmed source evidence**
+- Android app baseline: app/build.gradle uses Java 17, compile SDK 35, min SDK 24, target SDK 35, app version 10.4.1-openwakeword, and arm64-v8a ABI.
+- Existing local intent gates: JarvisIntentRouter provides narrow time/date/battery/system-report and explicit device-command matching; MainActivity.handle() uses these gates for foreground requests.
+- Conversation context: JarvisConversationContext is wired into the foreground AI path. JarvisMemoryStore persists conversations and combines pinned facts, relevant memories, graph relations, session summaries and recent turns.
+- Provider routing: JarvisHybridBrain routes between configured Astra, Gemini, Groq and local inference. Current classification is keyword-based and should not yet be treated as a complete intent/complexity classifier.
+- Memory: existing SQLite implementation includes profile facts, temporal records, graph edges, semantic/cloud embeddings, local feature vectors, summaries, tasks and transient notes. This does not yet prove all 20 memory types or lifecycle guarantees in Division 51.
+- Voice: WakeWordService retains the existing ONNX/OpenWakeWord pipeline. No ONNX asset was changed by this audit pass.
+- Voice evidence limitation: docs/VOICE_ENGINE_IMPLEMENTATION_STATUS.md explicitly records that real-phone accuracy, battery/latency evidence and full background command parity still require validation.
+
+**Issue found and corrected**
+- Before this pass, WakeWordService.executeBackgroundCommand() used broad substring checks for time, date, battery, volume and flashlight. A technical question mentioning one of those words could be intercepted as a device action.
+- Updated the background voice path to use the same strict JarvisIntentRouter predicates as the foreground path for those local actions.
+- Added unit-test cases covering explanatory battery/time/flashlight/volume questions and explicit commands.
+- **Verification state:** source changes committed to the active feature branch; the next GitHub Actions run must pass before this fix is marked verified. Real-device voice testing remains pending.
+
+**Preliminary division status (source-level only)**
+- **Partially implemented; further audit required:** 4 (Memory & Learning), 7 (Multimodal Intelligence), 9 (Android Intelligence), 13 (Security Intelligence), 16 (Command & Action Intelligence), 24 (Developer Intelligence), 51 (Complete Cognitive Memory Architecture), 52 (Foundation Model Intelligence), 60 (Dynamic Intelligence & Compute Management), 64 (Tool Intelligence & API Ecosystem), 69 (Universal Personal Agent), 70 (Frontier Intelligence Routing), 97 (Intelligent Intent Router), 98 (Central AI Orchestrator), 99 (Advanced Context Manager), 100 (Multi-Turn Conversation Engine), 101 (Response Quality Verifier), 102 (Intelligent Model Fallback), 103 (AI Performance & Token Optimizer), 104 (Advanced Cognitive Brain), 105 (ChatGPT-Style Memory Intelligence), 106 (Conversational Personality Engine), 107 (Cognitive Self-Evaluation Engine).
+- **Not yet audited:** all other divisions. “Not yet audited” does not mean absent; each must be checked against source, tests and device behavior.
+- No division is marked fully complete or production-ready by this pass.
+
+**Next audit sequence**
+1. Complete the source dependency map for command routing, model clients, agent planner, memory extraction/retrieval and voice.
+2. Verify all 107 divisions against implementation, automated tests and device evidence.
+3. Prioritize central orchestrator/intent safety, memory lifecycle/privacy, tool permission gates and answer-quality/fallback behavior.
+4. Keep each capability status explicit: Planned, Partially implemented, Implemented, Verified, Device-validated or Production-ready.
