@@ -63,6 +63,7 @@ public class WakeWordService extends Service {
     private final WakeWordMetrics wakeWordMetrics = new WakeWordMetrics();
     private volatile short[] lastWakePreRoll = new short[0];
     private volatile long lastMetricsLogAtMs = 0L;
+    private int serviceStartBatteryPercent = -1;
     private final Runnable healthCheck = new Runnable() {
         @Override public void run() {
             if (!running) return;
@@ -131,6 +132,7 @@ public class WakeWordService extends Service {
         if (!running) {
             running = true;
             wakeWordMetrics.start(SystemClock.elapsedRealtime(), android.os.Process.getElapsedCpuTime());
+            serviceStartBatteryPercent = getBatteryPercent();
             lastMetricsLogAtMs = SystemClock.elapsedRealtime();
             handler.removeCallbacks(healthCheck);
             handler.postDelayed(healthCheck, 15000L);
@@ -584,7 +586,9 @@ public class WakeWordService extends Service {
         android.util.Log.i("JARVIS-METRICS", reason + " " + wakeWordMetrics.snapshot(
                 SystemClock.elapsedRealtime(), android.os.Process.getElapsedCpuTime())
                 + ",preRollSamples=" + lastWakePreRoll.length
-                + ",batteryPercent=" + getBatteryPercent()
+                + ",batteryStart=" + serviceStartBatteryPercent
+                + ",batteryNow=" + getBatteryPercent()
+                + ",screenInteractive=" + isScreenInteractive()
                 + ",powerSave=" + isPowerSaveMode());
     }
 
@@ -595,6 +599,13 @@ public class WakeWordService extends Service {
             return battery == null ? -1 : battery.getIntProperty(
                     android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
         } catch (Exception ignored) { return -1; }
+    }
+
+    private boolean isScreenInteractive() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            return pm != null && pm.isInteractive();
+        } catch (Exception ignored) { return false; }
     }
 
     private boolean isPowerSaveMode() {
