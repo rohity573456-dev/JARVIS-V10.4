@@ -1,64 +1,43 @@
 # JARVIS Phase 6 — Real-World Wake-Word Benchmark
 
-## Purpose
-Measure the existing JARVIS wake-word pipeline on real recordings and real-device sessions. Do not infer accuracy from synthetic scores or unit tests.
+## Implemented analyzer
+`tools/wake_benchmark.py` validates labeled trial CSVs and calculates positive recall, miss rate, false activations per negative listening hour, wake latency P50/P95, and breakdowns by noise condition, screen state, distance, and speech level. It records the APK commit, model version, gate configuration, device, and Android versions represented by the dataset.
+
+It does not generate synthetic trials, infer missing labels, or claim the target dataset has been collected.
+
+## Dataset target
+Collect at least 1,000 labeled trials before making a broad accuracy claim:
+- 300 or more positive wake-phrase trials;
+- 700 or more negative/no-wake trials;
+- 10 or more distinct consenting speakers if available;
+- keep final evaluation speakers/sessions separate from tuning data;
+- never tune thresholds on the final evaluation set.
+
+These are target minimums, not completed tests. Repeated copies of one clip are not independent speaker samples.
 
 ## Test matrix
-Run the same frozen APK/model/gate configuration across these conditions:
-- Quiet room: 0.5 m, 1.5 m, 3 m.
-- Normal speaking and deliberately quiet/soft speaking.
-- Background fan, TV/conversation, traffic-like noise, and music.
-- Different speakers, including speakers not used during any tuning.
-- Negative audio: ordinary conversation, similar-sounding words, silence, TV/radio speech, and environmental noise without the wake phrase.
-- Screen on and screen off, with the foreground listening service visibly active.
+Use a frozen APK/model/gate configuration. Test quiet room at 0.5 m, 1.5 m, and 3 m; normal and soft speech; fan, TV/conversation, traffic-like noise, music, and quiet; multiple speakers; negative conversation, similar-sounding words, silence, TV/radio speech, and environmental noise; screen-on and screen-off with the foreground listening service active. Use consistent 16 kHz mono PCM/WAV for replay tests. For live tests, record device, Android version, room, distance, and approximate noise condition.
 
-Use a consistent 16 kHz mono PCM/WAV source when replaying recorded samples. For live microphone tests, record the device, Android version, room, distance, and approximate noise condition. Keep the phone position and playback level fixed for repeatability.
+## Recording trials
+Use `docs/JARVIS_PHASE6_RESULTS_TEMPLATE.csv`. One row is one trial, with a unique trial ID and anonymous speaker ID.
+- Positive: `expected_wake=1`; `detected=1` only if JARVIS wakes within the agreed window, otherwise 0. Record latency in ms when measurable.
+- Negative: `expected_wake=0`; record unintended activations in `false_wake_count` and measured listening duration in `trial_duration_s`.
+- Identify the tested APK commit, model version, gate configuration, device, Android version, screen state, and service state on every row.
+- Log every miss and false wake.
 
-## Dataset size and split
-Target at least 1,000 labeled trials before making a broad accuracy claim:
-- At least 300 positive wake-phrase trials.
-- At least 700 negative/no-wake trials.
-- Include at least 10 distinct consenting speakers if available.
-- Keep speakers or recording sessions used for final evaluation separate from any tuning set. Never tune thresholds on the final evaluation set.
-- Repeat each important condition enough times to identify inconsistent behavior.
+## Analyze
+Run from the repository root with Python 3:
+```bash
+python3 tools/wake_benchmark.py path/to/your_trials.csv --json wake-benchmark-report.json
+```
+Enforce the minimum sample target:
+```bash
+python3 tools/wake_benchmark.py path/to/your_trials.csv --json wake-benchmark-report.json --require-target
+```
+False-wake rate = total false wakes / total negative listening hours. Latency percentiles use correctly detected positives with a measured latency; missing latency counts are reported separately.
 
-These are target minimums, not evidence that the tests have already been run. Do not count repeated copies of the same clip as independent speaker samples.
-
-## What to record
-Use `JARVIS_PHASE6_RESULTS_TEMPLATE.csv`. One row is one trial. Use anonymous speaker IDs (S01, S02, ...); do not store names or personal details.
-
-For positive trials:
-- `expected_wake=1`
-- `detected=1` if JARVIS woke within the agreed trial window, otherwise 0.
-- Record wake latency from the start of the wake phrase in milliseconds when measurable.
-
-For negative trials:
-- `expected_wake=0`
-- `false_wake_count` is the number of unintended activations during the trial.
-- For long idle tests, record the duration in seconds and count false wakes.
-
-## Metrics
-Report separately by condition and overall:
-- True positive rate / recall = detected positive trials ÷ positive trials.
-- Miss rate = missed positive trials ÷ positive trials.
-- False activation rate = false wakes ÷ negative listening hours.
-- Wake latency: median and 95th percentile for correctly detected positive trials.
-- Screen-off vs screen-on results.
-- Battery change over a fixed-duration session, with starting/ending battery percentage and duration; repeat at least three times under comparable conditions.
-- CPU/battery results must be measured on the physical phone. Do not claim power savings from code inspection alone.
-
-## Test procedure
-1. Freeze and note the APK build SHA, model files, app version, phone model, Android version, and gate thresholds.
-2. Grant microphone permission and start the JARVIS foreground listening service.
-3. Verify the persistent listening notification is present before each run.
-4. Run positive and negative trials in randomized order where practical.
-5. Reset the service between sessions; do not change thresholds midway through a scored run.
-6. Log every miss and every false wake, not just successful examples.
-7. Repeat the negative idle test for multiple hours; report total negative listening hours.
-8. Keep raw audio locally unless every recorded speaker has explicitly agreed to sharing. Do not commit personal recordings to this repository.
-
-## Acceptance / reporting
-No pass/fail claim until the dataset and physical-device sessions are complete. Publish counts, denominators, condition breakdowns, and test configuration. A small sample must be labeled preliminary. Never describe a target dataset size as completed tests.
+## Battery and acceptance
+Run multi-hour negative idle sessions and report total negative listening hours. Measure battery start/end over fixed-duration sessions at least three times under comparable conditions. Measure CPU/battery on the physical phone; do not infer from source code. Freeze the APK SHA, model version, device, Android version, and thresholds. Grant mic permission, start the foreground service, verify its persistent notification, randomize trial order where practical, and do not change thresholds during scored sessions. No pass/fail or broad accuracy claim until physical-device data is complete; smaller samples are preliminary only.
 
 ## Privacy
-Obtain informed consent from anyone whose voice is recorded. Use anonymous speaker IDs. Avoid capturing unrelated private conversations; store test clips securely and delete them when no longer needed.
+Get consent from recorded speakers. Use anonymous IDs, avoid unrelated private conversations, keep raw recordings local unless everyone explicitly agrees to sharing, and never commit personal recordings to this repository.
