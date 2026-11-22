@@ -1,6 +1,9 @@
 name: JARVIS Public Wake Corpus Evaluation
 
 on:
+  push:
+    branches:
+      - "fix/**"
   workflow_dispatch:
     inputs:
       max_clips:
