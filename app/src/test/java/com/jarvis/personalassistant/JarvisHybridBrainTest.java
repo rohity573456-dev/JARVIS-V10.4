@@ -17,6 +17,6 @@ public class JarvisHybridBrainTest {
         assertEquals(JarvisHybridBrain.Specialist.GENERAL, JarvisHybridBrain.classify("Hello Jarvis"));
     }
     @Test public void specialistDirectiveDoesNotClaimTools() {
-        assertTrue(JarvisHybridBrain.systemDirective("build my app").contains("never claim code was committed or built"));
+        assertTrue(JarvisHybridBrain.systemDirective("build my app").contains("Never invent tool results"));
     }
 }
