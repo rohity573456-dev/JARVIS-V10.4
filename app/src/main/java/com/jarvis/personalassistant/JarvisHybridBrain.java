@@ -56,10 +56,27 @@ public final class JarvisHybridBrain {
 
     public static void ask(String geminiKey, String geminiModel, String groqKey, String groqModel,
             String localModelPath, String contextPrompt, String userText, Callback callback) {
+        ask(geminiKey, geminiModel, groqKey, groqModel, localModelPath,
+                contextPrompt, userText, "", callback);
+    }
+
+    /** Astra is an optional paid reasoning tier; free providers remain the normal fallback. */
+    public static void ask(String geminiKey, String geminiModel, String groqKey, String groqModel,
+            String localModelPath, String contextPrompt, String userText,
+            String openAiKey, Callback callback) {
         ROUTER.execute(() -> {
             String directive = systemDirective(userText);
             String result = "ERROR: No AI provider configured.";
-            if (!empty(geminiKey)) {
+            Specialist specialist = classify(userText);
+            boolean useAstra = !empty(openAiKey) && (specialist != Specialist.GENERAL
+                    || (userText != null && userText.toLowerCase(Locale.ROOT).startsWith("astra ")));
+            if (useAstra) {
+                String effort = specialist == Specialist.CODING || specialist == Specialist.RESEARCH
+                        || specialist == Specialist.DATA_ANALYSIS ? "high" : "medium";
+                result = OpenAiResponsesClient.ask(openAiKey, OpenAiResponsesClient.DEFAULT_MODEL,
+                        directive, contextPrompt, effort);
+            }
+            if (isError(result) && !empty(geminiKey)) {
                 result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
                     empty(geminiModel) ? "gemini-2.5-flash" : geminiModel,
                     contextPrompt, directive);
@@ -84,8 +101,8 @@ public final class JarvisHybridBrain {
                 });
                 return;
             }
-            callback.onResult("JARVIS AI providers unavailable. " + result +
-                ". Configure Gemini/Groq or load a compatible offline model.");
+            callback.onResult("JARVIS AI providers unavailable. " + result
+                    + ". Configure Gemini/Groq, optional GPT-6.2 Astra, or load a compatible offline model.");
         });
     }
 
