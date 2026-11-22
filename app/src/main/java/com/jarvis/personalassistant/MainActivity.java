@@ -719,7 +719,8 @@ public class MainActivity extends Activity {
         if(memory.getBoolean("memory_ai_learning",false))
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),note.trim());
+                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),note.trim(),
+                () -> memory.getBoolean("memory_ai_learning",false) && !memory.getBoolean("memory_private_mode",false));
         return true;
     }
     private void setFlashlight(boolean enabled) {
