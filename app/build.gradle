@@ -10,8 +10,8 @@ android {
         applicationId 'com.jarvis.personalassistant'
         minSdk 24
         targetSdk 35
-        versionCode 22
-        versionName '10.4-continuous-kws'
+        versionCode 23
+        versionName '10.4.1-openwakeword'
         ndk { abiFilters 'arm64-v8a' }
     }
 
