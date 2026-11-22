@@ -19,6 +19,15 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    // Sherpa and OpenWakeWord both bundle ONNX Runtime 1.17.1 for arm64.
+    // Keep one shared native runtime in the APK; the Java/JNI bindings remain included.
+    packaging {
+        jniLibs {
+            pickFirsts += ['**/libonnxruntime.so']
+        }
+    }
+
 }
 
 dependencies {
