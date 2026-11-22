@@ -425,6 +425,10 @@ Every project report must label each capability as:
 - Added memory integrity diagnostics for orphan cloud/local vectors, feedback, graph edges and sessions; added a user-invokable Memory Center repair action.
 - Clearing history, clearing all facts, or enabling Private Mode increments a memory-generation token. Queued AI extraction/reflection callbacks compare their captured generation before provider requests and writes, preventing old queued work from repopulating cleared data.
 
+
+- Follow-up hardening: cloud semantic embedding jobs now require a live consent callback and re-check it before each provider request and before storing each vector. The callback also checks Private Mode and the memory-generation token. Turning embeddings off, deleting the vector index, clearing history/facts or enabling Private Mode invalidates queued work. The legacy embedding-worker overload fails closed.
+- All foreground voice/text privacy commands now invalidate queued work as well as the Memory Center controls.
+
 **Verification state**
 - Source changes committed to the active feature branch.
 - Automated Android SQLite lifecycle tests and fresh CI are still required. The repository currently has only plain JUnit configured; SQLite runtime tests cannot be honestly claimed from source inspection alone.
