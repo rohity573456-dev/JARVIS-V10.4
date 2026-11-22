@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     private SharedPreferences memory;
     private SecureStore secureStore;
     private JarvisMemoryStore longTermMemory;
+    private JarvisToolRegistry agentToolRegistry;
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -122,6 +123,8 @@ public class MainActivity extends Activity {
         }
         memory = getSharedPreferences("jarvis_memory", MODE_PRIVATE);
         secureStore = new SecureStore(this);
+        agentToolRegistry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(this).registerInto(agentToolRegistry);
         longTermMemory = new JarvisMemoryStore(this);
         longTermMemory.expireTransientMemories();
         longTermMemory.indexMissingLocalVectors(500);
