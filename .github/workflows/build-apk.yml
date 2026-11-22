@@ -49,7 +49,7 @@ jobs:
           tar -xjf /tmp/kws-model.tar.bz2 -C /tmp/kws-model
           mkdir -p app/src/main/assets/${MODEL}
           cp -a /tmp/kws-model/${MODEL}/. app/src/main/assets/${MODEL}/
-          printf 'HEY JARVIS\n' > /tmp/keywords_raw.txt
+          printf 'HEY JARVIS :2.0 #0.25 @HEY_JARVIS\n' > /tmp/keywords_raw.txt
           python -m pip install --disable-pip-version-check sherpa-onnx==2.0.1 sentencepiece pypinyin
           sherpa-onnx-cli text2token --tokens app/src/main/assets/${MODEL}/tokens.txt --tokens-type bpe --bpe-model app/src/main/assets/${MODEL}/bpe.model /tmp/keywords_raw.txt /tmp/keywords.txt
           cp /tmp/keywords.txt app/src/main/assets/${MODEL}/keywords.txt
