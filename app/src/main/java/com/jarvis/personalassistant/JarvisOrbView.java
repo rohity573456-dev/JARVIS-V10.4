@@ -49,7 +49,7 @@ public final class JarvisOrbView extends View {
         paint.setStyle(Paint.Style.FILL);
         paint.setShader(new RadialGradient(cx,cy,radius*1.55f,
             new int[]{0x4430dfff,0x1820aaff,0x00000000},null,Shader.TileMode.CLAMP));
-        canvas.drawCircle(cx,cy,radius*1.55f,paint);
+        canvas.drawCircle(cx,cy,radius*1.55f*pulse,paint);
         paint.setShader(null);
 
         paint.setStyle(Paint.Style.STROKE);
