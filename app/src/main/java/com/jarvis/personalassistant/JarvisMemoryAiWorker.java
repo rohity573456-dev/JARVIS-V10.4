@@ -31,7 +31,8 @@ public final class JarvisMemoryAiWorker {
                 JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,openAiKey,prompt));
                 if(root==null)continue;
                 String summary=root.optString("summary","").trim();
-                if(!summary.isEmpty())db.saveAiSessionReflection(session.sessionId,summary);
+                if(!summary.isEmpty() && summary.length()<=600 && !sensitive(summary))
+                    db.saveAiSessionReflection(session.sessionId,summary);
                 storeFacts(db,root.optJSONArray("facts"),"ai-reflection");
             }
         });
@@ -60,17 +61,24 @@ public final class JarvisMemoryAiWorker {
         for(int i=0;i<Math.min(20,facts.length());i++){
             JSONObject f=facts.optJSONObject(i);if(f==null)continue;
             String content=f.optString("content","").trim(),key=f.optString("key","").trim();
-            if(content.length()<4||content.length()>500||key.isEmpty()||sensitive(content))continue;
+            String category=f.optString("category","general").trim().toLowerCase(java.util.Locale.ROOT);
+            if(content.length()<4||content.length()>500||key.isEmpty()||key.length()>96||
+                    category.length()>40||isSensitiveCategory(category)||sensitive(content)||sensitive(key))continue;
             String type=f.optString("type","semantic");
             if(!("core".equals(type)||"semantic".equals(type)||"procedural".equals(type)||"episodic".equals(type)))type="semantic";
             long validFrom=f.optLong("valid_from",0),validUntil=f.optLong("valid_until",0);
-            long id=db.upsertFact(f.optString("category","general"),type,key,content,
-                f.optDouble("confidence",0.70),f.optInt("importance",55),f.optBoolean("pinned",false),source);
+            double confidence=Math.max(0.0,Math.min(1.0,f.optDouble("confidence",0.70)));
+            int importance=Math.max(0,Math.min(100,f.optInt("importance",55)));
+            boolean pinned=f.optBoolean("pinned",false)&&isSafePinnedKey(key,category);
+            long id=db.upsertFact(category,type,key,content,confidence,importance,pinned,source);
             if(id>0&&(validFrom>0||validUntil>0))db.setMemoryValidity(id,validFrom,validUntil);
             String object=f.optString("object","").trim();
-            if(id>0&&!object.isEmpty())db.addGraphRelation(id,f.optString("subject","Commander"),
-                f.optString("relation","related_to"),object,f.optDouble("confidence",0.70),
-                f.optLong("valid_from",0),f.optLong("valid_until",0));
+            String subject=f.optString("subject","Commander").trim();
+            String relation=f.optString("relation","related_to").trim();
+            if(id>0&&!object.isEmpty()&&object.length()<=240&&subject.length()<=120&&
+                    relation.length()<=80&&!sensitive(object)&&!sensitive(subject)&&!sensitive(relation))
+                db.addGraphRelation(id,subject,relation,object,confidence,
+                    f.optLong("valid_from",0),f.optLong("valid_until",0));
         }
     }
     private static JSONArray parseArray(String raw){
@@ -89,10 +97,33 @@ public final class JarvisMemoryAiWorker {
         return s.trim();
     }
     private static boolean empty(String s){return s==null||s.trim().isEmpty();}
+    static boolean isSensitiveCategory(String category){
+        if(category==null)return true;
+        String q=category.trim().toLowerCase(java.util.Locale.ROOT);
+        return q.matches(".*(health|medical|diagnos|relig|politic|sexual|sex_life|criminal|credential|password|identity_document|government_id|bank|financial_identifier|biometric).*");
+    }
+    static boolean isSafePinnedKey(String key,String category){
+        if(key==null||category==null||isSensitiveCategory(category))return false;
+        String k=key.trim().toLowerCase(java.util.Locale.ROOT);
+        return k.equals("profile.name")||k.startsWith("instruction.")||
+            k.startsWith("preference.")||k.equals("project.current")||
+            k.equals("goal.primary");
+    }
+    static boolean isSensitiveText(String value){return sensitive(value);}
     private static boolean sensitive(String value){
+        if(value==null||value.isEmpty())return false;
         String q=value.toLowerCase(java.util.Locale.ROOT);
-        String[] bad={"password","passcode","otp","cvv","aadhaar","aadhar","pan number","bank account","credit card",
-            "debit card","diagnosis","medicine","medical condition","disease","religion","political party","sexual"};
-        for(String b:bad)if(q.contains(b))return true;return false;
+        String[] bad={"password","passcode","pass phrase","otp","one time password","cvv","cvc",
+            "aadhaar","aadhar","pan number","pan card number","passport number","driving licence number",
+            "social security number","bank account","account number","ifsc","credit card","debit card",
+            "diagnosis","medical condition","medical history","prescription","medication","medicine",
+            "diabetes","cancer","hiv","blood pressure","mental health","depression","anxiety disorder",
+            "religion","religious belief","political party","political belief","sexual orientation",
+            "sex life","sexual activity","criminal record","criminal history","fingerprint","face id"};
+        for(String b:bad)if(q.contains(b))return true;
+        if(java.util.regex.Pattern.compile("\\b[0-9]{12}\\b").matcher(q).find())return true;
+        if(java.util.regex.Pattern.compile("\\b[A-Z]{5}[0-9]{4}[A-Z]\\b",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(value).find())return true;
+        if(java.util.regex.Pattern.compile("\\b[0-9]{4}\\s?[0-9]{4}\\s?[0-9]{4}\\b").matcher(q).find())return true;
+        return false;
     }
 }
