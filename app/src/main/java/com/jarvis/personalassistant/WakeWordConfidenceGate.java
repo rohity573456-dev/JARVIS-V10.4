@@ -3,19 +3,28 @@ package com.jarvis.personalassistant;
 /**
  * Temporal verification for OpenWakeWord classifier scores.
  *
- * This is a second decision stage over consecutive classifier outputs, not a
- * separate neural network. It allows consistently moderate scores to pass
- * while rejecting isolated confidence spikes.
+ * A short adaptive second-chance window is armed by repeated borderline
+ * evidence. Sensitivity rises briefly, while multi-frame consistency remains
+ * required to avoid accepting a single noisy confidence spike.
  */
 final class WakeWordConfidenceGate {
     private static final float FAST_THRESHOLD = 0.30f;
     private static final float SOFT_THRESHOLD = 0.22f;
     private static final float SOFT_AVERAGE_THRESHOLD = 0.245f;
+
+    private static final float BORDERLINE_THRESHOLD = 0.18f;
+    private static final int BORDERLINE_REQUIRED = 2;
+    private static final float ADAPTIVE_THRESHOLD = 0.19f;
+    private static final float ADAPTIVE_AVERAGE_THRESHOLD = 0.205f;
+
     private static final int WINDOW_SIZE = 4;
+    // Classifier runs once per 80 ms audio chunk: 38 frames are about 3 seconds.
+    private static final int SECOND_CHANCE_FRAMES = 38;
 
     private final float[] scores = new float[WINDOW_SIZE];
     private int count;
     private int nextIndex;
+    private int secondChanceFramesRemaining;
 
     boolean add(float rawScore) {
         float score = Float.isFinite(rawScore)
@@ -34,13 +43,34 @@ final class WakeWordConfidenceGate {
             }
         }
 
-        // Sensitive path: consistent moderate confidence over a 4-frame window.
-        if (count < WINDOW_SIZE) return false;
-
-        int qualifying = 0;
+        int borderlineCount = 0;
         float total = 0.0f;
         for (float value : scores) {
             total += value;
+            if (value >= BORDERLINE_THRESHOLD) borderlineCount++;
+        }
+
+        // Arm only after repeated borderline evidence, never on one isolated spike.
+        if (count == WINDOW_SIZE && borderlineCount >= BORDERLINE_REQUIRED) {
+            secondChanceFramesRemaining = SECOND_CHANCE_FRAMES;
+        }
+
+        boolean adaptive = secondChanceFramesRemaining > 0;
+        if (adaptive) secondChanceFramesRemaining--;
+
+        if (count < WINDOW_SIZE) return false;
+
+        if (adaptive) {
+            int qualifying = 0;
+            for (float value : scores) {
+                if (value >= ADAPTIVE_THRESHOLD) qualifying++;
+            }
+            return qualifying >= 3
+                    && (total / WINDOW_SIZE) >= ADAPTIVE_AVERAGE_THRESHOLD;
+        }
+
+        int qualifying = 0;
+        for (float value : scores) {
             if (value >= SOFT_THRESHOLD) qualifying++;
         }
         return qualifying >= 3
@@ -51,5 +81,6 @@ final class WakeWordConfidenceGate {
         java.util.Arrays.fill(scores, 0.0f);
         count = 0;
         nextIndex = 0;
+        secondChanceFramesRemaining = 0;
     }
 }
