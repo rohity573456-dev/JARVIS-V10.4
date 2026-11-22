@@ -64,6 +64,7 @@ public class WakeWordService extends Service {
     private AudioRecord audioRecord;
     private Thread audioThread;
     private KeywordSpotter keywordSpotter;
+    private JarvisOnnxWakeEngine onnxWakeEngine;
     private OnlineStream keywordStream;
     private SpeechRecognizer commandRecognizer;
     private PowerManager.WakeLock wakeLock;
@@ -153,6 +154,21 @@ public class WakeWordService extends Service {
     }
 
     private void initializeAndStart() {
+        // Prefer the custom single-word ONNX detector when its trained model is installed.
+        // Keep Sherpa as a safe fallback until that model is supplied and validated.
+        if (Build.VERSION.SDK_INT >= 26) {
+            try {
+                onnxWakeEngine = new JarvisOnnxWakeEngine(getApplicationContext());
+                handler.post(this::startWakeDetection);
+                android.util.Log.i("JARVIS-KWS", "Custom ONNX wake engine selected");
+                return;
+            } catch (Exception unavailable) {
+                onnxWakeEngine = null;
+                android.util.Log.w("JARVIS-KWS",
+                        "Custom Jarvis ONNX model unavailable; using Sherpa fallback", unavailable);
+            }
+        }
+
         try {
             File dir = new File(getFilesDir(), MODEL_DIR);
             if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create KWS model folder");
@@ -223,6 +239,31 @@ public class WakeWordService extends Service {
             int count;
             while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
             out.flush();
+        }
+    }
+
+    private void startWakeDetection() {
+        if (!running || wakeDetected || speechPlaying) return;
+        if (onnxWakeEngine == null) {
+            startWakeDetection();
+            return;
+        }
+        try {
+            if (!onnxWakeEngine.isStarted()) {
+                onnxWakeEngine.start(confidence -> {
+                    if (!running || wakeDetected) return;
+                    wakeDetected = true;
+                    android.util.Log.i("JARVIS-KWS",
+                            "Custom ONNX Jarvis wake word detected: " + confidence);
+                    try { onnxWakeEngine.stop(); } catch (Exception ignored) {}
+                    handler.postDelayed(this::beginCommandCapture, 250);
+                });
+            }
+        } catch (Exception error) {
+            android.util.Log.e("JARVIS-KWS", "ONNX wake engine start failed", error);
+            try { onnxWakeEngine.release(); } catch (Exception ignored) {}
+            onnxWakeEngine = null;
+            startAudioCapture();
         }
     }
 
@@ -311,6 +352,9 @@ public class WakeWordService extends Service {
 
     private void beginCommandCapture() {
         if (!running || !wakeDetected) return;
+        if (onnxWakeEngine != null) {
+            try { onnxWakeEngine.stop(); } catch (Exception ignored) {}
+        }
         speak("Yes, Commander.");
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             wakeDetected = false;
@@ -552,6 +596,10 @@ public class WakeWordService extends Service {
         }
 
         releaseAudioRecord();
+        if (onnxWakeEngine != null) {
+            try { onnxWakeEngine.release(); } catch (Exception ignored) {}
+            onnxWakeEngine = null;
+        }
         if (keywordStream != null) {
             try { keywordStream.release(); } catch (Exception ignored) {}
             keywordStream = null;
