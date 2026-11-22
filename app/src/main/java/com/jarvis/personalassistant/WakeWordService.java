@@ -138,7 +138,7 @@ public class WakeWordService extends Service {
                 : new Notification.Builder(this);
         return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentTitle("JARVIS voice standby")
-                .setContentText("Offline wake detection active — say Hey Jarvis")
+                .setContentText("Offline wake detection active — say Jarvis")
                 .setContentIntent(pending).setOngoing(true).build();
     }
 
