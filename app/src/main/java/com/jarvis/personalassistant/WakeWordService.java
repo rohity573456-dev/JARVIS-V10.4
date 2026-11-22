@@ -245,7 +245,7 @@ public class WakeWordService extends Service {
     private void startWakeDetection() {
         if (!running || wakeDetected || speechPlaying) return;
         if (onnxWakeEngine == null) {
-            startWakeDetection();
+            startAudioCapture();
             return;
         }
         try {
@@ -536,7 +536,7 @@ public class WakeWordService extends Service {
     private void restartStandby(long delayMs) {
         if (!running) return;
         handler.postDelayed(() -> {
-            if (running && !recording && !wakeDetected) startAudioCapture();
+            if (running && !recording && !wakeDetected) startWakeDetection();
         }, delayMs);
     }
 
