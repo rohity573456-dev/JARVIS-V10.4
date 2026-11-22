@@ -361,10 +361,31 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Button button(String label) { Button b=new Button(this); b.setText(label); b.setTextColor(Color.BLACK); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CYAN)); return b; }
-    private void addSmall(LinearLayout row,String label,View.OnClickListener listener) {
-        Button b=new Button(this); b.setText(label); b.setTextSize(9); b.setPadding(2,2,2,2); b.setOnClickListener(listener);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,48,1); p.setMargins(2,4,2,0); row.addView(b,p);
+    private Button button(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextColor(Color.rgb(245, 248, 255));
+        b.setTextSize(13);
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setBackground(panel(Color.rgb(36, 49, 75), Color.rgb(92, 125, 177), 22));
+        if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
+        return b;
+    }
+    private void addSmall(LinearLayout row, String label, View.OnClickListener listener) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(10);
+        b.setTextColor(Color.rgb(220, 229, 247));
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setPadding(3, 2, 3, 2);
+        b.setBackground(panel(Color.rgb(19, 24, 39), Color.rgb(51, 62, 88), 17));
+        if (android.os.Build.VERSION.SDK_INT >= 21) b.setStateListAnimator(null);
+        b.setOnClickListener(listener);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, 48, 1);
+        p.setMargins(3, 4, 3, 0);
+        row.addView(b, p);
     }
     private void refreshDashboard() {
         int battery=-1; try { Intent i=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); if(i!=null) battery=i.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); } catch(Exception ignored) {}
