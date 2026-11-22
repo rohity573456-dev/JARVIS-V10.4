@@ -460,7 +460,7 @@ public class MainActivity extends Activity {
         if(q.length()<8||q.startsWith("memory ")||q.startsWith("task ")||q.startsWith("reminder "))return;
         String[] blocked={"password","passcode","otp","cvv","bank account","aadhaar","pan number","medical","medicine","diagnosis","disease","sexual"};
         for(String word:blocked)if(q.contains(word))return;
-        boolean learn=q.startsWith("my name is ")||q.startsWith("mera naam ")||q.startsWith("my favourite ")||q.startsWith("my favorite ")||q.startsWith("mera favourite ")||q.startsWith("meri favourite ")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer ")||q.startsWith("my preference ")||q.startsWith("i live in ")||q.startsWith("my goal is ")||q.startsWith("mera goal ")||q.startsWith("i work as ")||q.startsWith("my job is ");
+        boolean learn=q.startsWith("my name is ")||q.startsWith("mera naam ")||q.startsWith("my favourite ")||q.startsWith("my favorite ")||q.startsWith("mera favourite ")||q.startsWith("meri favourite ")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer ")||q.startsWith("my preference ")||q.startsWith("i live in ")||q.startsWith("my goal is ")||q.startsWith("mera goal ")||q.startsWith("i work as ")||q.startsWith("my job is ")||q.startsWith("actually my ")||q.startsWith("actually, my ")||q.startsWith("correction: my ")||q.startsWith("nahi, mera ")||q.startsWith("nahi mera ");
         if(!learn)return;
         String category=(q.startsWith("my favourite")||q.startsWith("my favorite")||q.startsWith("mera favourite")||q.startsWith("meri favourite")||q.startsWith("i like ")||q.startsWith("i love ")||q.startsWith("i prefer "))?"preference":"personal";
         longTermMemory.saveMemory(category,s);
