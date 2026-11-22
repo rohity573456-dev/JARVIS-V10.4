@@ -51,7 +51,7 @@ final class JarvisIntentRouter {
                 "phone system status", "ram status", "storage status",
                 "available storage", "free storage", "ram usage",
                 "system report dikhao", "phone ka status batao",
-                "system status batao", "system report batao")) return true;
+                "system status batao", "system report batao", "phone ka status batao")) return true;
         return q.matches("(show|check|tell me|give me) (the )?(phone|device|system) (status|report)")
                 || q.matches("(kitni|kitna) (ram|storage) (free|available|bacha|bachi)( hai)?");
     }
