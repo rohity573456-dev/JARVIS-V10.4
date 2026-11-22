@@ -11,6 +11,21 @@ This repository intentionally does not rename or reuse the bundled **"Hey Jarvis
 
 Until the custom model is supplied, the service uses the existing Sherpa pipeline. The CI workflow currently generates a Sherpa keyword list containing the text "JARVIS"; that text file is not a trained acoustic model and does not prove reliable single-word detection.
 
+## Existing exact-phrase candidate
+
+The OpenWakeWord library currently lists an exact single-word **Jarvis** model:
+
+- Model page: https://openwakeword.com/library/422
+- Export: ONNX, about 405 KB
+- Pipeline: V1; the Android wrapper's 3-stage feature pipeline must be checked against this exact export.
+- Published benchmark: 87.3% recall with background noise/room reverb and 0.00 false activations/hour at threshold 0.5. These are synthetic benchmark results, not a guarantee on a Xiaomi/Android handset.
+- Download access: the page requires signing in.
+- Default model license on that page: personal and non-commercial use; check the linked terms before redistribution or commercial use.
+
+Do not use the older model at https://openwakeword.com/library/293 as the preferred candidate: its published noisy-room recall is only 14.4% and benchmark false activations are 10.50/hour.
+
+The existing candidate is preferable to inventing a classifier, but its binary is not committed because the download requires an authenticated session. Do not fabricate or rename another ONNX model as `jarvis.onnx`.
+
 ## Model contract
 
 Place the final classifier at:
