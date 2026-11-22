@@ -720,7 +720,7 @@ public class MainActivity extends Activity {
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
                 memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),note.trim(),
-                () -> memory.getBoolean("memory_ai_learning",false) && !memory.getBoolean("memory_private_mode",false));
+                memoryConsentGate());
         return true;
     }
     private void setFlashlight(boolean enabled) {
@@ -770,7 +770,7 @@ public class MainActivity extends Activity {
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshUiStatus(); respond("System report. "+batteryReport()+" Storage and memory information are available in the system report."); }
     private void memoryDialog() {
-        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile","Memory temporary note"};
+        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile","Memory temporary note","Repair memory index & orphan records"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
             .setItems(options,(d,which)->{
                 if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->respond(saveNote(in.getText().toString())?"Memory saved locally.":"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai.")).setNegativeButton("CANCEL",null).show();}
@@ -778,9 +778,9 @@ public class MainActivity extends Activity {
                 else if(which==2){EditText in=new EditText(this);in.setHint("ID | replacement text");new AlertDialog.Builder(this).setTitle("EDIT MEMORY").setMessage("Format: 4 | My favourite colour is blue").setView(in).setPositiveButton("UPDATE",(x,y)->{String[] p=in.getText().toString().split("\\|",2);if(p.length==2&&longTermMemory!=null&&longTermMemory.updateMemory(parseLong(p[0].trim()),"personal",p[1].trim()))respond("Memory updated.");else respond("Format or ID invalid.");}).setNegativeButton("CANCEL",null).show();}
                 else if(which==3){EditText in=new EditText(this);in.setHint("Memory ID");new AlertDialog.Builder(this).setTitle("DELETE MEMORY").setView(in).setPositiveButton("DELETE",(x,y)->respond(longTermMemory!=null&&longTermMemory.deleteMemory(parseLong(in.getText().toString()))?"Memory deleted.":"Memory ID not found.")).setNegativeButton("CANCEL",null).show();}
                 else if(which==4){show("CONVERSATION HISTORY",longTermMemory==null?"Unavailable":longTermMemory.getRecentConversation(100));}
-                else if(which==5){new AlertDialog.Builder(this).setTitle("CLEAR HISTORY?").setMessage("Saved memories will remain.").setPositiveButton("CLEAR",(x,y)->{if(longTermMemory!=null)longTermMemory.clearConversationHistory();respond("Conversation history cleared.");}).setNegativeButton("CANCEL",null).show();}
-                else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts and preferences will be permanently deleted.").setPositiveButton("DELETE",(x,y)->{if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All memories cleared.");}).setNegativeButton("CANCEL",null).show();}
-                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
+                else if(which==5){new AlertDialog.Builder(this).setTitle("CLEAR HISTORY?").setMessage("Saved facts will remain. Pending AI memory jobs from this history will be cancelled.").setPositiveButton("CLEAR",(x,y)->{invalidatePendingMemoryJobs();if(longTermMemory!=null)longTermMemory.clearConversationHistory();respond("Conversation history cleared. Pending history learning cancelled.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts, summaries and indexes will be permanently deleted. Pending AI memory jobs will be cancelled. Chat history remains a separate control.").setPositiveButton("DELETE",(x,y)->{invalidatePendingMemoryJobs();if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All saved memories cleared. Chat history remains.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);if(on)invalidatePendingMemoryJobs();memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
                 else if(which==8){show("KNOWLEDGE GRAPH",longTermMemory==null?"Unavailable":longTermMemory.getKnowledgeGraphText(""));}
                 else if(which==9) taskDialog();
                 else if(which==10) show("MEMORY HEALTH",longTermMemory==null?"Unavailable":longTermMemory.getMemoryStatsText());
@@ -798,6 +798,7 @@ public class MainActivity extends Activity {
                 else if(which==15) confirmAiMemoryLearning();
                 else if(which==16) show("STRUCTURED PROFILE",longTermMemory==null?"Unavailable":longTermMemory.getProfileSummaryText());
                 else if(which==17){EditText temp=new EditText(this);temp.setHint("TTL command: 2h | short note");new AlertDialog.Builder(this).setTitle("TEMPORARY MEMORY").setMessage("Example: 30m | call the courier").setView(temp).setPositiveButton("SAVE",(x,y)->handle("memory temp "+temp.getText().toString())).setNegativeButton("CANCEL",null).show();}
+                else if(which==18){int removed=longTermMemory==null?0:longTermMemory.cleanupMemoryOrphans();respond("Memory maintenance complete. "+removed+" orphan records removed.");}
             }).setNegativeButton("CLOSE",null).show();
     }
     private String scheduleReminder(String raw) {
@@ -828,6 +829,15 @@ public class MainActivity extends Activity {
     }
     private long parseLong(String s){try{return Long.parseLong(s.trim());}catch(Exception e){return -1;}}
     private long parseMemoryId(String s){return parseLong(s.replaceFirst("(?i)^memory delete\\s*","").trim());}
+    private void invalidatePendingMemoryJobs(){
+        if(memory!=null)memory.edit().putLong("memory_generation",memory.getLong("memory_generation",0L)+1L).apply();
+    }
+    private JarvisMemoryAiWorker.ConsentGate memoryConsentGate(){
+        final long generation=memory==null?0L:memory.getLong("memory_generation",0L);
+        return () -> memory!=null && memory.getBoolean("memory_ai_learning",false) &&
+            !memory.getBoolean("memory_private_mode",false) &&
+            memory.getLong("memory_generation",0L)==generation;
+    }
     private void autoLearnMemory(String raw){
         if(longTermMemory==null||raw==null||memory.getBoolean("memory_private_mode",false))return;
         if(JarvisMemoryExtractor.learn(longTermMemory,raw)) indexSemanticMemoryIfEnabled(1);
@@ -835,14 +845,14 @@ public class MainActivity extends Activity {
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
                 memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),raw,
-                () -> memory.getBoolean("memory_ai_learning",false) && !memory.getBoolean("memory_private_mode",false));
+                memoryConsentGate());
     }
     private void runAiMemoryReflectionIfEnabled(){
         if(longTermMemory==null||memory.getBoolean("memory_private_mode",false)||!memory.getBoolean("memory_ai_learning",false))return;
         JarvisMemoryAiWorker.reflectPendingAsync(longTermMemory,secureStore.get("gemini_key"),
             memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
             memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),
-            () -> memory.getBoolean("memory_ai_learning",false) && !memory.getBoolean("memory_private_mode",false));
+            memoryConsentGate());
     }
     private String buildOfflineMemoryPrompt(String raw){
         if(memory==null||memory.getBoolean("memory_private_mode",false)||longTermMemory==null)return raw;
