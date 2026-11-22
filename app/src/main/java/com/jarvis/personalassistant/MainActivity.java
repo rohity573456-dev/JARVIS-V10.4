@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
     private static final int CYAN = Color.rgb(0,229,255);
     private static final int BG = Color.rgb(5,11,22);
     private static final int PICK_MODEL = 901;
+    private static final int PICK_IMAGE = 902;
     private static final int PICK_MODEL_COPY_BUFFER = 65536;
     private static final int REQUEST_NOTIFICATIONS = 4102;
     private String localModelPath = "";
@@ -251,8 +252,46 @@ public class MainActivity extends Activity {
         addSmall(row3,"ONLINE AI SETUP",v->onlineAiDialog());
         root.addView(row3);
 
+        LinearLayout row4 = new LinearLayout(this);
+        row4.setOrientation(LinearLayout.HORIZONTAL);
+        addSmall(row4,"VISION / IMAGE",v->pickImage());
+        addSmall(row4,"WEB SEARCH",v->searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
+        addSmall(row4,"SYSTEM STATUS",v->systemReport());
+        root.addView(row4);
+
         page.addView(root,new ScrollView.LayoutParams(-1,-2));
         setContentView(page);
+    }
+
+    private void pickImage() {
+        try {
+            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            pick.setType("image/*");
+            pick.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(pick,PICK_IMAGE);
+        } catch (Exception e) {
+            respond("Image picker available nahi hai.");
+        }
+    }
+
+    private void analyzeSelectedImage(Uri uri) {
+        String key = secureStore == null ? "" : secureStore.get("gemini_key");
+        if (key.isEmpty()) {
+            respond("Image analysis ke liye ONLINE AI SETUP mein Gemini API key add karein.");
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("SEND IMAGE TO GEMINI?")
+            .setMessage("Selected image will be resized in memory and sent to your configured Google Gemini API for analysis. JARVIS will not save the image in its memory database. Continue only if you agree.")
+            .setPositiveButton("ANALYZE",(d,w)->{
+                status.setText("● VISION ANALYZING...");
+                show("VISION","Analyzing selected image...");
+                final String model = memory.getString("gemini_model","gemini-2.5-flash");
+                new Thread(() -> {
+                    String result = JarvisVisionClient.analyze(this,uri,key,model,
+                        "Describe the image accurately. Identify visible objects, text, layout and relevant details. Do not guess hidden information.");
+                    runOnUiThread(() -> respond(result));
+                },"Jarvis-Vision").start();
+            }).setNegativeButton("CANCEL",null).show();
     }
 
     private void searchWeb(String query) {
@@ -695,6 +734,10 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data) {
         super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==PICK_IMAGE && resultCode==RESULT_OK && data!=null && data.getData()!=null) {
+            analyzeSelectedImage(data.getData());
+            return;
+        }
         if(requestCode==PICK_MODEL && resultCode==RESULT_OK && data!=null && data.getData()!=null) {
             Uri uri=data.getData();
             try {
