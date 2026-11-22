@@ -93,7 +93,6 @@ public class WakeWordService extends Service {
 
         if (!running) {
             running = true;
-            isRunning = true;
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm != null) {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "JARVIS:WakeWordCpu");
@@ -175,6 +174,7 @@ public class WakeWordService extends Service {
             }
 
             recording = true;
+            isRunning = true;
             audioThread = new Thread(this::processAudio, "Jarvis-Continuous-KWS");
             audioThread.start();
         } catch (SecurityException e) {
@@ -209,6 +209,7 @@ public class WakeWordService extends Service {
             }
         } finally {
             recording = false;
+            isRunning = false;
             releaseAudioRecord();
             if (running && wakeDetected) {
                 handler.postDelayed(this::beginCommandCapture, 250);
@@ -407,6 +408,7 @@ public class WakeWordService extends Service {
         if (!running || wakeDetected) return;
         android.util.Log.w("JARVIS-KWS", reason);
         recording = false;
+        isRunning = false;
         releaseAudioRecord();
         restartStandby(1500);
     }
