@@ -10,6 +10,8 @@ import android.os.Looper;
 import android.view.inputmethod.EditorInfo;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -29,6 +31,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.content.IntentFilter;
@@ -73,6 +76,7 @@ public class MainActivity extends Activity {
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private EditText commandInput;
     private String lastResponse = "I am ready, Pratik Boss.";
+    private String lastUserPrompt = "";
     private android.content.BroadcastReceiver wakeReceiver;
     private boolean wakeReceiverRegistered = false;
     private String pendingSpeech = null;
@@ -503,6 +507,7 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        lastUserPrompt = raw == null ? "" : raw;
         if (orbView != null) orbView.setState("THINKING");
         boolean privateMode = memory.getBoolean("memory_private_mode", false);
         if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
@@ -950,8 +955,57 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams bubble=new LinearLayout.LayoutParams(
             fromUser?(int)(getResources().getDisplayMetrics().widthPixels*0.78f):-2,-2);
         bubble.setMargins(fromUser?(int)(34*d):0,0,fromUser?0:(int)(34*d),0);
-        row.addView(message,bubble); conversationList.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        row.addView(message,bubble);
+        message.setOnLongClickListener(v -> { copyResponse(message.getText().toString()); return true; });
+        if (!fromUser) {
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            actions.setGravity(Gravity.CENTER_VERTICAL);
+            actions.setPadding((int)(8*d), (int)(3*d), 0, 0);
+            addMessageAction(actions, "Copy", () -> copyResponse(message.getText().toString()));
+            addMessageAction(actions, "Like", () -> saveResponseFeedback("like"));
+            addMessageAction(actions, "Dislike", () -> saveResponseFeedback("dislike"));
+            addMessageAction(actions, "Read", () -> speak(message.getText().toString()));
+            addMessageAction(actions, "Share", () -> shareResponse(message.getText().toString()));
+            addMessageAction(actions, "Retry", () -> { if (!lastUserPrompt.isEmpty()) handle(lastUserPrompt); });
+            row.addView(actions, new LinearLayout.LayoutParams(-2, (int)(34*d)));
+        }
+        conversationList.addView(row,new LinearLayout.LayoutParams(-1,-2));
         conversationScroll.post(()->conversationScroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void addMessageAction(LinearLayout parent, String title, Runnable action) {
+        final float d = getResources().getDisplayMetrics().density;
+        TextView button = new TextView(this);
+        button.setText(title);
+        button.setTextColor(Color.rgb(139, 171, 199));
+        button.setTextSize(11);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding((int)(7*d), 0, (int)(7*d), 0);
+        button.setOnClickListener(v -> action.run());
+        parent.addView(button, new LinearLayout.LayoutParams(-2, -1));
+    }
+
+    private void copyResponse(String text) {
+        ClipboardManager clipboard = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("JARVIS response", text == null ? "" : text));
+            Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareResponse(String text) {
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+        startActivity(Intent.createChooser(share, "Share JARVIS response"));
+    }
+
+    private void saveResponseFeedback(String type) {
+        String key = "response_feedback_" + type;
+        int count = memory.getInt(key, 0) + 1;
+        memory.edit().putInt(key, count).apply();
+        Toast.makeText(this, type.equals("like") ? "Thanks for the feedback" : "Feedback saved", Toast.LENGTH_SHORT).show();
     }
     @Override protected void onResume() {
         super.onResume();
