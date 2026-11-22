@@ -353,3 +353,40 @@ Every project report must label each capability as:
 2. Verify all 107 divisions against implementation, automated tests and device evidence.
 3. Prioritize central orchestrator/intent safety, memory lifecycle/privacy, tool permission gates and answer-quality/fallback behavior.
 4. Keep each capability status explicit: Planned, Partially implemented, Implemented, Verified, Device-validated or Production-ready.
+
+### Audit pass 2 — memory privacy and agent safety boundaries
+
+**Memory consent and data flow confirmed**
+- MainActivity calls AI memory extraction only when the explicit memory_ai_learning setting is enabled; enabling it displays a cloud-processing consent dialog.
+- Private mode blocks new conversation persistence, automatic AI extraction and background AI reflection.
+- The OpenAI key is passed through the same encrypted SecureStore path; Gemini/Groq/OpenAI are optional providers.
+- Local memory remains SQLite-backed. Cloud semantic embeddings are a separate opt-in setting.
+
+**Issues found and corrected**
+- AI-generated memory metadata was previously trusted too broadly: category, key, confidence, importance, pinned flag and graph relation strings were accepted with limited deterministic validation.
+- AI-generated session summaries were saved without a final local sensitivity/length check.
+- Added deterministic local guards before writes:
+  - Reject sensitive categories (health, medical, religion, political, sexual, criminal, credential, government-ID, biometric and financial-identifier categories).
+  - Reject known sensitive phrases and common government-ID patterns in memory text, keys, summaries and graph relation values.
+  - Bound key/category/graph-field lengths; clamp confidence to 0..1 and importance to 0..100.
+  - Model output cannot pin arbitrary memories. Pinning is restricted to approved durable key families such as profile.name, instruction.*, preference.*, project.current and goal.primary, and never sensitive categories.
+  - Session summaries are only persisted if non-empty, at most 600 characters and locally pass the sensitive-text filter.
+- Added JarvisMemoryPrivacyTest coverage for sensitive categories, Aadhaar/PAN-like identifiers, credentials, health terms and pin restrictions.
+
+**Agent boundary review**
+- JarvisAgentEngine limits each run to eight total actions and one retry per failed action; each follow-up planning turn receives only locally verified previous tool results.
+- JarvisToolRegistry validates registered tool names and required/optional arguments before invoking handlers; model-provided code is never executed.
+- SENSITIVE and EXTERNAL tools require the approval gate. Current Android registry includes battery read, settings panel, installed-app launch, media-volume control and external web search.
+- The permission string on ToolSpec is descriptive metadata; platform permissions are still enforced by Android handlers/runtime. This is an area for a dedicated permission audit.
+- Web search is explicitly gated by user intent and EXTERNAL approval; no arbitrary shell or unrestricted filesystem tool is registered.
+
+**Verification state**
+- Source changes and new unit tests committed on the active feature branch.
+- CI for the latest commits has not yet been confirmed by the available workflow status query. Do not mark these changes verified until GitHub Actions passes.
+- No device validation performed.
+
+**Next audit targets**
+1. Review all memory lifecycle operations (deletion, history, session queues, embeddings and private-mode transitions) for stale asynchronous writes and data-retention gaps.
+2. Review Android agent approval timeout, cancellation and activity lifecycle behavior.
+3. Inspect foreground/background voice parity after the first routing fix.
+4. Complete all remaining divisions with evidence-backed status labels.
