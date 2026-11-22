@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 4102;
     private String localModelPath = "";
     private TextView status, conversation, dashboard;
+    private JarvisOrbView orbView;
     private TextToSpeech tts;
     private SpeechRecognizer recognizer;
     private SharedPreferences memory;
@@ -145,41 +146,141 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(20,22,20,18); root.setBackgroundColor(BG);
-        TextView title = new TextView(this); title.setText("J.A.R.V.I.S  //  ULTIMATE"); title.setTextColor(CYAN);
-        title.setTextSize(23); title.setTypeface(Typeface.MONOSPACE,Typeface.BOLD); title.setGravity(Gravity.CENTER);
-        root.addView(title,new LinearLayout.LayoutParams(-1,62));
-        status = new TextView(this); status.setText("● CORE ONLINE  |  VOICE STANDBY"); status.setTextColor(CYAN);
-        status.setTextSize(12); status.setGravity(Gravity.CENTER); root.addView(status);
-        dashboard = new TextView(this); dashboard.setTextColor(Color.LTGRAY); dashboard.setTextSize(12);
-        dashboard.setTypeface(Typeface.MONOSPACE); dashboard.setPadding(12,12,12,12);
-        dashboard.setBackgroundColor(Color.rgb(10,25,42)); LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,-2); dp.topMargin=14; root.addView(dashboard,dp);
-        LinearLayout typeRow = new LinearLayout(this); typeRow.setOrientation(LinearLayout.HORIZONTAL);
-        commandInput = new EditText(this); commandInput.setSingleLine(true); commandInput.setTextColor(Color.WHITE);
-        commandInput.setHintTextColor(Color.GRAY); commandInput.setHint("Type a command for JARVIS...");
+        // Responsive, scroll-safe dashboard: small phones no longer clip the lower controls.
+        ScrollView page = new ScrollView(this);
+        page.setFillViewport(true);
+        page.setClipToPadding(false);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(16,18,16,20);
+        root.setBackgroundColor(BG);
+
+        TextView title = new TextView(this);
+        title.setText("J.A.R.V.I.S  //  ULTIMATE");
+        title.setTextColor(CYAN);
+        title.setTextSize(22);
+        title.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        root.addView(title,new LinearLayout.LayoutParams(-1,54));
+
+        status = new TextView(this);
+        status.setText("● CORE ONLINE  |  VOICE STANDBY");
+        status.setTextColor(CYAN);
+        status.setTextSize(11);
+        status.setGravity(Gravity.CENTER);
+        root.addView(status,new LinearLayout.LayoutParams(-1,30));
+
+        orbView = new JarvisOrbView(this);
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(-1,190);
+        orbParams.topMargin = 2;
+        root.addView(orbView,orbParams);
+
+        dashboard = new TextView(this);
+        dashboard.setTextColor(Color.LTGRAY);
+        dashboard.setTextSize(11);
+        dashboard.setTypeface(Typeface.MONOSPACE);
+        dashboard.setPadding(12,12,12,12);
+        dashboard.setBackgroundColor(Color.rgb(10,25,42));
+        LinearLayout.LayoutParams dp=new LinearLayout.LayoutParams(-1,-2);
+        dp.topMargin=8;
+        root.addView(dashboard,dp);
+
+        LinearLayout typeRow = new LinearLayout(this);
+        typeRow.setOrientation(LinearLayout.HORIZONTAL);
+        typeRow.setGravity(Gravity.CENTER_VERTICAL);
+        commandInput = new EditText(this);
+        commandInput.setSingleLine(true);
+        commandInput.setTextColor(Color.WHITE);
+        commandInput.setHintTextColor(Color.GRAY);
+        commandInput.setHint("Ask JARVIS or enter a command...");
         commandInput.setImeOptions(EditorInfo.IME_ACTION_GO);
         commandInput.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) { submitTypedCommand(); return true; }
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
+                submitTypedCommand();
+                return true;
+            }
             return false;
         });
-        typeRow.addView(commandInput, new LinearLayout.LayoutParams(0, 52, 1));
-        Button run = button("RUN"); typeRow.addView(run, new LinearLayout.LayoutParams(78, 52));
+        typeRow.addView(commandInput,new LinearLayout.LayoutParams(0,52,1));
+        Button run = button("RUN");
+        typeRow.addView(run,new LinearLayout.LayoutParams(66,52));
         run.setOnClickListener(v -> submitTypedCommand());
-        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-1, -2); trp.topMargin = 8; root.addView(typeRow, trp);
-        ScrollView scroll = new ScrollView(this); conversation = new TextView(this); conversation.setTextColor(Color.WHITE);
-        conversation.setTextSize(15); conversation.setPadding(12,18,12,18); scroll.addView(conversation);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1,0,1); sp.topMargin=12; sp.bottomMargin=12; root.addView(scroll,sp);
-        Button listen = button("TAP TO SPEAK  •  VOICE COMMAND"); root.addView(listen,new LinearLayout.LayoutParams(-1,54)); listen.setOnClickListener(v -> listen());
-        LinearLayout row1 = new LinearLayout(this); row1.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row1,"MEMORY",v->memoryDialog()); addSmall(row1,"TASKS",v->taskDialog()); addSmall(row1,"CUSTOM COMMAND",v->customCommandDialog()); root.addView(row1);
-        LinearLayout row2 = new LinearLayout(this); row2.setOrientation(LinearLayout.HORIZONTAL);
+        Button search = button("SEARCH");
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(82,52);
+        searchParams.leftMargin = 5;
+        typeRow.addView(search,searchParams);
+        search.setOnClickListener(v -> searchWeb(commandInput == null ? "" : commandInput.getText().toString()));
+        LinearLayout.LayoutParams trp = new LinearLayout.LayoutParams(-1,-2);
+        trp.topMargin = 8;
+        root.addView(typeRow,trp);
+
+        ScrollView conversationScroll = new ScrollView(this);
+        conversationScroll.setFillViewport(false);
+        conversation = new TextView(this);
+        conversation.setTextColor(Color.WHITE);
+        conversation.setTextSize(14);
+        conversation.setPadding(12,14,12,14);
+        conversationScroll.addView(conversation);
+        int conversationHeight = Math.max(145,Math.min(230,(int)(getResources().getDisplayMetrics().heightPixels*0.22f)));
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1,conversationHeight);
+        cp.topMargin=10;
+        cp.bottomMargin=8;
+        root.addView(conversationScroll,cp);
+
+        Button listen = button("TAP TO SPEAK  •  VOICE COMMAND");
+        root.addView(listen,new LinearLayout.LayoutParams(-1,52));
+        listen.setOnClickListener(v -> listen());
+
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        addSmall(row1,"MEMORY",v->memoryDialog());
+        addSmall(row1,"TASKS",v->taskDialog());
+        addSmall(row1,"CUSTOM COMMAND",v->customCommandDialog());
+        root.addView(row1);
+
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
         addSmall(row2,"CAMERA",v->launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"));
         addSmall(row2,"MAPS",v->open("https://maps.google.com"));
-        addSmall(row2,"REPEAT",v->speak(lastResponse)); root.addView(row2);
-        LinearLayout row3 = new LinearLayout(this); row3.setOrientation(LinearLayout.HORIZONTAL);
-        addSmall(row3,"AI BRAIN / MODEL",v->aiBrainDialog()); addSmall(row3,"ONLINE AI SETUP",v->onlineAiDialog()); root.addView(row3);
-        setContentView(root);
+        addSmall(row2,"REPEAT",v->speak(lastResponse));
+        root.addView(row2);
+
+        LinearLayout row3 = new LinearLayout(this);
+        row3.setOrientation(LinearLayout.HORIZONTAL);
+        addSmall(row3,"AI BRAIN / MODEL",v->aiBrainDialog());
+        addSmall(row3,"ONLINE AI SETUP",v->onlineAiDialog());
+        root.addView(row3);
+
+        page.addView(root,new ScrollView.LayoutParams(-1,-2));
+        setContentView(page);
+    }
+
+    private void searchWeb(String query) {
+        String clean = query == null ? "" : query.trim();
+        if (clean.isEmpty()) {
+            EditText input = new EditText(this);
+            input.setSingleLine(true);
+            input.setHint("What should I search on the web?");
+            new AlertDialog.Builder(this).setTitle("JARVIS WEB SEARCH")
+                .setView(input)
+                .setPositiveButton("SEARCH",(d,w)->searchWeb(input.getText().toString()))
+                .setNegativeButton("CANCEL",null).show();
+            return;
+        }
+        try {
+            Intent webSearch = new Intent(Intent.ACTION_WEB_SEARCH);
+            webSearch.putExtra(android.app.SearchManager.QUERY,clean);
+            if (webSearch.resolveActivity(getPackageManager()) != null) {
+                startActivity(webSearch);
+            } else {
+                open("https://www.google.com/search?q="+Uri.encode(clean));
+            }
+            if (commandInput != null) commandInput.setText("");
+            show("WEB SEARCH","Searching the web for: "+clean);
+            speak("Searching the web for "+clean);
+        } catch (Exception e) {
+            open("https://www.google.com/search?q="+Uri.encode(clean));
+        }
     }
 
     private Button button(String label) { Button b=new Button(this); b.setText(label); b.setTextColor(Color.BLACK); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CYAN)); return b; }
@@ -243,6 +344,7 @@ public class MainActivity extends Activity {
     }
 
     private void listen() {
+        if (orbView != null) orbView.setState("LISTENING");
         if (!hasMicPermission()) return;
         stopService(new Intent(this, WakeWordService.class));
         commandRetryUsed = false;
@@ -335,6 +437,7 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        if (orbView != null) orbView.setState("THINKING");
         boolean privateMode = memory.getBoolean("memory_private_mode", false);
         if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
         if (!privateMode) autoLearnMemory(raw);
@@ -347,7 +450,7 @@ public class MainActivity extends Activity {
         else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (q.contains("settings") || q.contains("सेटिंग")) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
         else if (q.contains("youtube")) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.contains("google") || q.contains("search")) { open("https://www.google.com/search?q="+Uri.encode(raw)); answer="Search kar raha hoon."; }
+        else if (q.startsWith("search ") || q.startsWith("web search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
         else if (q.contains("camera") || q.contains("कैमरा")) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
@@ -609,13 +712,13 @@ public class MainActivity extends Activity {
 
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
-    private void respond(String s) { lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
+    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
     private void speak(String s) { if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
     } }
-    private void show(String who,String s) { conversation.append("\n"+who+"\n"+s+"\n"); }
+    private void show(String who,String s) { if (conversation != null) conversation.append("\n"+who+"\n"+s+"\n"); }
     @Override protected void onResume() {
         super.onResume();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && !WakeWordService.isRunning)
