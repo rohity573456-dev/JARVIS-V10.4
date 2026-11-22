@@ -597,7 +597,8 @@ public class MainActivity extends Activity {
         else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (q.contains("settings") || q.contains("सेटिंग")) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
         else if (q.contains("youtube")) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.startsWith("search ") || q.startsWith("web search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
+        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw); return; }
+        else if (q.startsWith("search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
         else if (q.contains("camera") || q.contains("कैमरा")) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
         else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
         else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
@@ -665,7 +666,8 @@ public class MainActivity extends Activity {
     private boolean isAgentActionIntent(String q) {
         return q.startsWith("open ") || q.startsWith("launch ") ||
             q.startsWith("open app ") || q.startsWith("launch app ") ||
-            q.startsWith("start app ");
+            q.startsWith("start app ") || q.startsWith("web search ") ||
+            q.startsWith("search web ");
     }
 
     private void runAgent(String objective) {
