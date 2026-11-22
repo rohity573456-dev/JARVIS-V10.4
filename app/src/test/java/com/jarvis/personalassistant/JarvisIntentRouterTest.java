@@ -36,6 +36,17 @@ public class JarvisIntentRouterTest {
         assertFalse(JarvisIntentRouter.isOpenYoutubeCommand("How does YouTube recommend videos?"));
     }
 
+    @Test public void backgroundVoiceUsesStrictLocalActionIntents() {
+        assertFalse(JarvisIntentRouter.isBatteryStatusQuery("Explain battery health"));
+        assertFalse(JarvisIntentRouter.isBatteryStatusQuery("How does a battery management system work?"));
+        assertFalse(JarvisIntentRouter.isTimeQuery("Explain time complexity"));
+        assertFalse(JarvisIntentRouter.isDateQuery("Explain date parsing"));
+        assertFalse(JarvisIntentRouter.isFlashlightCommand("How does a flashlight circuit work?"));
+        assertFalse(JarvisIntentRouter.isVolumeUpCommand("Explain volume normalization"));
+        assertTrue(JarvisIntentRouter.isFlashlightCommand("torch chalu karo"));
+        assertTrue(JarvisIntentRouter.isVolumeDownCommand("volume down"));
+    }
+
     @Test public void commandsAreNormalizedAcrossCaseAndPunctuation() {
         assertTrue(JarvisIntentRouter.isBatteryStatusQuery("BATTERY STATUS!"));
         assertTrue(JarvisIntentRouter.isFlashlightCommand("Turn ON flashlight!"));
