@@ -783,14 +783,14 @@ Every project report must label each capability as:
 ### Audit pass 25 — approval-gated safe URL opening
 
 **Capability added**
-- The agent can open a user-requested URL through an installed browser or compatible app.
+- The agent can open a URL through an installed browser or compatible app only when the user supplied that exact URL. It must never invent or infer a destination.
 - Only HTTP/HTTPS URLs with a valid host are accepted; credential-bearing URLs, unsupported schemes, empty/oversized values and malformed destinations fail closed.
 - The action is classified EXTERNAL and always requires explicit approval before the Android intent is launched.
 - The structured planner applies a URL pattern and length bound before the adapter performs its independent validation.
 
 **Verification**
-- Robolectric adapter tests verify that unsafe schemes are rejected and the tool is classified EXTERNAL.
-- GitHub Actions passed the Android unit-test and compile job for the URL adapter/schema changes (run 45115027990).
+- Robolectric adapter tests verify that unsafe schemes and embedded credentials are rejected and the tool is classified EXTERNAL. The planner only emits `open_url` when the exact URL was supplied by the user.
+- GitHub Actions passed the Android unit-test and compile job for the URL adapter/schema/safety changes (runs 45115027990, 45115052635, 45115056966 and 45115072522).
 - Browser resolution and real external navigation still require device validation.
 
 
