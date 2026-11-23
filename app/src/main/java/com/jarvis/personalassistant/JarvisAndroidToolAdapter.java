@@ -266,6 +266,26 @@ public final class JarvisAndroidToolAdapter {
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
+            "open_url", "Open a user-supplied HTTP or HTTPS URL in the browser after approval.",
+            JarvisToolRegistry.Risk.EXTERNAL, setOf("url"), none(), "", args -> {
+                String raw = args.get("url");
+                if (raw == null || raw.trim().isEmpty() || raw.trim().length() > 2048)
+                    return JarvisToolRegistry.ToolResult.failure("URL must contain 1-2048 characters.");
+                Uri uri = Uri.parse(raw.trim());
+                String scheme = uri.getScheme();
+                if (uri.getHost() == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)))
+                    return JarvisToolRegistry.ToolResult.failure("Only valid HTTP or HTTPS URLs can be opened.");
+                return onMain(() -> {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    if (intent.resolveActivity(activity.getPackageManager()) == null)
+                        return JarvisToolRegistry.ToolResult.failure("No browser or compatible app can open this URL.");
+                    activity.startActivity(intent);
+                    return JarvisToolRegistry.ToolResult.success("Opened URL: " + uri.getHost());
+                });
+            }
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
             "web_search", "Open a web search for the supplied query.", JarvisToolRegistry.Risk.EXTERNAL,
             setOf("query"), none(), "", args -> onMain(() -> {
                 String query = args.get("query");
