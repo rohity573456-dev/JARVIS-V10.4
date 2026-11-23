@@ -27,7 +27,7 @@ object LocalAiEngine {
                     val newEngine = Engine(EngineConfig(modelPath = modelPath, backend = Backend.CPU()))
                     newEngine.initialize()
                     engine = newEngine
-                    conversation = newEngine.createConversation()
+                    conversation = null
                     "Offline AI model loaded successfully. JARVIS local brain is ready."
                 } catch (t: Throwable) {
                     closeEngineOnly()
@@ -42,15 +42,24 @@ object LocalAiEngine {
         scope.launch {
             val answer = engineMutex.withLock {
                 try {
-                    if (engine == null || conversation == null) {
+                    if (engine == null) {
                         val newEngine = Engine(EngineConfig(modelPath = modelPath, backend = Backend.CPU()))
                         newEngine.initialize()
                         engine = newEngine
-                        conversation = newEngine.createConversation()
                     }
-                    val output = StringBuilder()
-                    conversation!!.sendMessageAsync(prompt).collect { chunk -> output.append(chunk.toString()) }
-                    output.toString().trim().ifEmpty { "The local model returned an empty response." }
+                    // Each request gets a fresh conversation. MainActivity injects bounded history
+                    // explicitly, so this avoids duplicated turns and prevents Private Mode from
+                    // inheriting hidden conversation state from an earlier normal-mode request.
+                    val turnConversation = engine!!.createConversation()
+                    conversation = turnConversation
+                    try {
+                        val output = StringBuilder()
+                        turnConversation.sendMessageAsync(prompt).collect { chunk -> output.append(chunk.toString()) }
+                        output.toString().trim().ifEmpty { "The local model returned an empty response." }
+                    } finally {
+                        try { turnConversation.close() } catch (_: Throwable) {}
+                        if (conversation === turnConversation) conversation = null
+                    }
                 } catch (t: Throwable) {
                     "Offline AI error: ${t.message ?: "model inference failed"}"
                 }
