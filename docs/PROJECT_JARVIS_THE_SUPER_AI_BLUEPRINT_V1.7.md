@@ -1031,3 +1031,13 @@ Every project report must label each capability as:
 - The existing three OpenWakeWord ONNX assets remain unchanged from the feature base branch; no model replacement or re-training was performed.
 - The final APK workflow is now being requested. It will rerun the Python wake-corpus benchmark tests and Android unit tests before assembling the installable debug APK and uploading the artifact.
 - Scope remains accurately labelled: phases 0–3 are implemented with remaining capabilities, phases 4–6 are partial. A passing build does not mean all 107 blueprint divisions are complete or production-ready. Real-device microphone, battery, background lifecycle, alarm and rapid-turn checks remain required after installation.
+
+
+### Final APK build result — 23 November 2026
+
+- GitHub Actions final APK workflow run: `45131364364` — **success**.
+- Python wake-corpus benchmark-tool tests: **passed**.
+- Final Android unit tests and `assembleDebug`: **passed**.
+- Uploaded artifact: `JARVIS-V10.4-Final-APK` (artifact ID `14797284895`); extracted installable file: `JARVIS-V10.4-Final.apk`.
+- SHA-256: `c96345b75ee680fb196b95526ebeb5f8945b2d29d33f0e2579b5c75725158934`.
+- Build is a debug-signed installable APK, not a Play Store release. It has not been physically installed or device-validated in this workflow.
