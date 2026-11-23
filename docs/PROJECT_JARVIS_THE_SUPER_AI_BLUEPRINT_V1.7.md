@@ -738,4 +738,4 @@ Every project report must label each capability as:
 
 **Verification**
 - Added regression tests for normal requests, explicit Astra prefix, case-insensitive prefix, missing key and null objective.
-- Fresh GitHub Actions verification is pending for this change.
+- GitHub Actions passed the Android unit-test/compile suite, including the new planner routing regression tests (run 45114575005).
