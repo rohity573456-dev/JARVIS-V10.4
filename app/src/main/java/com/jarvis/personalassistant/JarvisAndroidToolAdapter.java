@@ -87,6 +87,34 @@ public final class JarvisAndroidToolAdapter {
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
+            "open_app_by_name", "Open one installed app by its exact visible launcher name.",
+            JarvisToolRegistry.Risk.REVERSIBLE, setOf("app_name"), none(), "", args -> onMain(() -> {
+                String requested = args.get("app_name");
+                if (requested == null || requested.trim().isEmpty() || requested.trim().length() > 80)
+                    return JarvisToolRegistry.ToolResult.failure("App name must contain 1-80 characters.");
+                Intent launcherQuery = new Intent(Intent.ACTION_MAIN);
+                launcherQuery.addCategory(Intent.CATEGORY_LAUNCHER);
+                java.util.List<android.content.pm.ResolveInfo> matches =
+                    activity.getPackageManager().queryIntentActivities(launcherQuery, 0);
+                android.content.pm.ResolveInfo match = null;
+                for (android.content.pm.ResolveInfo candidate : matches) {
+                    CharSequence label = candidate.loadLabel(activity.getPackageManager());
+                    if (label != null && requested.trim().equalsIgnoreCase(label.toString().trim())) {
+                        if (match != null && !match.activityInfo.packageName.equals(candidate.activityInfo.packageName))
+                            return JarvisToolRegistry.ToolResult.failure("More than one installed app is named " + requested.trim() + "; use the exact package name to disambiguate.");
+                        match = candidate;
+                    }
+                }
+                if (match == null) return JarvisToolRegistry.ToolResult.failure("No installed app with the exact name " + requested.trim() + " was found.");
+                Intent launch = activity.getPackageManager().getLaunchIntentForPackage(match.activityInfo.packageName);
+                if (launch == null) return JarvisToolRegistry.ToolResult.failure("The selected app has no launchable activity.");
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(launch);
+                return JarvisToolRegistry.ToolResult.success("Opened " + requested.trim() + ".");
+            })
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
             "open_app", "Open an installed app by its exact Android package name.", JarvisToolRegistry.Risk.REVERSIBLE,
             setOf("package"), none(), "", args -> onMain(() -> {
                 String packageName = args.get("package");
