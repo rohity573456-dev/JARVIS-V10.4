@@ -45,7 +45,10 @@ public final class JarvisMemoryAiWorker {
                 if(!consent.isAllowed())return;
                 // Old transcripts may predate newer privacy filters; never upload a
                 // session containing sensitive text for background AI reflection.
-                if(!isEligibleForAiReflection(session.transcript))continue;
+                if(!isEligibleForAiReflection(session.transcript)){
+                    db.markAiSessionReflectionSkipped(session.sessionId);
+                    continue;
+                }
                 StringBuilder promptBuilder=new StringBuilder();
                 promptBuilder.append("Review this completed conversation session. Return JSON only: ");
                 promptBuilder.append("{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\",");
