@@ -547,3 +547,102 @@ Every project report must label each capability as:
 - GitHub Actions passed the full `gradle testDebugUnitTest` job with the Robolectric runtime mirror and current source (run 45111187652).
 - The earlier runtime-fetch failure is treated as infrastructure/dependency resolution, not as a passing SQLite test run. The successful mirrored run is the authoritative validation.
 - Real-device memory lifecycle and Private Mode restart tests remain pending.
+
+
+### Audit pass 12 — agent cancellation and run ownership
+
+**Issues found**
+- Cancelling an agent marked its handle cancelled immediately, but the underlying planner/provider request could still be running. Starting another task at that point could overlap two agent plans.
+- A stale completion callback could clear the handle belonging to a newer agent run.
+- A planner exception arriving after explicit cancellation could be reported as a failure rather than a cancellation.
+
+**Corrections committed**
+- Exposed a finished state on agent run handles and block a new agent task until the cancelled run has actually finished.
+- Completion callbacks clear the active handle only when it still belongs to that exact run.
+- Cancellation dismisses any pending approval dialog; destroying the Activity invalidates response callbacks and cancels outstanding work.
+- Cancellation is checked after planner return and before tool execution. A planner exception after cancellation is reported as CANCELLED.
+- Calling cancel after completion is a no-op.
+
+**Verification**
+- Regression tests cover cancellation during approval, cancellation during in-flight planning, planner failure after cancellation, no tool execution after cancellation, and cancellation after completion.
+- GitHub Actions passed these tests in runs 45111887507, 45111967811, 45112305548 and the latest agent-handle run 45112295449.
+- An Android platform call already in progress cannot always be interrupted; cancellation safely prevents later steps and suppresses stale UI callbacks.
+
+### Audit pass 13 — foreground response sequencing
+
+**Issue found**
+- Two fast consecutive user turns could complete out of order; a late earlier response could overwrite the newer conversation answer.
+- The response-sequencer integration also exposed a malformed field declaration during the first compile attempt.
+
+**Corrections committed**
+- Added monotonically increasing request tokens. New turns invalidate callbacks from older turns; Activity destruction invalidates all outstanding callbacks.
+- Foreground AI requests check the token before embedding work, before provider dispatch, and before displaying a result. Agent status/completion callbacks use the same token.
+- Fixed the declaration and restored the explicit direct web-search branch so it opens the requested search rather than starting an Android action plan.
+
+**Verification**
+- Sequencer unit tests cover newer-turn invalidation and Activity teardown.
+- GitHub Actions passed the corrected source and unit tests in run 45111764694.
+- Real rapid-turn testing on a physical Android device remains pending.
+
+### Audit pass 14 — one shared sensitive-data boundary
+
+**Issue found**
+- AI extraction had a stronger sensitive-content filter than manual memory saves and conversation insertion. The weaker store-level filter could therefore allow content that the AI worker would reject.
+
+**Corrections committed**
+- Centralized the content filter in `JarvisSensitiveDataFilter` and applied it to AI extraction, manual memory saves, and conversation insertion.
+- The filter rejects common credential and financial identifiers, Aadhaar/PAN-like patterns, health/medical details, religious and political beliefs, sexual information, criminal history and biometric data.
+- Explicit manual save commands bypass generic automatic extraction, avoiding duplicate fact insertion.
+
+**Verification**
+- Added unit tests for sensitive and ordinary content and Robolectric SQLite tests proving sensitive manual facts and conversation turns are rejected.
+- GitHub Actions passed shared-filter tests (run 45112120224), SQLite persistence tests (run 45112154708), and related extraction/store runs 45112093294, 45112096580 and 45112100473.
+- Keyword and pattern filtering is defense-in-depth, not a complete classifier. Users should still avoid entering secrets into any AI system.
+
+### Audit pass 15 — local LLM concurrency and context isolation
+
+**Issues found**
+- The LiteRT-LM conversation object was shared across potentially concurrent foreground/background requests.
+- Reusing a stateful local conversation duplicated the explicitly injected multi-turn history and could retain normal-mode context when Private Mode began.
+
+**Corrections committed**
+- Serialized local engine load, inference and close operations with a coroutine mutex.
+- Each inference now creates and closes a fresh LiteRT-LM conversation. The app supplies the bounded relevant history explicitly, preventing hidden state carry-over and duplicated turns.
+- Local fallback also uses the shared prompt-budget utility.
+
+**Verification**
+- GitHub Actions passed local-engine serialization and per-turn isolation source compilation (runs 45112173989 and 45112202091) and local prompt-budget compilation/tests (run 45112224198).
+- Real-device model load/inference, memory pressure and foreground/background concurrency checks remain pending.
+
+### Audit pass 16 — local credential and backup boundary
+
+**Correction committed**
+- Disabled Android automatic application backup so local memory databases, preferences and encrypted provider credential blobs are not included in ordinary Android backup/restore flows.
+- Provider API keys continue to be encrypted at rest using an Android Keystore AES-GCM key.
+
+**Verification**
+- GitHub Actions passed the manifest/source validation run 45112263474.
+- Device-to-device migration behavior should still be checked on supported OEM Android builds; this is not a substitute for a user-managed encrypted export feature.
+
+### Audit pass 17 — Astra API reasoning parameter validation
+
+**Issue found**
+- The Responses API adapter accepted an undocumented `max` reasoning-effort value, risking avoidable HTTP 400 errors.
+
+**Correction committed**
+- Normalizes reasoning effort to the supported adapter allowlist: low, medium, high and xhigh; invalid values fall back to a safe configured default.
+
+**Verification**
+- Unit tests cover all accepted values and fallback behavior.
+- GitHub Actions passed adapter and test runs 45112042971 and 45112049062.
+- Model/API availability and billing remain dependent on the user's OpenAI account and configured key.
+
+### Audit pass 18 — final APK build gate
+
+**Correction committed**
+- Added a dedicated final-APK workflow that runs only when a commit message explicitly contains `[final-apk]`.
+- The gated job reruns the complete Android unit-test task, builds one installable debug-signed APK, and uploads only the APK file as a named artifact.
+- Adding the workflow itself does not build an APK; its first observed run was correctly skipped.
+
+**Verification**
+- No final APK has been built or uploaded yet. The single final build is intentionally deferred until implementation and validation work is complete.
