@@ -19,6 +19,11 @@ final class JarvisIntentRouter {
                 .trim().replaceAll("\\s+", " ");
     }
 
+    static boolean isCancelAgentCommand(String raw) {
+        return oneOf(normalize(raw), "stop agent", "cancel agent", "stop current task",
+                "cancel current task", "mission stop", "agent stop");
+    }
+
     static boolean isGreeting(String raw) {
         return oneOf(normalize(raw), "hello", "hi", "hey", "namaste", "नमस्ते",
                 "हेलो", "hello jarvis", "hi jarvis", "hey jarvis",
