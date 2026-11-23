@@ -188,9 +188,9 @@ public final class JarvisAndroidToolAdapter {
     }
 
     private static Set<String> none() { return Collections.emptySet(); }
-    private static Set<String> setOf(String value) {
+    private static Set<String> setOf(String... items) {
         Set<String> values = new HashSet<>();
-        values.add(value);
+        if (items != null) Collections.addAll(values, items);
         return values;
     }
 }
