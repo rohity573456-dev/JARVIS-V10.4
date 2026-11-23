@@ -84,6 +84,38 @@ public final class OnlineAiClient {
         return "ERROR: Provider returned an empty answer.";
     }
 
+    /** Normalize native tool calls and reject incomplete planner completions. */
+    static String extractToolCalls(JSONObject response) throws Exception {
+        if (response == null) return "ERROR: Provider response was empty.";
+        JSONArray choices = response.optJSONArray("choices");
+        if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
+        JSONObject choice = choices.optJSONObject(0);
+        if (choice == null) return "ERROR: Provider response format was unexpected.";
+        String finishReason = choice.optString("finish_reason", "");
+        if ("length".equalsIgnoreCase(finishReason))
+            return "ERROR: Tool-planning response was truncated by its token limit.";
+        if ("content_filter".equalsIgnoreCase(finishReason))
+            return "ERROR: Provider filtered the tool-planning response.";
+        JSONObject message = choice.optJSONObject("message");
+        if (message == null) return "ERROR: Provider response format was unexpected.";
+        JSONArray calls = message.optJSONArray("tool_calls");
+        JSONArray normalized = new JSONArray();
+        if (calls == null) return normalized.toString();
+        for (int i = 0; i < calls.length() && i < JarvisAgentEngine.MAX_STEPS; i++) {
+            JSONObject call = calls.optJSONObject(i);
+            JSONObject function = call == null ? null : call.optJSONObject("function");
+            if (function == null) continue;
+            String name = function.optString("name", "");
+            Object rawArgs = function.opt("arguments");
+            JSONObject args;
+            if (rawArgs instanceof JSONObject) args = (JSONObject) rawArgs;
+            else if (rawArgs instanceof String) args = new JSONObject((String) rawArgs);
+            else continue;
+            normalized.put(new JSONObject().put("name", name).put("arguments", args));
+        }
+        return normalized.toString();
+    }
+
     public static String askForToolCalls(String endpoint, String apiKey, String model,
             String prompt, String systemPrompt, JSONArray tools) {
         HttpURLConnection c = null;
@@ -123,27 +155,7 @@ public final class OnlineAiClient {
                 while ((line = r.readLine()) != null) raw.append(line);
             }
             if (code < 200 || code >= 300) return "ERROR " + code + ": " + raw;
-            JSONObject response = new JSONObject(raw.toString());
-            JSONArray choices = response.optJSONArray("choices");
-            if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
-            JSONObject message = choices.getJSONObject(0).optJSONObject("message");
-            if (message == null) return "ERROR: Provider response format was unexpected.";
-            JSONArray calls = message.optJSONArray("tool_calls");
-            JSONArray normalized = new JSONArray();
-            if (calls == null) return normalized.toString();
-            for (int i = 0; i < calls.length() && i < JarvisAgentEngine.MAX_STEPS; i++) {
-                JSONObject call = calls.optJSONObject(i);
-                JSONObject function = call == null ? null : call.optJSONObject("function");
-                if (function == null) continue;
-                String name = function.optString("name", "");
-                Object rawArgs = function.opt("arguments");
-                JSONObject args;
-                if (rawArgs instanceof JSONObject) args = (JSONObject) rawArgs;
-                else if (rawArgs instanceof String) args = new JSONObject((String) rawArgs);
-                else continue;
-                normalized.put(new JSONObject().put("name", name).put("arguments", args));
-            }
-            return normalized.toString();
+            return extractToolCalls(new JSONObject(raw.toString()));
         } catch (Exception e) {
             return "ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage();
         } finally {
