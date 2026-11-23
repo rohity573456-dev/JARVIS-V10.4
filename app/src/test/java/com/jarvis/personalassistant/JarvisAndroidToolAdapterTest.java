@@ -47,6 +47,12 @@ public class JarvisAndroidToolAdapterTest {
         assertTrue(device.output.contains("Android:"));
         assertEquals(JarvisToolRegistry.Risk.READ_ONLY, registry.get("get_device_status").risk);
 
+        assertEquals(JarvisToolRegistry.Risk.EXTERNAL, registry.get("open_url").risk);
+        Map<String,String> unsafeUrl = new HashMap<>();
+        unsafeUrl.put("url", "javascript:alert(1)");
+        JarvisToolRegistry.ToolResult rejectedUrl = registry.invoke("open_url", unsafeUrl);
+        assertFalse(rejectedUrl.success);
+
         Map<String,String> taskArgs = new HashMap<>();
         taskArgs.put("id", String.valueOf(createdReminder.id));
         assertEquals(JarvisToolRegistry.Risk.SENSITIVE, registry.get("complete_task").risk);
