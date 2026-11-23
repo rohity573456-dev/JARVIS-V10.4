@@ -59,6 +59,19 @@ public class JarvisAndroidToolAdapterTest {
         activity.finish();
     }
 
+    @Test public void appLauncherRequiresAnExactInstalledVisibleName() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(activity).registerInto(registry);
+        assertEquals(JarvisToolRegistry.Risk.REVERSIBLE, registry.get("open_app_by_name").risk);
+        Map<String,String> args = new HashMap<>();
+        args.put("app_name", "JARVIS_APP_NAME_THAT_DOES_NOT_EXIST_987654");
+        JarvisToolRegistry.ToolResult result = registry.invoke("open_app_by_name", args);
+        assertFalse(result.success);
+        assertTrue(result.output.contains("No installed app"));
+        activity.finish();
+    }
+
     @Test public void missingNotificationPermissionPreventsReminderPersistence() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
