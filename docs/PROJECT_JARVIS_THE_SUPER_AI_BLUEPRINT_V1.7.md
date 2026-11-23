@@ -944,8 +944,8 @@ Every project report must label each capability as:
 - Background AI reflection could process old pending conversation sessions without rechecking their full transcript. Sessions saved before newer privacy filters were added might still contain sensitive text.
 
 **Correction committed**
-- The reflection worker now checks each historical transcript with the shared sensitive-data filter immediately before constructing or sending its provider prompt. Sensitive sessions are skipped; explicit cloud-memory consent remains required for all other sessions.
+- The reflection worker now checks each historical transcript with the shared sensitive-data filter immediately before constructing or sending its provider prompt. Sensitive sessions are skipped and receive a marker in `memory_ai_reflections` without storing a summary, so they are not repeatedly queued and cannot starve later eligible sessions. Explicit cloud-memory consent remains required for all other sessions.
 
 **Verification**
-- Added regression tests proving Hindi Aadhaar and password-containing historical transcripts are excluded while ordinary preferences remain eligible. CI validation is pending.
+- Added regression tests proving Hindi Aadhaar and password-containing historical transcripts are excluded while ordinary preferences remain eligible. A SQLite lifecycle test verifies skipped sessions are marked, create no summary and leave the pending queue. CI validation is pending.
 - No existing conversation history is deleted or rewritten; ONNX assets remain untouched.
