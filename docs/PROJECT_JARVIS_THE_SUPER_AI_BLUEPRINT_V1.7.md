@@ -1016,3 +1016,10 @@ Every project report must label each capability as:
 
 **Verification**
 - This is a queue/resource-bound change; Android unit-test/compile validation is pending. No database schema, stored memory, provider priority or ONNX asset changed.
+
+
+### Audit pass 46 — harden local embedding worker lifecycle
+
+- The optional embedding indexer now uses a daemon worker with a one-entry bounded queue. Its existing single-flight guard prevents duplicate indexing runs; if executor submission is rejected, the guard is reset so a later attempt can retry pending rows.
+- Pending embedding rows remain in SQLite on provider failure or interrupted work. Consent is rechecked before each remote embedding request and before storing the result.
+- Android unit-test/compile validation is pending. No embedding schema, vector model, API key or ONNX asset changed.
