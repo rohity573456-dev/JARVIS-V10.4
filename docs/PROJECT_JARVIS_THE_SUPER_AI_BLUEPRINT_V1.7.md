@@ -909,3 +909,10 @@ Every project report must label each capability as:
 - Added equivalent truncation/failure checks for the optional Astra Responses API. `status=incomplete` / `max_output_tokens` and `status=failed` now return an explicit provider error instead of passing partial text or an empty tool plan as complete.
 - The hybrid router can fall back to configured free providers when an explicit Astra request returns an incomplete response.
 - Added pure unit coverage for incomplete, failed and completed Responses statuses. CI validation is pending.
+
+
+### Audit pass 37 — preserve explicit Astra opt-in for Android actions
+
+- Fixed an intent-routing edge case: `Astra open YouTube` and `Astra remind me in ...` previously missed the action router because the provider prefix came before the action verb.
+- The router now strips the prefix only for action-intent detection while leaving the original objective intact for the structured planner. Thus Astra is still selected only when explicitly requested; without an Astra key the free-provider fallback remains available.
+- Added tests for Astra-prefixed app launch, reminder creation and ordinary explanatory questions. CI validation is pending.
