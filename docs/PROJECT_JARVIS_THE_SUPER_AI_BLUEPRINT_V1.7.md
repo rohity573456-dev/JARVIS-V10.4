@@ -318,7 +318,7 @@ Every project report must label each capability as:
 - Context ordering is deterministic for equal timestamps. If memory context must be shortened, preserve its useful opening facts and newest conversational tail instead of cutting off the latest turn.
 - A bounded context composer keeps follow-up instructions, prevents unsupported memory claims, and suppresses saved memory, legacy notes and previous-turn context in private mode.
 - Routing policy: explicit `Astra ...` prefix only for the optional paid Astra route; otherwise Groq is preferred for coding/data-analysis/planning when available, Gemini is preferred for general/research, the other configured cloud provider is the fallback, and local inference is the final offline fallback.
-- Normal cloud chat prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling. Structured tool-planning prompts use a tighter 4,500-character ceiling to reserve provider TPM headroom for tool schemas and completion tokens. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
+- Normal cloud chat prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling. Free-provider structured tool-planning prompts use a tighter 4,500-character ceiling to reserve provider TPM headroom for tool schemas and completion tokens; explicit Astra planning keeps its separate bounded premium context budget. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
 - All providers receive a silent answer self-check instruction. Complex Astra specialist responses may receive a second-pass audit; do not spend a second API call on routine conversation.
 - These changes are automated-test covered but remain pending latest CI completion and real-device validation. Character/token estimates are protective approximations, not exact tokenizer measurements.
 
@@ -848,7 +848,7 @@ Every project report must label each capability as:
 - Structured tool-planning requests budgeted prompt text like ordinary chat but did not reserve enough room for tool schemas and completion tokens. This could push a free-tier provider request over its tokens-per-minute allowance even when the text prompt itself was trimmed.
 
 **Correction committed**
-- Reduced the structured tool-call prompt ceiling to 4,500 characters, leaving headroom for registered tool schemas and the requested completion. Normal conversational requests retain their separate standard budget.
+- Reduced free-provider structured tool-call prompt ceiling to 4,500 characters, leaving headroom for registered tool schemas and the requested completion. Normal chat and explicit Astra planning retain their separate budgets.
 - Truncation continues to preserve the newest request tail and the core system instructions.
 
 **Verification**
