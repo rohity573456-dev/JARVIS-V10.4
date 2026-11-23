@@ -778,3 +778,17 @@ Every project report must label each capability as:
 - Robolectric tests cover unknown app-name failure, device-status output and read-only risk.
 - GitHub Actions passed the app-name, device-status and planner-schema source/tests (runs 45114816874, 45114823370, 45114829250 and 45114862701).
 - Installed-app visibility and launch behavior must still be tested on the user's actual Android launcher/OEM.
+
+
+### Audit pass 25 — approval-gated safe URL opening
+
+**Capability added**
+- The agent can open a user-requested URL through an installed browser or compatible app.
+- Only HTTP/HTTPS URLs with a valid host are accepted; credential-bearing URLs, unsupported schemes, empty/oversized values and malformed destinations fail closed.
+- The action is classified EXTERNAL and always requires explicit approval before the Android intent is launched.
+- The structured planner applies a URL pattern and length bound before the adapter performs its independent validation.
+
+**Verification**
+- Robolectric adapter tests verify that unsafe schemes are rejected and the tool is classified EXTERNAL.
+- GitHub Actions passed the Android unit-test and compile job for the URL adapter/schema changes (run 45115027990).
+- Browser resolution and real external navigation still require device validation.
