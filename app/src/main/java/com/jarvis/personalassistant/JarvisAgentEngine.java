@@ -119,9 +119,12 @@ public final class JarvisAgentEngine {
                 notifyState(listener, state, "Executing " + step.toolName);
                 JarvisToolRegistry.ToolResult result = registry.invoke(step.toolName, step.arguments);
                 int attempts = 1;
-                if (!result.success && !handle.cancelled.get()) {
+                // Retry only read-only operations. A failed side-effecting action may have
+                // completed remotely before its response was lost; retrying could duplicate it.
+                if (!result.success && spec.risk == JarvisToolRegistry.Risk.READ_ONLY
+                        && !handle.cancelled.get()) {
                     attempts++;
-                    notifyState(listener, State.RUNNING, "Retrying failed step once");
+                    notifyState(listener, State.RUNNING, "Retrying failed read-only step once");
                     result = registry.invoke(step.toolName, step.arguments);
                 }
                 state = State.VERIFYING;
