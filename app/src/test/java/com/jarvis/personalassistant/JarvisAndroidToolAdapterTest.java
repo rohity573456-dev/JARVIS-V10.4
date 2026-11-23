@@ -71,6 +71,27 @@ public class JarvisAndroidToolAdapterTest {
         activity.finish();
     }
 
+    @Test public void browserNavigationRejectsUnsafeSchemesAndEmbeddedCredentials() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(activity).registerInto(registry);
+        assertEquals(JarvisToolRegistry.Risk.EXTERNAL, registry.get("open_url").risk);
+
+        Map<String,String> args = new HashMap<>();
+        args.put("url", "javascript:alert(1)");
+        JarvisToolRegistry.ToolResult scheme = registry.invoke("open_url", args);
+        assertFalse(scheme.success);
+
+        args.put("url", "https://user:secret@example.com/path");
+        JarvisToolRegistry.ToolResult credentials = registry.invoke("open_url", args);
+        assertFalse(credentials.success);
+        assertTrue(credentials.output.contains("without embedded credentials"));
+
+        args.put("url", "file:///etc/passwd");
+        assertFalse(registry.invoke("open_url", args).success);
+        activity.finish();
+    }
+
     @Test public void appLauncherRequiresAnExactInstalledVisibleName() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         JarvisToolRegistry registry = new JarvisToolRegistry();
