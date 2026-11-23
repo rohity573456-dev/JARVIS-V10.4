@@ -16,6 +16,13 @@ public class JarvisHybridBrainTest {
     @Test public void defaultsToGeneral() {
         assertEquals(JarvisHybridBrain.Specialist.GENERAL, JarvisHybridBrain.classify("Hello Jarvis"));
     }
+    @Test public void specialistClassificationUsesWholeWordsNotAccidentalSubstrings() {
+        assertEquals(JarvisHybridBrain.Specialist.GENERAL, JarvisHybridBrain.classify("Explain how planets form"));
+        assertEquals(JarvisHybridBrain.Specialist.GENERAL, JarvisHybridBrain.classify("How do I decode this message?"));
+        assertEquals(JarvisHybridBrain.Specialist.CODING, JarvisHybridBrain.classify("Help me with JavaScript code"));
+        assertEquals(JarvisHybridBrain.Specialist.PLANNING, JarvisHybridBrain.classify("Help me with planning"));
+    }
+
     @Test public void specialistDirectiveDoesNotClaimTools() {
         assertTrue(JarvisHybridBrain.systemDirective("build my app").contains("Never invent tool results"));
     }
