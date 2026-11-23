@@ -19,6 +19,19 @@ final class JarvisIntentRouter {
                 .trim().replaceAll("\\s+", " ");
     }
 
+    static boolean isGreeting(String raw) {
+        return oneOf(normalize(raw), "hello", "hi", "hey", "namaste", "नमस्ते",
+                "हेलो", "hello jarvis", "hi jarvis", "hey jarvis",
+                "good morning", "good afternoon", "good evening");
+    }
+
+    static boolean isMemoryOverviewQuery(String raw) {
+        return oneOf(normalize(raw), "memory", "show memory", "show my memory",
+                "meri memory", "meri memory dikhao",
+                "what did i ask you to remember", "maine kya yaad rakhne ko kaha",
+                "maine kya yaad rakhne ko bola");
+    }
+
     static boolean isPrivateModeEnableCommand(String raw) {
         String q = normalize(raw);
         return oneOf(q, "memory privacy on", "private mode on", "memory band");
