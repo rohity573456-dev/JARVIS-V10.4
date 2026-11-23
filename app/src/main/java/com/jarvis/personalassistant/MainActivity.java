@@ -625,7 +625,7 @@ public class MainActivity extends Activity {
             respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
             return;
         }
-        if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+        if (activeAgentRun != null && !activeAgentRun.isFinished()) {
             respond("JARVIS is already handling an agent task. Pehle current task complete hone do.");
             return;
         }
@@ -635,7 +635,8 @@ public class MainActivity extends Activity {
                 memory.getString("gemini_model", "gemini-2.5-flash"),
                 groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"), openAiKey),
             agentToolRegistry, this::requestAgentApproval);
-        activeAgentRun = engine.submit(objective, new JarvisAgentEngine.Listener() {
+        final JarvisAgentEngine.RunHandle[] submittedRun = new JarvisAgentEngine.RunHandle[1];
+        submittedRun[0] = engine.submit(objective, new JarvisAgentEngine.Listener() {
             @Override public void onState(JarvisAgentEngine.State state, String detail) {
                 runOnUiThread(() -> {
                     if (status == null || isFinishing() || !responseSequencer.isCurrent(responseToken)) return;
@@ -647,7 +648,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onComplete(JarvisAgentEngine.AgentReport report) {
                 runOnUiThread(() -> {
-                    activeAgentRun = null;
+                    if (activeAgentRun == submittedRun[0]) activeAgentRun = null;
                     if (isFinishing() || !responseSequencer.isCurrent(responseToken)) return;
                     if (report.finalState == JarvisAgentEngine.State.COMPLETED && report.steps.isEmpty()) {
                         respond("Is request ke liye koi supported Android action identify nahi hua. App ka exact naam batao, ya normal question ki tarah pucho.");
@@ -666,6 +667,7 @@ public class MainActivity extends Activity {
                 });
             }
         });
+        activeAgentRun = submittedRun[0];
     }
 
     private boolean requestAgentApproval(JarvisAgentEngine.AgentStep step) {
