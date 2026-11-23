@@ -41,6 +41,12 @@ public class JarvisAndroidToolAdapterTest {
         assertTrue(listed.output.contains("JARVIS agent reminder test"));
         assertEquals(JarvisToolRegistry.Risk.READ_ONLY, registry.get("list_reminders").risk);
 
+        JarvisToolRegistry.ToolResult device = registry.invoke("get_device_status", Collections.<String,String>emptyMap());
+        assertTrue(device.output, device.success);
+        assertTrue(device.output.contains("Device status"));
+        assertTrue(device.output.contains("Android:"));
+        assertEquals(JarvisToolRegistry.Risk.READ_ONLY, registry.get("get_device_status").risk);
+
         Map<String,String> taskArgs = new HashMap<>();
         taskArgs.put("id", String.valueOf(createdReminder.id));
         assertEquals(JarvisToolRegistry.Risk.SENSITIVE, registry.get("complete_task").risk);
