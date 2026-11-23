@@ -549,7 +549,7 @@ public class MainActivity extends Activity {
     }
 
     private void listen() {
-        if (orbView != null) orbView.setState("LISTENING");
+        setAssistantVisualState("LISTENING");
         if (!hasMicPermission()) return;
         stopService(new Intent(this, WakeWordService.class));
         commandRetryUsed = false;
@@ -588,6 +588,7 @@ public class MainActivity extends Activity {
                         voiceHandler.postDelayed(() -> startRecognition(false, "hi-IN"), 500);
                         return;
                     }
+                    setAssistantVisualState("STANDBY");
                     status.setText("● CORE ONLINE");
                     {
                         show("VOICE ERROR", speechError(error)+". Check internet and Google Speech Services.");
@@ -644,7 +645,7 @@ public class MainActivity extends Activity {
         switchTab(1);
         final long responseToken = responseSequencer.beginRequest();
         lastUserPrompt = raw == null ? "" : raw;
-        if (orbView != null) orbView.setState("THINKING");
+        setAssistantVisualState("THINKING");
         String q=raw == null ? "" : raw.toLowerCase(Locale.ROOT);
         boolean enablingPrivateMode = JarvisIntentRouter.isPrivateModeEnableCommand(raw);
         boolean privacyToggle = enablingPrivateMode || JarvisIntentRouter.isPrivateModeDisableCommand(raw);
@@ -1122,7 +1123,7 @@ public class MainActivity extends Activity {
     private boolean launch(Intent i) { return JarvisActionResultGuard.run(() -> startActivity(i)); }
     private boolean open(String url) { return JarvisActionResultGuard.run(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)))); }
     private void respondEphemeral(String s) { setAssistantVisualState("SPEAKING"); lastResponse=s; show("JARVIS",s); speak(s); status.setText("● CORE ONLINE"); }
-    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
+    private void respond(String s) { setAssistantVisualState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
 
     /** Private Mode must not leave a persisted copy of the latest response. */
     private void persistLastResponse(String response) {
@@ -1132,7 +1133,7 @@ public class MainActivity extends Activity {
         else editor.putString("last_response", response == null ? "" : response);
         editor.apply();
     }
-    private void speak(String s) { if (orbView != null) orbView.setState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
+    private void speak(String s) { setAssistantVisualState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
