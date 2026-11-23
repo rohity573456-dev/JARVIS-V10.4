@@ -130,9 +130,10 @@ public final class JarvisHybridBrain {
         return "NONE";
     }
     static boolean shouldUseAstra(String userText, boolean configured) {
-        if (!configured) return false;
-        return classify(userText) != Specialist.GENERAL
-                || (userText != null && userText.toLowerCase(Locale.ROOT).startsWith("astra "));
+        if (!configured || userText == null) return false;
+        // Premium Astra is opt-in only. Specialist classification changes the
+        // free Gemini/Groq route; it must never silently trigger paid requests.
+        return userText.trim().toLowerCase(Locale.ROOT).startsWith("astra ");
     }
 
     static boolean shouldVerifyAstraAnswer(String userText, boolean configured) {
