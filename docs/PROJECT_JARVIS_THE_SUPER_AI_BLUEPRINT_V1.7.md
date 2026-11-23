@@ -693,3 +693,19 @@ Every project report must label each capability as:
 - Added a Robolectric SQLite regression test that checks category preservation, updated content, removal of stale cloud vectors/feedback and creation of the replacement local vector.
 - GitHub Actions passed the corrected memory-edit source and test suite (run 45113376203).
 - Real-device SQLite stress testing remains pending.
+
+
+### Audit pass 21 — autonomous local reminder tools
+
+**Capability added**
+- The agent can read the device's local date/time/timezone, list saved reminders/tasks, and create a local reminder for an explicitly requested delay.
+- Reminder creation validates a non-empty title (maximum 160 characters) and a delay from 1 minute to 7 days.
+- The reminder is stored locally and scheduled with Android AlarmManager. If scheduling fails, the newly created task row is rolled back.
+- Creation requires notification permission on Android 13+; if permission is off, the agent reports the requirement and does not save a reminder. Delivery catches a permission-revocation race to avoid crashing the receiver.
+- Listing is READ_ONLY; creation is REVERSIBLE and not automatically retried. External web actions remain approval-gated.
+
+**Verification**
+- Added Robolectric tests for reminder creation/listing, invalid-delay rejection, and agent approval-risk boundaries.
+- A scheduler interface allows deterministic unit testing without relying on device AlarmManager timing.
+- GitHub Actions passed reminder adapter, permission and approval tests (runs 45114121316, 45114124419 and 45114129572).
+- Exact alarm behavior, OEM battery restrictions and notification delivery still require physical-device validation.
