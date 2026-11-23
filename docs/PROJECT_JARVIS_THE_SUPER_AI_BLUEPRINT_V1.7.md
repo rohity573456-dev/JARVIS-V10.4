@@ -437,3 +437,37 @@ Every project report must label each capability as:
 - Source changes committed to the active feature branch.
 - Automated Android SQLite lifecycle tests and fresh CI are still required. The repository currently has only plain JUnit configured; SQLite runtime tests cannot be honestly claimed from source inspection alone.
 - Real-device tests remain pending: delete memory during embedding request, clear history during AI reflection, turn Private Mode on with queued jobs, expire transient note, and inspect Memory Health before/after repair.
+
+
+### Audit pass 5 — SQLite lifecycle integration coverage
+
+**Test implementation**
+- Enabled Android-resource-aware local unit tests and added Robolectric 4.14.1 so memory-store behavior is exercised against Android SQLite rather than only mocked/plain Java objects.
+- Added `JarvisMemoryLifecycleSqliteTest` with real database setup/teardown and six lifecycle scenarios:
+  1. Single-memory deletion removes the fact and every dependent vector, feedback and graph index.
+  2. Late cloud/local embedding writes cannot recreate indexes after source-memory deletion.
+  3. Expiring temporary memories removes the fact and dependent indexes/feedback, and repeated expiry is safe.
+  4. Clearing conversation history removes conversations, sessions and session summaries while preserving durable facts.
+  5. Clearing saved memories removes facts and indexes while preserving chat history.
+  6. Integrity repair removes orphan vectors, feedback, graph edges/nodes and stale session metadata.
+- Added a Google-hosted Maven Central mirror ahead of Maven Central to reduce CI failures caused by transient HTTP 429 responses.
+
+**Verification state**
+- A GitHub Actions run completed successfully on the immediately preceding branch revision, executing `gradle testDebugUnitTest` and reporting `BUILD SUCCESSFUL`.
+- A newer run is validating the latest memory-prompt and agent retry changes; its result must be checked before treating the current branch as green.
+- Robolectric validates Android SQLite behavior in CI, but it does not replace real-device validation of process death, app lifecycle, concurrent provider requests or OS permission behavior.
+- No physical-device validation is claimed.
+
+### Audit pass 6 — agent side-effect retry safety
+
+**Issue found**
+- The agent engine previously retried every failed tool once. For an external or side-effecting operation, a timeout/lost response can occur after the action actually happened; an automatic retry could duplicate the action.
+
+**Correction committed**
+- Automatic retry is now limited to READ_ONLY tools, where repeating the operation cannot duplicate a user-visible side effect.
+- REVERSIBLE, SENSITIVE and EXTERNAL tools are never automatically retried after failure. They stop and return a failure report for user-directed recovery.
+- Added a regression test proving an EXTERNAL send-like tool is invoked exactly once when it returns a failure after a simulated lost response.
+
+**Remaining verification**
+- Latest CI is pending for this change.
+- Device tests remain necessary for activity destruction during approval, delayed Android main-thread dispatch, and cancellation while a platform action is already executing.
