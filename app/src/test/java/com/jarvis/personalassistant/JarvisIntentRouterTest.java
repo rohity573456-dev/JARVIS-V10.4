@@ -47,6 +47,15 @@ public class JarvisIntentRouterTest {
         assertTrue(JarvisIntentRouter.isVolumeDownCommand("volume down"));
     }
 
+    @Test public void privateModeTransitionsAreExplicitLocalCommands() {
+        assertTrue(JarvisIntentRouter.isPrivateModeEnableCommand("memory privacy on"));
+        assertTrue(JarvisIntentRouter.isPrivateModeEnableCommand("Private mode ON"));
+        assertFalse(JarvisIntentRouter.isPrivateModeEnableCommand("Explain private mode"));
+        assertTrue(JarvisIntentRouter.isPrivateModeDisableCommand("memory privacy off"));
+        assertTrue(JarvisIntentRouter.isPrivateModeDisableCommand("memory chalu"));
+        assertFalse(JarvisIntentRouter.isPrivateModeDisableCommand("How does memory privacy work?"));
+    }
+
     @Test public void memorySaveRequiresAnExplicitInstruction() {
         assertTrue(JarvisIntentRouter.isRememberCommand("Remember that my project budget is 2 crore"));
         assertTrue(JarvisIntentRouter.isRememberCommand("Please remember my preferred reply style"));
