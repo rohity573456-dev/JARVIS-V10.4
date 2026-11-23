@@ -987,5 +987,5 @@ Every project report must label each capability as:
 - The local tool registry now caps argument count, key length and value length by argument type before invoking any handler. This is enforced even if a provider ignores the JSON schema.
 
 **Verification**
-- Added a regression test proving an overlong web-search query is rejected before the tool handler runs. Android unit-test/compile validation is pending.
+- Added a regression test proving an overlong web-search query is rejected before the tool handler runs. Android unit tests and compile passed in GitHub Actions run 45130113592.
 - No additional tool permissions or automatic side effects were introduced.
