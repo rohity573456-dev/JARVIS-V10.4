@@ -245,7 +245,10 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
                     }
                 }
             } finally { c.close(); }
-            if (result <= 0) result = insertMemory(db, category, type, memoryKey, clean, confidence, importance, pinned, source);
+            if (result <= 0) {
+                result = insertMemory(db, category, type, memoryKey, clean, confidence, importance, pinned, source);
+                if (result <= 0) return -1; // Roll back old-fact deactivation if replacement insertion fails.
+            }
             pruneOrphanKnowledgeNodes(db);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
