@@ -59,6 +59,23 @@ public class JarvisAndroidToolAdapterTest {
         activity.finish();
     }
 
+    @Test public void missingNotificationPermissionPreventsReminderPersistence() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(activity, (context, id, title, dueAt) -> true).registerInto(registry);
+        Map<String,String> args = new HashMap<>();
+        args.put("title", "Permission denied reminder test");
+        args.put("delay_minutes", "5");
+
+        JarvisToolRegistry.ToolResult result = registry.invoke("create_reminder", args);
+        assertFalse(result.success);
+        assertTrue(result.output.contains("Notification permission is off"));
+        assertTrue(store.getUpcomingReminders().stream().noneMatch(r -> "Permission denied reminder test".equals(r.title)));
+        store.close();
+        activity.finish();
+    }
+
     @Test public void invalidReminderDelayDoesNotPersistATask() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
