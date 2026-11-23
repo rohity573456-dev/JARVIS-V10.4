@@ -57,6 +57,19 @@ public class JarvisMemoryLifecycleSqliteTest {
         assertTrue(store.getWritableDatabase().insert("memory_feedback", null, v) > 0);
     }
 
+    @Test public void sensitiveContentNeverEntersManualMemoryOrConversationHistory() {
+        assertEquals(-1, store.saveMemory("personal", "My Aadhaar number is 123456789012"));
+        assertEquals(-1, store.saveMemory("personal", "My PAN is ABCDE1234F"));
+        store.addConversation("USER", "My medical diagnosis is diabetes");
+        store.addConversation("USER", "My bank account number is 123456789");
+        assertEquals(0, store.getMemoryCount());
+        assertEquals(0, store.getConversationCount());
+
+        long safe = store.saveMemory("preference", "I prefer short answers");
+        assertTrue(safe > 0);
+        assertEquals(1, store.getMemoryCount());
+    }
+
     @Test public void deletingMemoryRemovesEveryDependentIndexAtomically() {
         long id = store.saveMemory("project", "JARVIS SQLite lifecycle test fact");
         assertTrue(id > 0);
