@@ -297,10 +297,17 @@ public class MainActivity extends Activity {
         homeScreen.setGravity(Gravity.CENTER_HORIZONTAL);
         homeScreen.setPadding((int)(2*d),(int)(8*d),(int)(2*d),(int)(12*d));
 
+        orbView = new JarvisOrbView(this);
+        orbView.setState("STANDBY");
+        LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(205*d));
+        orbLp.topMargin = (int)(2*d);
+        orbLp.bottomMargin = (int)(1*d);
+        homeScreen.addView(orbView,orbLp);
+
         TextView greeting = new TextView(this);
         greeting.setText("Hello, Boss");
         greeting.setTextColor(Color.WHITE);
-        greeting.setTextSize(24);
+        greeting.setTextSize(23);
         greeting.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
         greeting.setGravity(Gravity.CENTER);
         homeScreen.addView(greeting,new LinearLayout.LayoutParams(-1,-2));
@@ -311,15 +318,9 @@ public class MainActivity extends Activity {
         subtitle.setTextSize(13);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1,-2);
-        subLp.topMargin = (int)(3*d);
+        subLp.topMargin = (int)(2*d);
+        subLp.bottomMargin = (int)(3*d);
         homeScreen.addView(subtitle,subLp);
-
-        orbView = new JarvisOrbView(this);
-        orbView.setState("STANDBY");
-        LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(190*d));
-        orbLp.topMargin = (int)(2*d);
-        orbLp.bottomMargin = (int)(4*d);
-        homeScreen.addView(orbView,orbLp);
 
         TextView toolsTitle = sectionTitle("Discover AI tools",d);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1,-2);
@@ -347,8 +348,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildChatScreen(float d) {
-        chatScreen = new LinearLayout(this);
-        chatScreen.setOrientation(LinearLayout.VERTICAL);
+        chatScreen = new LinearLayout(this);        chatScreen.setOrientation(LinearLayout.VERTICAL);
         conversationScroll = new ScrollView(this);
         conversationScroll.setFillViewport(true);
         conversationScroll.setVerticalScrollBarEnabled(false);
@@ -488,7 +488,7 @@ public class MainActivity extends Activity {
         else screen = (View)homeScreen.getTag();
         if (orbView != null && orbView.getParent() != null) ((android.view.ViewGroup)orbView.getParent()).removeView(orbView);
         if (tab == 0) {
-            homeScreen.addView(orbView,2,new LinearLayout.LayoutParams(-1,(int)(190*getResources().getDisplayMetrics().density)));
+            homeScreen.addView(orbView,0,new LinearLayout.LayoutParams(-1,(int)(205*getResources().getDisplayMetrics().density)));
         } else if (tab == 1) {
             LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(150*getResources().getDisplayMetrics().density));
             orbLp.topMargin = (int)(3*getResources().getDisplayMetrics().density);
@@ -697,8 +697,7 @@ public class MainActivity extends Activity {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
             recognizer.setRecognitionListener(new RecognitionListener() {
                 public void onReadyForSpeech(Bundle p) { status.setText("● LISTENING... "+language); }
-                public void onBeginningOfSpeech() { status.setText("● HEARING YOU..."); }
-                public void onRmsChanged(float r) {}
+                public void onBeginningOfSpeech() { status.setText("● HEARING YOU..."); }                public void onRmsChanged(float r) {}
                 public void onBufferReceived(byte[] b) {}
                 public void onEndOfSpeech() { status.setText("● ANALYSING..."); }
                 public void onError(int error) {
@@ -1047,8 +1046,7 @@ public class MainActivity extends Activity {
     }
 
     private void adjustVolume(int direction) {
-        try {
-            android.media.AudioManager audio = (android.media.AudioManager)getSystemService(Context.AUDIO_SERVICE);
+        try {            android.media.AudioManager audio = (android.media.AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if (audio == null) { respond("Audio service unavailable."); return; }
             if (direction > 0) audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
                 android.media.AudioManager.ADJUST_RAISE,android.media.AudioManager.FLAG_SHOW_UI);
