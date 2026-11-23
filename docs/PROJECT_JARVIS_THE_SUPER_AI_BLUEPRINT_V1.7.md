@@ -840,3 +840,17 @@ Every project report must label each capability as:
 - Replaced the obsolete hard-coded “Pratik Boss” salutation in startup, microphone-permission, greeting and setup responses with the neutral “Boss” address.
 - This prevents JARVIS from addressing its owner by an unrelated legacy name. No voice recognition, wake-word model or action behavior changed.
 - Android compile/unit-test validation is pending.
+
+
+### Audit pass 30 — protect free-tier agent token limits
+
+**Issue found**
+- Structured tool-planning requests budgeted prompt text like ordinary chat but did not reserve enough room for tool schemas and completion tokens. This could push a free-tier provider request over its tokens-per-minute allowance even when the text prompt itself was trimmed.
+
+**Correction committed**
+- Reduced the structured tool-call prompt ceiling to 4,500 characters, leaving headroom for registered tool schemas and the requested completion. Normal conversational requests retain their separate standard budget.
+- Truncation continues to preserve the newest request tail and the core system instructions.
+
+**Verification**
+- Added a regression test for the smaller agent budget and preservation of the latest action request.
+- GitHub Actions validation is pending. This change does not modify provider keys, pricing or ONNX assets.
