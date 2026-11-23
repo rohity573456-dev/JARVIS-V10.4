@@ -702,10 +702,10 @@ Every project report must label each capability as:
 - Reminder creation validates a non-empty title (maximum 160 characters) and a delay from 1 minute to 7 days.
 - The reminder is stored locally and scheduled with Android AlarmManager. If scheduling fails, the newly created task row is rolled back.
 - Creation requires notification permission on Android 13+; if permission is off, the agent reports the requirement and does not save a reminder. Delivery catches a permission-revocation race to avoid crashing the receiver.
-- Listing is READ_ONLY; creation is REVERSIBLE and not automatically retried. External web actions remain approval-gated.
+- Listing and local date/time reads are READ_ONLY; creation is REVERSIBLE and not automatically retried. Completing or deleting a task is SENSITIVE and requires explicit approval. External web actions remain approval-gated.
 
 **Verification**
 - Added Robolectric tests for reminder creation/listing, invalid-delay rejection, and agent approval-risk boundaries.
 - A scheduler interface allows deterministic unit testing without relying on device AlarmManager timing.
-- GitHub Actions passed reminder adapter, permission and approval tests (runs 45114121316, 45114124419 and 45114129572).
+- GitHub Actions passed reminder adapter, permission and approval tests (runs 45114121316, 45114124419, 45114129572 and 45114305863). The adapter test also verifies completion and deletion with the correct approval-risk labels.
 - Exact alarm behavior, OEM battery restrictions and notification delivery still require physical-device validation.
