@@ -240,10 +240,13 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
                         edgeClose.put("is_active", 0);
                         edgeClose.put("valid_until", now);
                         db.update(EDGES, edgeClose, "memory_id=?", new String[]{String.valueOf(oldId)});
+                        db.delete("memory_embeddings", "memory_id=?", new String[]{String.valueOf(oldId)});
+                        db.delete("memory_local_vectors", "memory_id=?", new String[]{String.valueOf(oldId)});
                     }
                 }
             } finally { c.close(); }
             if (result <= 0) result = insertMemory(db, category, type, memoryKey, clean, confidence, importance, pinned, source);
+            pruneOrphanKnowledgeNodes(db);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
         return result;
