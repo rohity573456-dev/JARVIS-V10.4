@@ -792,3 +792,17 @@ Every project report must label each capability as:
 - Robolectric adapter tests verify that unsafe schemes are rejected and the tool is classified EXTERNAL.
 - GitHub Actions passed the Android unit-test and compile job for the URL adapter/schema changes (run 45115027990).
 - Browser resolution and real external navigation still require device validation.
+
+
+### Audit pass 26 — safe approval-gated browser navigation
+
+**Capability added**
+- Added an `open_url` agent tool for opening a URL explicitly supplied by the user.
+- Only HTTP/HTTPS URLs with a host are accepted; embedded username/password credentials and unsupported schemes are rejected. URL length is bounded to 2,048 characters.
+- The tool is classified EXTERNAL, so it always requires a fresh one-time approval.
+- Planner instructions explicitly prohibit inventing or inferring a URL; the function schema constrains the URL shape and length.
+
+**Verification**
+- Robolectric tests confirm unsafe schemes and embedded credentials fail closed and that browser navigation is EXTERNAL.
+- GitHub Actions passed URL validation, external approval classification and planner schema tests (runs 45115012034, 45115020311, 45115027990 and 45115052635).
+- Browser resolution and navigation behavior still require device testing with installed browsers.
