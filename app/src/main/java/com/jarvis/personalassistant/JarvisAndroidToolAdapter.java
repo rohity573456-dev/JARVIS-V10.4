@@ -97,6 +97,14 @@ public final class JarvisAndroidToolAdapter {
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
+            "get_local_datetime", "Read the device's current local date, time and timezone.",
+            JarvisToolRegistry.Risk.READ_ONLY, none(), none(), "", args ->
+                JarvisToolRegistry.ToolResult.success(
+                    new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", java.util.Locale.getDefault())
+                        .format(new java.util.Date()))
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
             "list_reminders", "Read the user's upcoming local reminders and tasks.",
             JarvisToolRegistry.Risk.READ_ONLY, none(), none(), "", args -> {
                 JarvisMemoryStore store = new JarvisMemoryStore(activity);
