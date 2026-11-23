@@ -530,6 +530,15 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         return out;
     }
 
+    /** Mark a sensitive session as reviewed/skipped without storing its contents or a summary. */
+    public synchronized void markAiSessionReflectionSkipped(String sessionId) {
+        if(sessionId==null||sessionId.trim().isEmpty())return;
+        ContentValues marker=new ContentValues();
+        marker.put("session_id",sessionId);
+        marker.put("created_at",System.currentTimeMillis());
+        getWritableDatabase().insertWithOnConflict("memory_ai_reflections",null,marker,SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
     public synchronized void saveAiSessionReflection(String sessionId,String summary) {
         if(sessionId==null||summary==null||summary.trim().isEmpty())return;
         String clean=summary.trim();ContentValues v=new ContentValues();v.put("summary",clean);
