@@ -510,10 +510,13 @@ public class MainActivity extends Activity {
     private void handle(String raw) {
         lastUserPrompt = raw == null ? "" : raw;
         if (orbView != null) orbView.setState("THINKING");
-        boolean privateMode = memory.getBoolean("memory_private_mode", false);
-        if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
-        if (!privateMode) autoLearnMemory(raw);
-        String q=raw.toLowerCase(Locale.ROOT); show("COMMANDER",raw); String answer;
+        String q=raw == null ? "" : raw.toLowerCase(Locale.ROOT);
+        boolean enablingPrivateMode = JarvisIntentRouter.isPrivateModeEnableCommand(raw);
+        boolean privacyToggle = enablingPrivateMode || JarvisIntentRouter.isPrivateModeDisableCommand(raw);
+        boolean privateMode = memory.getBoolean("memory_private_mode", false) || enablingPrivateMode;
+        if (longTermMemory != null && !privateMode && !privacyToggle) longTermMemory.addConversation("Commander", raw);
+        if (!privateMode && !privacyToggle) autoLearnMemory(raw);
+        show("COMMANDER",raw); String answer;
         if (JarvisIntentRouter.isTimeQuery(raw)) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
         else if (JarvisIntentRouter.isDateQuery(raw)) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
         else if (JarvisIntentRouter.isBatteryStatusQuery(raw)) answer=batteryReport();
@@ -548,8 +551,8 @@ public class MainActivity extends Activity {
         else if (q.equals("memory embeddings on")) { memory.edit().putBoolean("memory_cloud_embeddings",true).apply(); indexSemanticMemoryIfEnabled(300); answer="Gemini semantic memory ON. Saved memory snippets and future search queries may be sent to Google for embedding. Local recall remains as fallback."; }
         else if (q.equals("memory embeddings off")) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_cloud_embeddings",false).apply(); answer="Cloud semantic embeddings OFF. JARVIS will use on-device lexical, temporal and graph recall."; }
         else if (q.equals("memory embeddings delete")) { invalidatePendingMemoryJobs(); if(longTermMemory!=null)longTermMemory.clearEmbeddings(); answer="Stored semantic vector index deleted. Your original memories are unchanged."; }
-        else if (q.equals("memory privacy on") || q.equals("private mode on") || q.equals("memory band")) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_private_mode",true).remove("last_response").apply(); answer="Privacy mode ON. Conversation history aur automatic learning save nahi honge."; }
-        else if (q.equals("memory privacy off") || q.equals("private mode off") || q.equals("memory chalu")) { memory.edit().putBoolean("memory_private_mode",false).apply(); answer="Memory mode ON. Local history aur automatic learning resume."; }
+        else if (JarvisIntentRouter.isPrivateModeEnableCommand(raw)) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_private_mode",true).remove("last_response").apply(); respondEphemeral("Privacy mode ON. Conversation history aur automatic learning save nahi honge."); return; }
+        else if (JarvisIntentRouter.isPrivateModeDisableCommand(raw)) { memory.edit().putBoolean("memory_private_mode",false).apply(); respondEphemeral("Memory mode ON. Local history aur automatic learning resume."); return; }
         else if (q.startsWith("memory delete ")) { long id=parseMemoryId(raw); answer=longTermMemory!=null && longTermMemory.deleteMemory(id)?"Memory #"+id+" delete ho gayi.":"Memory ID nahi mili."; }
         else if (q.startsWith("memory edit ")) { String data=raw.substring("memory edit ".length()).trim(); int bar=data.indexOf('|'); if(bar>0){long id=parseLong(data.substring(0,bar).trim()); answer=longTermMemory!=null && longTermMemory.updateMemory(id,"personal",data.substring(bar+1).trim())?"Memory #"+id+" update ho gayi.":"Memory update nahi hui.";}else answer="Format: memory edit ID | naya text"; }
         else if (q.startsWith("memory search") || q.startsWith("search memory") || q.startsWith("find memory")) { String term=raw.replaceFirst("(?i)^(memory search|search memory|find memory)\\s*", "").trim(); answer=longTermMemory == null ? "Memory database unavailable." : longTermMemory.searchMemories(term, 30); }
