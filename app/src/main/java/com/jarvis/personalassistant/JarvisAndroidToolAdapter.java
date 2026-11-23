@@ -97,6 +97,44 @@ public final class JarvisAndroidToolAdapter {
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
+            "list_reminders", "Read the user's upcoming local reminders and tasks.",
+            JarvisToolRegistry.Risk.READ_ONLY, none(), none(), "", args -> {
+                JarvisMemoryStore store = new JarvisMemoryStore(activity);
+                try {
+                    return JarvisToolRegistry.ToolResult.success(store.getTasksText(false));
+                } finally { store.close(); }
+            }
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
+            "create_reminder", "Create a local reminder after an explicit user request.",
+            JarvisToolRegistry.Risk.REVERSIBLE, setOf("title", "delay_minutes"), none(), "", args -> onMain(() -> {
+                String title = args.get("title");
+                String delayRaw = args.get("delay_minutes");
+                long delay;
+                try { delay = Long.parseLong(delayRaw == null ? "" : delayRaw.trim()); }
+                catch (NumberFormatException e) { return JarvisToolRegistry.ToolResult.failure("delay_minutes must be a whole number."); }
+                if (title == null || title.trim().isEmpty() || title.trim().length() > 160)
+                    return JarvisToolRegistry.ToolResult.failure("Reminder title must contain 1-160 characters.");
+                if (delay < 1 || delay > 10080)
+                    return JarvisToolRegistry.ToolResult.failure("Reminder delay must be between 1 minute and 7 days.");
+                long dueAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delay);
+                JarvisMemoryStore store = new JarvisMemoryStore(activity);
+                try {
+                    long id = store.addTask(title.trim(), dueAt);
+                    if (id <= 0) return JarvisToolRegistry.ToolResult.failure("Reminder could not be saved.");
+                    if (!JarvisReminderScheduler.schedule(activity, id, title.trim(), dueAt)) {
+                        store.deleteTask(id);
+                        return JarvisToolRegistry.ToolResult.failure("Reminder alarm could not be scheduled; no task was kept.");
+                    }
+                    return JarvisToolRegistry.ToolResult.success("Reminder saved for " +
+                        new java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault())
+                            .format(new java.util.Date(dueAt)) + ": " + title.trim());
+                } finally { store.close(); }
+            })
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
             "web_search", "Open a web search for the supplied query.", JarvisToolRegistry.Risk.EXTERNAL,
             setOf("query"), none(), "", args -> onMain(() -> {
                 String query = args.get("query");
