@@ -81,6 +81,10 @@ public final class OpenAiResponsesClient {
             }
             if (status < 200 || status >= 300) return "ERROR " + status + ": " + raw;
             JSONObject response = new JSONObject(raw.toString());
+            String responseError = incompleteResponseError(response.optString("status", ""),
+                response.optJSONObject("incomplete_details") == null ? ""
+                    : response.optJSONObject("incomplete_details").optString("reason", ""));
+            if (responseError != null) return responseError;
             JSONArray outputItems = response.optJSONArray("output");
             JSONArray normalized = new JSONArray();
             if (outputItems != null) {
@@ -100,6 +104,14 @@ public final class OpenAiResponsesClient {
         } finally {
             if (connection != null) connection.disconnect();
         }
+    }
+
+    static String incompleteResponseError(String status, String reason) {
+        if ("incomplete".equalsIgnoreCase(status) || "max_output_tokens".equalsIgnoreCase(reason))
+            return "ERROR: Astra response was truncated by its output-token limit.";
+        if ("failed".equalsIgnoreCase(status))
+            return "ERROR: Astra Responses request failed.";
+        return null;
     }
 
     static String normalizeReasoningEffort(String value, String fallback) {
@@ -147,6 +159,10 @@ public final class OpenAiResponsesClient {
             }
             if (status < 200 || status >= 300) return "ERROR " + status + ": " + raw;
             JSONObject response = new JSONObject(raw.toString());
+            String responseError = incompleteResponseError(response.optString("status", ""),
+                response.optJSONObject("incomplete_details") == null ? ""
+                    : response.optJSONObject("incomplete_details").optString("reason", ""));
+            if (responseError != null) return responseError;
             JSONArray outputItems = response.optJSONArray("output");
             StringBuilder answer = new StringBuilder();
             if (outputItems != null) {
