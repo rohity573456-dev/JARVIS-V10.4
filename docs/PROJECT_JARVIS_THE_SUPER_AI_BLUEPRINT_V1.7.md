@@ -641,7 +641,7 @@ Every project report must label each capability as:
 
 **Correction committed**
 - Added a dedicated final-APK workflow that runs only when a commit message explicitly contains `[final-apk]`.
-- The gated job reruns the complete Android unit-test task, builds one installable debug-signed APK, and uploads only the APK file as a named artifact.
+- The gated job reruns the repository Python benchmark-tool tests and the complete Android unit-test task, builds one installable debug-signed APK, and uploads only the APK file as a named artifact.
 - Adding the workflow itself does not build an APK; its first observed run was correctly skipped.
 
 **Verification**
