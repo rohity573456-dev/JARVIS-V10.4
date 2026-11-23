@@ -82,6 +82,9 @@ public class MainActivity extends Activity {
     private LinearLayout chatScreen;
     private LinearLayout exploreScreen;
     private LinearLayout navigationBar;
+    private TextView headerTitle;
+    private TextView headerLeading;
+    private LinearLayout chatWelcomePanel;
     private int activeTab = 0;
     private String lastResponse = "I am ready, Boss.";
     private String lastUserPrompt = "";
@@ -181,112 +184,30 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        final float d = getResources().getDisplayMetrics().density;
-        final int pad = (int)(18*d);
+        final float d=getResources().getDisplayMetrics().density;
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad,(int)(8*d),pad,(int)(8*d));
-        root.setClipToPadding(false);
-        root.setBackground(new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(2,8,18),Color.rgb(4,24,43),Color.rgb(2,9,19)}));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout brand = new LinearLayout(this);
-        brand.setOrientation(LinearLayout.VERTICAL);
-        brand.setGravity(Gravity.CENTER_VERTICAL);
-        TextView wordmark = new TextView(this);
-        wordmark.setText("JARVIS");
-        wordmark.setTextColor(Color.rgb(244,250,255));
-        wordmark.setTextSize(23);
-        wordmark.setLetterSpacing(0.22f);
-        wordmark.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
-        brand.addView(wordmark,new LinearLayout.LayoutParams(-2,-2));
-        status = new TextView(this);
-        status.setText("● SYSTEM READY   ·   AI CONNECTED");
-        status.setTextColor(Color.rgb(111,232,216));
-        status.setTextSize(10);
-        status.setLetterSpacing(0.08f);
-        brand.addView(status,new LinearLayout.LayoutParams(-2,-2));
-        header.addView(brand,new LinearLayout.LayoutParams(0,-2,1f));
-
-        TextView menu = new TextView(this);
-        menu.setText("⋯");
-        menu.setTextColor(Color.rgb(205,229,248));
-        menu.setTextSize(27);
-        menu.setGravity(Gravity.CENTER);
-        menu.setBackground(panel(Color.rgb(15,34,55),Color.rgb(48,91,127),24));
-        header.addView(menu,new LinearLayout.LayoutParams((int)(48*d),(int)(44*d)));
-        menu.setOnClickListener(v -> openSettingsMenu());
-        root.addView(header,new LinearLayout.LayoutParams(-1,(int)(54*d)));
-
-        contentHost = new LinearLayout(this);
-        contentHost.setOrientation(LinearLayout.VERTICAL);
-        root.addView(contentHost,new LinearLayout.LayoutParams(-1,0,1f));
-
-        buildHomeScreen(d);
-        buildChatScreen(d);
-        buildExploreScreen(d);
-
-        LinearLayout composer = new LinearLayout(this);
-        composer.setOrientation(LinearLayout.HORIZONTAL);
-        composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
-        composer.setBackground(panel(Color.rgb(13,29,49),Color.rgb(53,101,143),30));
-
-        TextView mic = new TextView(this);
-        mic.setText("◉");
-        mic.setTextColor(Color.rgb(140,225,255));
-        mic.setTextSize(21);
-        mic.setGravity(Gravity.CENTER);
-        composer.addView(mic,new LinearLayout.LayoutParams((int)(43*d),(int)(46*d)));
-        mic.setOnClickListener(v -> { switchTab(1); listen(); });
-
-        commandInput = new EditText(this);
-        commandInput.setSingleLine(true);
-        commandInput.setTextColor(Color.rgb(244,249,255));
-        commandInput.setHintTextColor(Color.rgb(133,160,188));
-        commandInput.setHint("Ask JARVIS anything...");
-        commandInput.setTextSize(15);
-        commandInput.setPadding((int)(8*d),0,(int)(4*d),0);
-        commandInput.setBackgroundColor(Color.TRANSPARENT);
-        commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        commandInput.setOnEditorActionListener((v,actionId,event) -> {
-            if(actionId==EditorInfo.IME_ACTION_SEND || actionId==EditorInfo.IME_ACTION_DONE || actionId==EditorInfo.IME_ACTION_GO) {
-                submitTypedCommand();
-                return true;
-            }
-            return false;
-        });
-        composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(46*d),1f));
-
-        TextView send = new TextView(this);
-        send.setText("➤");
-        send.setTextColor(Color.rgb(3,17,31));
-        send.setTextSize(19);
-        send.setGravity(Gravity.CENTER);
-        android.graphics.drawable.GradientDrawable sendBg = new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(144,239,255),Color.rgb(69,169,235)});
-        sendBg.setCornerRadius(24*d);
-        send.setBackground(sendBg);
-        composer.addView(send,new LinearLayout.LayoutParams((int)(46*d),(int)(46*d)));
-        send.setOnClickListener(v -> submitTypedCommand());
-
-        LinearLayout.LayoutParams composerLp = new LinearLayout.LayoutParams(-1,(int)(58*d));
-        composerLp.topMargin = (int)(7*d);
-        root.addView(composer,composerLp);
-
-        buildNavigation(d);
-        root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(58*d)));
-        setContentView(root);
-        switchTab(0);
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding((int)(12*d),(int)(5*d),(int)(12*d),(int)(5*d)); root.setClipToPadding(false);
+        root.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(0,3,9),Color.rgb(2,17,31),Color.rgb(0,5,13)}));
+        LinearLayout header=new LinearLayout(this); header.setOrientation(LinearLayout.HORIZONTAL); header.setGravity(Gravity.CENTER_VERTICAL);
+        headerLeading=new TextView(this); headerLeading.setText("◉"); headerLeading.setTextColor(Color.rgb(180,229,255)); headerLeading.setTextSize(23); headerLeading.setGravity(Gravity.CENTER); headerLeading.setBackground(panel(Color.rgb(22,35,49),Color.rgb(65,104,139),24));
+        header.addView(headerLeading,new LinearLayout.LayoutParams((int)(38*d),(int)(38*d))); headerLeading.setOnClickListener(v->{if(activeTab!=0)switchTab(0);else openSettingsMenu();});
+        LinearLayout heading=new LinearLayout(this); heading.setOrientation(LinearLayout.VERTICAL); heading.setGravity(Gravity.CENTER_VERTICAL); heading.setPadding((int)(10*d),0,0,0);
+        headerTitle=new TextView(this); headerTitle.setText("JARVIS"); headerTitle.setTextColor(Color.WHITE); headerTitle.setTextSize(17); headerTitle.setLetterSpacing(0.12f); heading.addView(headerTitle);
+        status=new TextView(this); status.setText("● SYSTEM READY"); status.setTextColor(Color.rgb(105,226,211)); status.setTextSize(9); heading.addView(status); header.addView(heading,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView menu=new TextView(this); menu.setText("⋮"); menu.setTextColor(Color.WHITE); menu.setTextSize(23); menu.setGravity(Gravity.CENTER); menu.setBackground(panel(Color.rgb(27,31,40),Color.rgb(69,86,108),25));
+        header.addView(menu,new LinearLayout.LayoutParams((int)(42*d),(int)(42*d))); menu.setOnClickListener(v->openSettingsMenu()); root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
+        contentHost=new LinearLayout(this); contentHost.setOrientation(LinearLayout.VERTICAL); root.addView(contentHost,new LinearLayout.LayoutParams(-1,0,1f));
+        buildHomeScreen(d); buildChatScreen(d); buildExploreScreen(d);
+        LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL); composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d)); composer.setBackground(panel(Color.rgb(9,24,41),Color.rgb(57,103,143),29));
+        TextView attach=new TextView(this); attach.setText("⌕"); attach.setTextColor(Color.rgb(151,213,246)); attach.setTextSize(21); attach.setGravity(Gravity.CENTER); composer.addView(attach,new LinearLayout.LayoutParams((int)(32*d),(int)(42*d))); attach.setOnClickListener(v->pickImage());
+        TextView globe=new TextView(this); globe.setText("◎"); globe.setTextColor(Color.rgb(151,213,246)); globe.setTextSize(18); globe.setGravity(Gravity.CENTER); composer.addView(globe,new LinearLayout.LayoutParams((int)(30*d),(int)(42*d))); globe.setOnClickListener(v->{switchTab(1);searchWeb("");});
+        commandInput=new EditText(this); commandInput.setSingleLine(true); commandInput.setTextColor(Color.rgb(244,249,255)); commandInput.setHintTextColor(Color.rgb(135,158,185)); commandInput.setHint("Ask me anything..."); commandInput.setTextSize(14); commandInput.setPadding((int)(6*d),0,(int)(3*d),0); commandInput.setBackgroundColor(Color.TRANSPARENT); commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        commandInput.setOnEditorActionListener((v,actionId,event)->{if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){submitTypedCommand();return true;}return false;}); composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(44*d),1f));
+        TextView mic=new TextView(this); mic.setText("♩"); mic.setTextColor(Color.rgb(151,213,246)); mic.setTextSize(19); mic.setGravity(Gravity.CENTER); composer.addView(mic,new LinearLayout.LayoutParams((int)(30*d),(int)(42*d))); mic.setOnClickListener(v->{switchTab(1);listen();});
+        TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(1,16,30)); send.setTextSize(19); send.setGravity(Gravity.CENTER); android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(155,241,255),Color.rgb(64,169,239)}); sendBg.setCornerRadius(24*d); send.setBackground(sendBg); composer.addView(send,new LinearLayout.LayoutParams((int)(42*d),(int)(42*d))); send.setOnClickListener(v->submitTypedCommand());
+        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(54*d)); composerLp.topMargin=(int)(7*d); root.addView(composer,composerLp); buildNavigation(d); root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(54*d))); setContentView(root); switchTab(0);
     }
-
     private void buildHomeScreen(float d) {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
