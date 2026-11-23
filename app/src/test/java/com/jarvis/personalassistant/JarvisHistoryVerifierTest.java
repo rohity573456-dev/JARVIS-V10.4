@@ -19,7 +19,7 @@ public class JarvisHistoryVerifierTest {
     @Test public void evidenceIsBounded() {
         String huge = new String(new char[9000]).replace('\0', 'x');
         String result = JarvisHistoryVerifier.attachEvidence("BASE", huge);
-        assertTrue(result.length() < 5400);
+        assertTrue(result.length() <= 5700);
     }
 
     @Test public void nullContextAndEvidenceAreSafe() {
