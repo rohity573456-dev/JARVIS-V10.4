@@ -28,6 +28,14 @@ public class JarvisPromptBudgetTest {
         assertTrue(JarvisPromptBudget.estimateTokens("नमस्ते") >= "नमस्ते".length());
     }
 
+    @Test public void smallerAgentBudgetPreservesTheLatestRequestTail() {
+        String input = "OLD_CONTEXT_" + "x".repeat(12000) + "_DO_THIS_ACTION_NOW";
+        JarvisPromptBudget.Prompt p = JarvisPromptBudget.fit("Agent planner system", input, 4500);
+        assertTrue(p.system.length() + p.input.length() <= 4500);
+        assertTrue(p.input.contains("Earlier context safely truncated"));
+        assertTrue(p.input.endsWith("_DO_THIS_ACTION_NOW"));
+    }
+
     @Test public void tokenEstimateIsConservativeAndEmptySafe() {
         assertEquals(0, JarvisPromptBudget.estimateTokens(""));
         assertTrue(JarvisPromptBudget.estimateTokens("abcdef") >= 2);
