@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
     private JarvisMemoryStore longTermMemory;
     private JarvisToolRegistry agentToolRegistry;
     private JarvisAgentEngine.RunHandle activeAgentRun;
+    private final JarvisResponseSequencer responseSequencer = new JarvisResponseSequencer();
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -508,6 +509,7 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        final long responseToken = responseSequencer.beginRequest();
         lastUserPrompt = raw == null ? "" : raw;
         if (orbView != null) orbView.setState("THINKING");
         String q=raw == null ? "" : raw.toLowerCase(Locale.ROOT);
@@ -530,7 +532,7 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
         else if (JarvisIntentRouter.isOpenYoutubeCommand(raw)) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw); return; }
+        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw, responseToken); return; }
         else if (JarvisIntentRouter.isWebSearchCommand(raw)) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
         else if (JarvisIntentRouter.isOpenCameraCommand(raw)) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
         else if (JarvisIntentRouter.isMapsCommand(raw)) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
@@ -570,7 +572,7 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isGreeting(raw)) answer="Hello Pratik Boss. JARVIS systems are ready.";
         else {
             if (isAgentActionIntent(q)) {
-                runAgent(raw);
+                runAgent(raw, responseToken);
                 return;
             }
             String geminiKey = secureStore.get("gemini_key");
@@ -589,7 +591,9 @@ public class MainActivity extends Activity {
                         lastResponse, raw, privateContext);
                     JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
-                        localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> respond(result)));
+                        localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> {
+                        if (!isFinishing() && responseSequencer.isCurrent(responseToken)) respond(result);
+                    }));
                 }, "Jarvis-HybridBrain").start();
                 return;
             }
@@ -601,7 +605,7 @@ public class MainActivity extends Activity {
         return JarvisActionIntentRouter.isExplicitAction(q);
     }
 
-    private void runAgent(String objective) {
+    private void runAgent(String objective, long responseToken) {
         String geminiKey = secureStore.get("gemini_key");
         String groqKey = secureStore.get("groq_key");
         String openAiKey = secureStore.get("openai_key");
@@ -622,7 +626,7 @@ public class MainActivity extends Activity {
         activeAgentRun = engine.submit(objective, new JarvisAgentEngine.Listener() {
             @Override public void onState(JarvisAgentEngine.State state, String detail) {
                 runOnUiThread(() -> {
-                    if (status == null || isFinishing()) return;
+                    if (status == null || isFinishing() || !responseSequencer.isCurrent(responseToken)) return;
                     if (state == JarvisAgentEngine.State.AWAITING_APPROVAL) status.setText("● WAITING FOR YOUR APPROVAL");
                     else if (state == JarvisAgentEngine.State.RUNNING) status.setText("● EXECUTING APPROVED ACTION");
                     else if (state == JarvisAgentEngine.State.PLANNING) status.setText("● AI ACTION PLANNING...");
@@ -632,7 +636,7 @@ public class MainActivity extends Activity {
             @Override public void onComplete(JarvisAgentEngine.AgentReport report) {
                 runOnUiThread(() -> {
                     activeAgentRun = null;
-                    if (isFinishing()) return;
+                    if (isFinishing() || !responseSequencer.isCurrent(responseToken)) return;
                     if (report.finalState == JarvisAgentEngine.State.COMPLETED && report.steps.isEmpty()) {
                         respond("Is request ke liye koi supported Android action identify nahi hua. App ka exact naam batao, ya normal question ki tarah pucho.");
                         return;
@@ -1051,5 +1055,5 @@ public class MainActivity extends Activity {
         refreshUiStatus();
     }
     @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
-    @Override protected void onDestroy() { if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { responseSequencer.invalidate(); if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }
