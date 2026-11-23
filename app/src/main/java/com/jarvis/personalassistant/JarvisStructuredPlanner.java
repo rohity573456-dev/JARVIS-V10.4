@@ -120,6 +120,7 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
         if ("panel".equals(key)) schema.put("enum", new JSONArray().put("wifi").put("bluetooth").put("display").put("sound").put("general").put("app_notifications"));
         else if ("direction".equals(key)) schema.put("enum", new JSONArray().put("up").put("down").put("mute"));
         else if ("query".equals(key)) schema.put("minLength", 1).put("maxLength", 300);
+        else if ("url".equals(key)) schema.put("minLength", 9).put("maxLength", 2048).put("pattern", "^https?://[^\\s]+$");
         else if ("app_name".equals(key)) schema.put("minLength", 1).put("maxLength", 80);
         else if ("title".equals(key)) schema.put("minLength", 1).put("maxLength", 160);
         else if ("delay_minutes".equals(key)) schema.put("pattern", "^[0-9]{1,5}$");
