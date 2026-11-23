@@ -330,65 +330,33 @@ public class MainActivity extends Activity {
     }
 
     private void buildNavigation(float d) {
-        navigationBar = new LinearLayout(this);
-        navigationBar.setOrientation(LinearLayout.HORIZONTAL);
-        navigationBar.setGravity(Gravity.CENTER);
-        navigationBar.setPadding((int)(5*d),(int)(4*d),(int)(5*d),(int)(4*d));
-        navigationBar.setBackground(panel(Color.rgb(12,29,47),Color.rgb(40,77,107),28));
-        addNavigationItem("⌂","Home",0,d);
-        addNavigationItem("◌","Chat",1,d);
-        addNavigationItem("✧","Explore",2,d);
+        navigationBar=new LinearLayout(this); navigationBar.setOrientation(LinearLayout.HORIZONTAL); navigationBar.setGravity(Gravity.CENTER); navigationBar.setPadding((int)(5*d),(int)(3*d),(int)(5*d),(int)(3*d)); navigationBar.setBackground(panel(Color.rgb(8,20,34),Color.rgb(45,77,105),27));
+        addNavigationItem("⌂","Home",0,d); addNavigationItem("◌","Chat",1,d); addNavigationItem("✧","Explore",2,d);
     }
 
     private void addNavigationItem(String icon,String label,int tab,float d) {
-        LinearLayout item = new LinearLayout(this);
-        item.setOrientation(LinearLayout.VERTICAL);
-        item.setGravity(Gravity.CENTER);
-        TextView glyph = new TextView(this);
-        glyph.setText(icon);
-        glyph.setTextSize(17);
-        glyph.setGravity(Gravity.CENTER);
-        glyph.setTextColor(Color.rgb(159,193,220));
-        item.addView(glyph);
-        TextView text = new TextView(this);
-        text.setText(label);
-        text.setTextSize(9);
-        text.setGravity(Gravity.CENTER);
-        text.setTextColor(Color.rgb(159,193,220));
-        item.addView(text);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,-1,1f);
-        item.setLayoutParams(lp);
-        item.setTag(new View[]{glyph,text});
-        item.setOnClickListener(v -> switchTab(tab));
-        navigationBar.addView(item);
+        LinearLayout item=new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER);
+        TextView glyph=new TextView(this); glyph.setText(icon); glyph.setTextSize(17); glyph.setGravity(Gravity.CENTER); glyph.setTextColor(Color.rgb(159,193,220)); item.addView(glyph);
+        TextView text=new TextView(this); text.setText(label); text.setTextSize(9); text.setGravity(Gravity.CENTER); text.setTextColor(Color.rgb(159,193,220)); item.addView(text);
+        item.setLayoutParams(new LinearLayout.LayoutParams(0,-1,1f)); item.setTag(new View[]{glyph,text}); item.setOnClickListener(v->switchTab(tab)); navigationBar.addView(item);
     }
 
     private void switchTab(int tab) {
-        if (contentHost == null || navigationBar == null) return;
-        activeTab = tab;
-        contentHost.removeAllViews();
-        View screen;
-        if (tab == 1) screen = chatScreen;
-        else if (tab == 2) screen = (View)exploreScreen.getTag();
-        else screen = (View)homeScreen.getTag();
-        if (orbView != null && orbView.getParent() != null) ((android.view.ViewGroup)orbView.getParent()).removeView(orbView);
-        if (tab == 0) {
-            homeScreen.addView(orbView,0,new LinearLayout.LayoutParams(-1,(int)(205*getResources().getDisplayMetrics().density)));
-        } else if (tab == 1) {
-            LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(150*getResources().getDisplayMetrics().density));
-            orbLp.topMargin = (int)(3*getResources().getDisplayMetrics().density);
-            chatScreen.addView(orbView,orbLp);
-        }
+        if(contentHost==null||navigationBar==null)return;
+        activeTab=tab; contentHost.removeAllViews();
+        View screen=tab==1?chatScreen:(tab==2?(View)exploreScreen.getTag():(View)homeScreen.getTag());
+        if(orbView!=null&&orbView.getParent()!=null)((android.view.ViewGroup)orbView.getParent()).removeView(orbView);
+        if(tab==0){
+            homeScreen.addView(orbView,0,new LinearLayout.LayoutParams(-1,(int)(124*getResources().getDisplayMetrics().density))); headerLeading.setText("◉"); headerTitle.setText("JARVIS"); status.setText("● SYSTEM READY");
+        }else if(tab==1){
+            chatScreen.addView(orbView,0,new LinearLayout.LayoutParams(-1,(int)(145*getResources().getDisplayMetrics().density))); headerLeading.setText("‹"); headerTitle.setText("New Project"); status.setText("● JARVIS ASSISTANT");
+        }else{headerLeading.setText("‹");headerTitle.setText("Explore");status.setText("● AI TOOLS");}
+        if(chatWelcomePanel!=null)chatWelcomePanel.setVisibility(View.VISIBLE);
         contentHost.addView(screen,new LinearLayout.LayoutParams(-1,-1));
-        for (int i=0;i<navigationBar.getChildCount();i++) {
-            LinearLayout item = (LinearLayout)navigationBar.getChildAt(i);
-            View[] parts = (View[])item.getTag();
-            boolean selected = i == tab;
-            parts[0].setAlpha(selected?1f:0.68f);
-            parts[1].setAlpha(selected?1f:0.68f);
-            parts[0].setBackground(selected?panel(Color.rgb(24,73,108),Color.rgb(73,174,225),18):null);
-            ((TextView)parts[0]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220));
-            ((TextView)parts[1]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220));
+        for(int i=0;i<navigationBar.getChildCount();i++){
+            LinearLayout item=(LinearLayout)navigationBar.getChildAt(i); View[] parts=(View[])item.getTag(); boolean selected=i==tab;
+            parts[0].setAlpha(selected?1f:0.68f); parts[1].setAlpha(selected?1f:0.68f); parts[0].setBackground(selected?panel(Color.rgb(22,79,119),Color.rgb(73,174,225),18):null);
+            ((TextView)parts[0]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220)); ((TextView)parts[1]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220));
         }
     }
 
@@ -1152,6 +1120,7 @@ public class MainActivity extends Activity {
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
     } }
     private void show(String who,String s) {
+        if(who!=null&&(who.equalsIgnoreCase("YOU")||who.equalsIgnoreCase("COMMANDER"))&&chatWelcomePanel!=null)chatWelcomePanel.setVisibility(View.GONE);
         if(conversationList==null)return;
         final float d=getResources().getDisplayMetrics().density;
         boolean fromUser=who!=null&&(who.equalsIgnoreCase("YOU")||who.equalsIgnoreCase("COMMANDER"));
