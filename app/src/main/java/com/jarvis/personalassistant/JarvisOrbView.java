@@ -40,7 +40,7 @@ public final class JarvisOrbView extends View {
         float w=getWidth(), h=getHeight();
         if (w<=0 || h<=0) return;
         float cx=w*0.5f, cy=h*0.48f;
-        float radius=Math.min(w*0.29f,h*0.43f);
+        float radius=Math.min(w*0.24f,h*0.34f);
         float t=(SystemClock.uptimeMillis()-startedAt)/1000f;
         float pulse=1.0f+0.035f*(float)Math.sin(t*2.35f);
         boolean active="LISTENING".equals(state) || "THINKING".equals(state);
@@ -87,17 +87,6 @@ public final class JarvisOrbView extends View {
         paint.setStrokeWidth(1.2f);
         paint.setColor(0x99bafaff);
         canvas.drawCircle(cx,cy,radius*0.78f,paint);
-
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.WHITE);
-        paint.setTextAlign(Paint.Align.CENTER);
-        paint.setTextSize(Math.max(10f,radius*0.15f));
-        paint.setFakeBoldText(true);
-        canvas.drawText("J.A.R.V.I.S",cx,cy+radius*0.055f,paint);
-        paint.setFakeBoldText(false);
-        paint.setTextSize(Math.max(8f,radius*0.075f));
-        paint.setColor(0xff9ceeff);
-        canvas.drawText(state,cx,cy+radius*0.28f,paint);
 
         paint.setColor(0xffb9f7ff);
         for(int i=0;i<12;i++) {

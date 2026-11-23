@@ -600,15 +600,15 @@ public class WakeWordService extends Service {
         final String raw = command.trim();
         final String q = raw.toLowerCase(Locale.ROOT);
 
-        if (q.contains("time") || q.contains("samay") || q.contains("kitne baje")) {
+        if (JarvisIntentRouter.isTimeQuery(raw)) {
             speak("Abhi " + new java.text.SimpleDateFormat("hh:mm a",Locale.getDefault()).format(new java.util.Date()) + " baj rahe hain.");
             return;
         }
-        if (q.contains("date") || q.contains("tareekh") || q.contains("aaj ki date")) {
+        if (JarvisIntentRouter.isDateQuery(raw)) {
             speak("Aaj " + new java.text.SimpleDateFormat("dd MMMM yyyy",new Locale("hi","IN")).format(new java.util.Date()) + " hai.");
             return;
         }
-        if (q.contains("battery")) {
+        if (JarvisIntentRouter.isBatteryStatusQuery(raw)) {
             try {
                 Intent battery = registerReceiver(null,new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
                 int level = battery == null ? -1 : battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL,-1);
@@ -616,19 +616,19 @@ public class WakeWordService extends Service {
             } catch (Exception e) { speak("Battery status unavailable."); }
             return;
         }
-        if (q.contains("volume up") || q.contains("volume down") || q.equals("mute")) {
+        if (JarvisIntentRouter.isVolumeUpCommand(raw) || JarvisIntentRouter.isVolumeDownCommand(raw) || JarvisIntentRouter.isMuteCommand(raw)) {
             try {
                 android.media.AudioManager audio = (android.media.AudioManager)getSystemService(AUDIO_SERVICE);
                 if (audio != null) {
-                    int direction = q.contains("up") ? android.media.AudioManager.ADJUST_RAISE :
-                        q.contains("down") ? android.media.AudioManager.ADJUST_LOWER : android.media.AudioManager.ADJUST_MUTE;
+                    int direction = JarvisIntentRouter.isVolumeUpCommand(raw) ? android.media.AudioManager.ADJUST_RAISE :
+                        JarvisIntentRouter.isVolumeDownCommand(raw) ? android.media.AudioManager.ADJUST_LOWER : android.media.AudioManager.ADJUST_MUTE;
                     audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,direction,android.media.AudioManager.FLAG_SHOW_UI);
                     speak("Media volume updated.");
                 }
             } catch (Exception e) { speak("Volume control unavailable."); }
             return;
         }
-        if (q.contains("flashlight") || q.contains("torch")) {
+        if (JarvisIntentRouter.isFlashlightCommand(raw)) {
             if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 speak("Flashlight ke liye JARVIS app kholkar Camera permission allow karein.");
                 return;
@@ -655,6 +655,7 @@ public class WakeWordService extends Service {
             SecureStore keys = new SecureStore(getApplicationContext());
             String gemini = keys.get("gemini_key");
             String groq = keys.get("groq_key");
+            String openAi = keys.get("openai_key");
             String localPath = prefs.getString("local_model_path","");
             String memoryContext = "No saved memory context.";
             JarvisMemoryStore store = null;
@@ -670,7 +671,16 @@ public class WakeWordService extends Service {
             }
             final String prompt = memoryContext + "\n\nYou are JARVIS running in background voice mode. Answer naturally in Hindi/Hinglish or the language used. Be concise. Do not claim a phone action was performed unless confirmed. If a task requires opening an app or screen, explain that the user must open JARVIS.\nPratik Boss says: " + raw;
             String result = "ERROR: no online provider configured.";
-            if (!gemini.isEmpty()) {
+            JarvisHybridBrain.Specialist specialist = JarvisHybridBrain.classify(raw);
+            if (!openAi.isEmpty() && (specialist != JarvisHybridBrain.Specialist.GENERAL
+                    || raw.toLowerCase(java.util.Locale.ROOT).startsWith("astra "))) {
+                String effort = specialist == JarvisHybridBrain.Specialist.CODING
+                        || specialist == JarvisHybridBrain.Specialist.RESEARCH
+                        || specialist == JarvisHybridBrain.Specialist.DATA_ANALYSIS ? "high" : "medium";
+                result = OpenAiResponsesClient.ask(openAi, OpenAiResponsesClient.DEFAULT_MODEL,
+                    JarvisHybridBrain.systemDirective(raw), prompt, effort);
+            }
+            if (result.startsWith("ERROR") && !gemini.isEmpty()) {
                 result = OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gemini,
                     prefs.getString("gemini_model","gemini-2.5-flash"),prompt);
             }

@@ -1,5 +1,7 @@
 package com.jarvis.personalassistant;
 
+// JARVIS three-screen reference UI: home, project chat, and tool exploration.
+
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -30,6 +32,7 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.HorizontalScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Color;
@@ -70,12 +73,23 @@ public class MainActivity extends Activity {
     private JarvisMemoryStore longTermMemory;
     private JarvisToolRegistry agentToolRegistry;
     private JarvisAgentEngine.RunHandle activeAgentRun;
+    private volatile AlertDialog activeAgentApprovalDialog;
+    private final JarvisResponseSequencer responseSequencer = new JarvisResponseSequencer();
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private EditText commandInput;
-    private String lastResponse = "I am ready, Pratik Boss.";
+    private LinearLayout contentHost;
+    private LinearLayout homeScreen;
+    private LinearLayout chatScreen;
+    private LinearLayout exploreScreen;
+    private LinearLayout navigationBar;
+    private TextView headerTitle;
+    private TextView headerLeading;
+    private LinearLayout chatWelcomePanel;
+    private int activeTab = 0;
+    private String lastResponse = "I am ready, Boss.";
     private String lastUserPrompt = "";
     private android.content.BroadcastReceiver wakeReceiver;
     private boolean wakeReceiverRegistered = false;
@@ -135,6 +149,7 @@ public class MainActivity extends Activity {
         longTermMemory.expireTransientMemories();
         longTermMemory.indexMissingLocalVectors(500);
         longTermMemory.consolidateMemories();
+        if (!JarvisPrivacyPolicy.shouldPersistLastResponse(memory.getBoolean("memory_private_mode", false))) memory.edit().remove("last_response").apply();
         lastResponse = memory.getString("last_response", lastResponse);
         localModelPath = memory.getString("local_model_path", "");
         if (!localModelPath.isEmpty() && !new File(localModelPath).exists()) localModelPath = "";
@@ -160,7 +175,7 @@ public class MainActivity extends Activity {
         });
         refreshUiStatus();
         show("JARVIS CORE", "V9 foundation online. Voice, memory and command modules ready.");
-        speak("JARVIS systems online. At your service, Pratik Boss.");
+        speak("JARVIS systems online. At your service, Boss.");
     }
 
     private android.graphics.drawable.GradientDrawable panel(int fill, int stroke, int radiusDp) {
@@ -173,79 +188,179 @@ public class MainActivity extends Activity {
 
     private void buildUi() {
         final float d=getResources().getDisplayMetrics().density;
-        final int pad=(int)(18*d);
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        LinearLayout root=new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad,(int)(10*d),pad,(int)(12*d));
-        root.setClipToPadding(false);
-        root.setBackground(new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(5,10,24),Color.rgb(8,19,37),Color.rgb(3,8,19)}));
-        LinearLayout header=new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout brand=new LinearLayout(this);
-        brand.setOrientation(LinearLayout.VERTICAL);
-        brand.setGravity(Gravity.CENTER_VERTICAL);
-        TextView wordmark=new TextView(this);
-        wordmark.setText("JARVIS"); wordmark.setTextColor(Color.rgb(242,248,255));
-        wordmark.setTextSize(21); wordmark.setLetterSpacing(0.20f);
-        wordmark.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        brand.addView(wordmark,new LinearLayout.LayoutParams(-2,-2));
-        status=new TextView(this); status.setText("● SYSTEM READY");
-        status.setTextColor(Color.rgb(107,231,210)); status.setTextSize(10); status.setLetterSpacing(0.10f);
-        brand.addView(status,new LinearLayout.LayoutParams(-2,-2));
-        header.addView(brand,new LinearLayout.LayoutParams(0,-2,1f));
-        TextView menu=new TextView(this); menu.setText("···"); menu.setTextColor(Color.rgb(185,220,246));
-        menu.setTextSize(27); menu.setGravity(Gravity.CENTER);
-        menu.setBackground(panel(Color.rgb(17,31,51),Color.rgb(43,76,108),18));
-        header.addView(menu,new LinearLayout.LayoutParams((int)(46*d),(int)(42*d)));
-        menu.setOnClickListener(v->openSettingsMenu());
-        root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
+        LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding((int)(12*d),(int)(5*d),(int)(12*d),(int)(5*d)); root.setClipToPadding(false);
+        root.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(0,3,9),Color.rgb(2,17,31),Color.rgb(0,5,13)}));
+        LinearLayout header=new LinearLayout(this); header.setOrientation(LinearLayout.HORIZONTAL); header.setGravity(Gravity.CENTER_VERTICAL);
+        headerLeading=new TextView(this); headerLeading.setText("◉"); headerLeading.setTextColor(Color.rgb(180,229,255)); headerLeading.setTextSize(23); headerLeading.setGravity(Gravity.CENTER); headerLeading.setBackground(panel(Color.rgb(22,35,49),Color.rgb(65,104,139),24));
+        header.addView(headerLeading,new LinearLayout.LayoutParams((int)(38*d),(int)(38*d))); headerLeading.setOnClickListener(v->{if(activeTab!=0)switchTab(0);else openSettingsMenu();});
+        LinearLayout heading=new LinearLayout(this); heading.setOrientation(LinearLayout.VERTICAL); heading.setGravity(Gravity.CENTER_VERTICAL); heading.setPadding((int)(10*d),0,0,0);
+        headerTitle=new TextView(this); headerTitle.setText("JARVIS"); headerTitle.setTextColor(Color.WHITE); headerTitle.setTextSize(17); headerTitle.setLetterSpacing(0.12f); heading.addView(headerTitle);
+        status=new TextView(this); status.setText("● SYSTEM READY"); status.setTextColor(Color.rgb(105,226,211)); status.setTextSize(9); heading.addView(status); header.addView(heading,new LinearLayout.LayoutParams(0,-2,1f));
+        TextView menu=new TextView(this); menu.setText("⋮"); menu.setTextColor(Color.WHITE); menu.setTextSize(23); menu.setGravity(Gravity.CENTER); menu.setBackground(panel(Color.rgb(27,31,40),Color.rgb(69,86,108),25));
+        header.addView(menu,new LinearLayout.LayoutParams((int)(42*d),(int)(42*d))); menu.setOnClickListener(v->openSettingsMenu()); root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
+        contentHost=new LinearLayout(this); contentHost.setOrientation(LinearLayout.VERTICAL); root.addView(contentHost,new LinearLayout.LayoutParams(-1,0,1f));
+        buildHomeScreen(d); buildChatScreen(d); buildExploreScreen(d);
+        LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL); composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d)); composer.setBackground(panel(Color.rgb(9,24,41),Color.rgb(57,103,143),29));
+        TextView attach=new TextView(this); attach.setText("⌕"); attach.setTextColor(Color.rgb(151,213,246)); attach.setTextSize(21); attach.setGravity(Gravity.CENTER); composer.addView(attach,new LinearLayout.LayoutParams((int)(32*d),(int)(42*d))); attach.setOnClickListener(v->pickImage());
+        TextView globe=new TextView(this); globe.setText("◎"); globe.setTextColor(Color.rgb(151,213,246)); globe.setTextSize(18); globe.setGravity(Gravity.CENTER); composer.addView(globe,new LinearLayout.LayoutParams((int)(30*d),(int)(42*d))); globe.setOnClickListener(v->{switchTab(1);searchWeb("");});
+        commandInput=new EditText(this); commandInput.setSingleLine(true); commandInput.setTextColor(Color.rgb(244,249,255)); commandInput.setHintTextColor(Color.rgb(135,158,185)); commandInput.setHint("Ask me anything..."); commandInput.setTextSize(14); commandInput.setPadding((int)(6*d),0,(int)(3*d),0); commandInput.setBackgroundColor(Color.TRANSPARENT); commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        commandInput.setOnEditorActionListener((v,actionId,event)->{if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){submitTypedCommand();return true;}return false;}); composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(44*d),1f));
+        TextView mic=new TextView(this); mic.setText("♩"); mic.setTextColor(Color.rgb(151,213,246)); mic.setTextSize(19); mic.setGravity(Gravity.CENTER); composer.addView(mic,new LinearLayout.LayoutParams((int)(30*d),(int)(42*d))); mic.setOnClickListener(v->{switchTab(1);listen();});
+        TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(1,16,30)); send.setTextSize(19); send.setGravity(Gravity.CENTER); android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(155,241,255),Color.rgb(64,169,239)}); sendBg.setCornerRadius(24*d); send.setBackground(sendBg); composer.addView(send,new LinearLayout.LayoutParams((int)(42*d),(int)(42*d))); send.setOnClickListener(v->submitTypedCommand());
+        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(54*d)); composerLp.topMargin=(int)(7*d); root.addView(composer,composerLp); buildNavigation(d); root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(54*d))); setContentView(root); switchTab(0);
+    }
+    private void buildHomeScreen(float d) {
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false); scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        homeScreen=new LinearLayout(this); homeScreen.setOrientation(LinearLayout.VERTICAL); homeScreen.setGravity(Gravity.CENTER_HORIZONTAL); homeScreen.setPadding((int)(2*d),(int)(8*d),(int)(2*d),(int)(12*d));
+        orbView=new JarvisOrbView(this); orbView.setState("STANDBY"); LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(124*d)); orbLp.topMargin=(int)d; orbLp.bottomMargin=(int)(2*d); homeScreen.addView(orbView,orbLp);
+        TextView greeting=new TextView(this); greeting.setText("Hello, I am JARVIS"); greeting.setTextColor(Color.WHITE); greeting.setTextSize(21); greeting.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL)); greeting.setGravity(Gravity.CENTER); homeScreen.addView(greeting,new LinearLayout.LayoutParams(-1,-2));
+        TextView subtitle=new TextView(this); subtitle.setText("How can I help you?"); subtitle.setTextColor(Color.rgb(177,203,226)); subtitle.setTextSize(13); subtitle.setGravity(Gravity.CENTER); LinearLayout.LayoutParams subLp=new LinearLayout.LayoutParams(-1,-2); subLp.topMargin=(int)(2*d); subLp.bottomMargin=(int)(9*d); homeScreen.addView(subtitle,subLp);
+        LinearLayout quick=new LinearLayout(this); quick.setOrientation(LinearLayout.HORIZONTAL); quick.setGravity(Gravity.CENTER);
+        addQuickChip(quick,"▧  Image edit",()->pickImage(),d); addQuickChip(quick,"✧  Generate prompt",()->{switchTab(1);handle("Help me generate a detailed prompt");},d); addQuickChip(quick,"⌕  Deep research",()->{switchTab(1);searchWeb("");},d);
+        HorizontalScrollView quickScroll=new HorizontalScrollView(this); quickScroll.setHorizontalScrollBarEnabled(false); quickScroll.addView(quick,new HorizontalScrollView.LayoutParams(-2,(int)(36*d))); homeScreen.addView(quickScroll,new LinearLayout.LayoutParams(-1,(int)(40*d)));
+        TextView toolsTitle=sectionTitle("Discover AI tools",d); LinearLayout.LayoutParams titleLp=new LinearLayout.LayoutParams(-1,-2); titleLp.topMargin=(int)(12*d); titleLp.bottomMargin=(int)(5*d); homeScreen.addView(toolsTitle,titleLp);
+        HorizontalScrollView toolsScroll=new HorizontalScrollView(this); toolsScroll.setHorizontalScrollBarEnabled(false); LinearLayout cards=new LinearLayout(this); cards.setOrientation(LinearLayout.HORIZONTAL);
+        addVisualToolCard(cards,"Image Generator","Create images",new int[]{0xff12466c,0xff071c35},()->pickImage(),d);
+        addVisualToolCard(cards,"Homework Helper","Solve and explain",new int[]{0xff24566c,0xff102b43},()->{switchTab(1);handle("Help me with homework");},d);
+        addVisualToolCard(cards,"Generate Prompt","Create better prompts",new int[]{0xff173f52,0xff0b2037},()->{switchTab(1);handle("Generate a prompt");},d);
+        toolsScroll.addView(cards); homeScreen.addView(toolsScroll,new LinearLayout.LayoutParams(-1,(int)(126*d)));
+        scroll.addView(homeScreen,new ScrollView.LayoutParams(-1,-2)); homeScreen.setTag(scroll);
+    }
 
-        conversationScroll=new ScrollView(this);
-        conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false);
-        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
-        conversationList=new LinearLayout(this); conversationList.setOrientation(LinearLayout.VERTICAL);
-        conversationList.setPadding((int)(2*d),(int)(4*d),(int)(2*d),(int)(12*d));
-        conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
-        root.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
+    private void addQuickChip(LinearLayout row,String label,Runnable action,float d) {
+        TextView chip=new TextView(this); chip.setText(label); chip.setTextColor(Color.rgb(220,239,255)); chip.setTextSize(9); chip.setGravity(Gravity.CENTER); chip.setPadding((int)(9*d),(int)(6*d),(int)(9*d),(int)(6*d)); chip.setBackground(panel(Color.rgb(14,34,54),Color.rgb(69,111,148),20));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,(int)(30*d)); lp.setMargins((int)(3*d),0,(int)(3*d),0); row.addView(chip,lp); chip.setOnClickListener(v->action.run());
+    }
 
-        orbView=new JarvisOrbView(this); orbView.setState("STANDBY");
-        LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(88*d));
-        orbLp.topMargin=(int)(2*d); orbLp.bottomMargin=(int)(2*d);
-        root.addView(orbView,orbLp);
+    private void addVisualToolCard(LinearLayout row,String title,String subtitle,int[] colors,Runnable action,float d) {
+        LinearLayout card=new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setGravity(Gravity.BOTTOM); card.setPadding((int)(10*d),(int)(8*d),(int)(10*d),(int)(9*d));
+        android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,colors); bg.setCornerRadius(17*d); bg.setStroke((int)Math.max(1,d),0xff345d7b); card.setBackground(bg);
+        TextView art=new TextView(this); art.setText("✦"); art.setTextColor(0xffa8e8ff); art.setTextSize(25); art.setGravity(Gravity.CENTER); card.addView(art,new LinearLayout.LayoutParams(-1,0,1f));
+        TextView name=new TextView(this); name.setText(title); name.setTextColor(Color.WHITE); name.setTextSize(12); name.setTypeface(Typeface.DEFAULT_BOLD); card.addView(name);
+        TextView detail=new TextView(this); detail.setText(subtitle); detail.setTextColor(0xffb7d0e3); detail.setTextSize(9); card.addView(detail);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams((int)(126*d),(int)(116*d)); lp.setMargins((int)(3*d),0,(int)(7*d),0); row.addView(card,lp); card.setOnClickListener(v->action.run());
+    }
 
-        LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL);
-        composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
-        composer.setBackground(panel(Color.rgb(14,27,46),Color.rgb(46,83,119),27));
-        TextView mic=new TextView(this); mic.setText("◉"); mic.setTextColor(Color.rgb(135,225,255));
-        mic.setTextSize(21); mic.setGravity(Gravity.CENTER);
-        composer.addView(mic,new LinearLayout.LayoutParams((int)(44*d),(int)(46*d)));
-        mic.setOnClickListener(v->listen());
-        commandInput=new EditText(this); commandInput.setSingleLine(true);
-        commandInput.setTextColor(Color.rgb(244,249,255)); commandInput.setHintTextColor(Color.rgb(125,151,180));
-        commandInput.setHint("Ask JARVIS anything"); commandInput.setTextSize(15);
-        commandInput.setPadding((int)(8*d),0,(int)(4*d),0); commandInput.setBackgroundColor(Color.TRANSPARENT);
-        commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        commandInput.setOnEditorActionListener((v,actionId,event)->{
-            if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){
-                submitTypedCommand(); return true;
-            } return false;
-        });
-        composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(46*d),1f));
-        TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(5,16,30));
-        send.setTextSize(19); send.setGravity(Gravity.CENTER);
-        android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(132,235,255),Color.rgb(77,174,232)});
-        sendBg.setCornerRadius(22*d); send.setBackground(sendBg);
-        composer.addView(send,new LinearLayout.LayoutParams((int)(44*d),(int)(44*d)));
-        send.setOnClickListener(v->submitTypedCommand());
-        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(58*d));
-        composerLp.topMargin=(int)(8*d); root.addView(composer,composerLp);
-        setContentView(root);
+    private void buildChatScreen(float d) {
+        chatScreen=new LinearLayout(this); chatScreen.setOrientation(LinearLayout.VERTICAL);
+        chatWelcomePanel=new LinearLayout(this); chatWelcomePanel.setOrientation(LinearLayout.VERTICAL); chatWelcomePanel.setGravity(Gravity.CENTER_HORIZONTAL); chatWelcomePanel.setPadding((int)(4*d),(int)(10*d),(int)(4*d),(int)(8*d));
+        TextView project=new TextView(this); project.setText("New Project  ▾"); project.setTextColor(Color.WHITE); project.setTextSize(14); project.setGravity(Gravity.CENTER); project.setBackground(panel(Color.rgb(10,28,47),Color.rgb(46,86,119),18)); chatWelcomePanel.addView(project,new LinearLayout.LayoutParams((int)(150*d),(int)(34*d)));
+        TextView welcome=new TextView(this); welcome.setText("How can I help you today?"); welcome.setTextColor(Color.WHITE); welcome.setTextSize(19); welcome.setGravity(Gravity.CENTER); LinearLayout.LayoutParams welcomeLp=new LinearLayout.LayoutParams(-1,-2); welcomeLp.topMargin=(int)(9*d); chatWelcomePanel.addView(welcome,welcomeLp);
+        LinearLayout suggestions=new LinearLayout(this); suggestions.setOrientation(LinearLayout.HORIZONTAL); suggestions.setGravity(Gravity.CENTER);
+        addQuickChip(suggestions,"▧ Image edit",()->pickImage(),d); addQuickChip(suggestions,"✧ Generate prompt",()->handle("Generate a prompt"),d); addQuickChip(suggestions,"⌕ Deep research",()->searchWeb(""),d);
+        HorizontalScrollView suggestionScroll=new HorizontalScrollView(this); suggestionScroll.setHorizontalScrollBarEnabled(false); suggestionScroll.addView(suggestions); LinearLayout.LayoutParams suggestionLp=new LinearLayout.LayoutParams(-1,(int)(40*d)); suggestionLp.topMargin=(int)(8*d); chatWelcomePanel.addView(suggestionScroll,suggestionLp);
+        chatScreen.addView(chatWelcomePanel,new LinearLayout.LayoutParams(-1,-2));
+        conversationScroll=new ScrollView(this); conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false); conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
+        conversationList=new LinearLayout(this); conversationList.setOrientation(LinearLayout.VERTICAL); conversationList.setPadding((int)(2*d),(int)(6*d),(int)(2*d),(int)(12*d)); conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
+        chatScreen.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f)); chatScreen.setBackgroundColor(Color.TRANSPARENT);
+    }
+
+    private void buildExploreScreen(float d) {
+        ScrollView scroll=new ScrollView(this); scroll.setVerticalScrollBarEnabled(false); LinearLayout list=new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); list.setPadding((int)(3*d),(int)(12*d),(int)(3*d),(int)(20*d));
+        list.addView(sectionTitle("Explore JARVIS",d));
+        addExploreRow(list,"Image studio","Create or analyze images with your configured vision AI",()->pickImage(),d);
+        addExploreRow(list,"Deep research","Search the web and investigate a topic",()->{switchTab(1);searchWeb("");},d);
+        addExploreRow(list,"Memory center","Review, search and manage long-term memory",()->memoryDialog(),d);
+        addExploreRow(list,"Tasks & reminders","Create and manage your tasks",()->taskDialog(),d);
+        addExploreRow(list,"AI brain & models","Configure online providers or local model",()->aiBrainDialog(),d);
+        addExploreRow(list,"System diagnostics","Check battery, storage and JARVIS status",()->systemReport(),d);
+        scroll.addView(list,new ScrollView.LayoutParams(-1,-2)); exploreScreen=list; exploreScreen.setTag(scroll);
+    }
+
+    private TextView sectionTitle(String text,float d) {
+        TextView title = new TextView(this);
+        title.setText(text);
+        title.setTextColor(Color.rgb(226,243,255));
+        title.setTextSize(16);
+        title.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        title.setPadding((int)(5*d),(int)(7*d),(int)(5*d),(int)(7*d));
+        return title;
+    }
+
+    private void addFeatureCard(LinearLayout row,String icon,String title,String subtitle,Runnable action,float d) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding((int)(9*d),(int)(8*d),(int)(7*d),(int)(8*d));
+        card.setBackground(panel(Color.rgb(12,35,57),Color.rgb(35,86,122),17));
+        TextView glyph = new TextView(this);
+        glyph.setText(icon);
+        glyph.setTextColor(Color.rgb(132,221,255));
+        glyph.setTextSize(19);
+        card.addView(glyph);
+        TextView name = new TextView(this);
+        name.setText(title);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(11);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(name);
+        TextView desc = new TextView(this);
+        desc.setText(subtitle);
+        desc.setTextColor(Color.rgb(151,183,210));
+        desc.setTextSize(8);
+        desc.setMaxLines(2);
+        card.addView(desc);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,-1,1f);
+        lp.setMargins((int)(3*d),(int)(3*d),(int)(3*d),(int)(3*d));
+        row.addView(card,lp);
+        card.setOnClickListener(v -> action.run());
+    }
+
+    private void addExploreRow(LinearLayout parent,String title,String description,Runnable action,float d) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding((int)(15*d),(int)(12*d),(int)(15*d),(int)(12*d));
+        card.setBackground(panel(Color.rgb(11,31,52),Color.rgb(37,79,112),17));
+        TextView name = new TextView(this);
+        name.setText(title);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(14);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(name);
+        TextView detail = new TextView(this);
+        detail.setText(description);
+        detail.setTextColor(Color.rgb(155,188,216));
+        detail.setTextSize(11);
+        LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(-1,-2);
+        detailLp.topMargin = (int)(3*d);
+        card.addView(detail,detailLp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,-2);
+        lp.setMargins(0,(int)(5*d),0,(int)(5*d));
+        parent.addView(card,lp);
+        card.setOnClickListener(v -> action.run());
+    }
+
+    private void buildNavigation(float d) {
+        navigationBar=new LinearLayout(this); navigationBar.setOrientation(LinearLayout.HORIZONTAL); navigationBar.setGravity(Gravity.CENTER); navigationBar.setPadding((int)(5*d),(int)(3*d),(int)(5*d),(int)(3*d)); navigationBar.setBackground(panel(Color.rgb(8,20,34),Color.rgb(45,77,105),27));
+        addNavigationItem("⌂","Home",0,d); addNavigationItem("◌","Chat",1,d); addNavigationItem("✧","Explore",2,d);
+    }
+
+    private void addNavigationItem(String icon,String label,int tab,float d) {
+        LinearLayout item=new LinearLayout(this); item.setOrientation(LinearLayout.VERTICAL); item.setGravity(Gravity.CENTER);
+        TextView glyph=new TextView(this); glyph.setText(icon); glyph.setTextSize(17); glyph.setGravity(Gravity.CENTER); glyph.setTextColor(Color.rgb(159,193,220)); item.addView(glyph);
+        TextView text=new TextView(this); text.setText(label); text.setTextSize(9); text.setGravity(Gravity.CENTER); text.setTextColor(Color.rgb(159,193,220)); item.addView(text);
+        item.setLayoutParams(new LinearLayout.LayoutParams(0,-1,1f)); item.setTag(new View[]{glyph,text}); item.setOnClickListener(v->switchTab(tab)); navigationBar.addView(item);
+    }
+
+    private void switchTab(int tab) {
+        if(contentHost==null||navigationBar==null)return;
+        activeTab=tab; contentHost.removeAllViews();
+        View screen=tab==1?chatScreen:(tab==2?(View)exploreScreen.getTag():(View)homeScreen.getTag());
+        if(orbView!=null&&orbView.getParent()!=null)((android.view.ViewGroup)orbView.getParent()).removeView(orbView);
+        if(tab==0){
+            homeScreen.addView(orbView,0,new LinearLayout.LayoutParams(-1,(int)(124*getResources().getDisplayMetrics().density))); headerLeading.setText("◉"); headerTitle.setText("JARVIS"); status.setText("● SYSTEM READY");
+        }else if(tab==1){
+            chatScreen.addView(orbView,0,new LinearLayout.LayoutParams(-1,(int)(145*getResources().getDisplayMetrics().density))); headerLeading.setText("‹"); headerTitle.setText("New Project"); status.setText("● JARVIS ASSISTANT");
+        }else{headerLeading.setText("‹");headerTitle.setText("Explore");status.setText("● AI TOOLS");}
+        if(chatWelcomePanel!=null)chatWelcomePanel.setVisibility(View.VISIBLE);
+        contentHost.addView(screen,new LinearLayout.LayoutParams(-1,-1));
+        for(int i=0;i<navigationBar.getChildCount();i++){
+            LinearLayout item=(LinearLayout)navigationBar.getChildAt(i); View[] parts=(View[])item.getTag(); boolean selected=i==tab;
+            parts[0].setAlpha(selected?1f:0.68f); parts[1].setAlpha(selected?1f:0.68f); parts[0].setBackground(selected?panel(Color.rgb(22,79,119),Color.rgb(73,174,225),18):null);
+            ((TextView)parts[0]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220)); ((TextView)parts[1]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220));
+        }
     }
 
     private void openSettingsMenu() {
@@ -294,8 +409,7 @@ public class MainActivity extends Activity {
     }
 
     private void pickImage() {
-        try {
-            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        try {            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.setType("image/*");
             pick.addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(pick,PICK_IMAGE);
@@ -336,25 +450,31 @@ public class MainActivity extends Activity {
                 .setNegativeButton("CANCEL",null).show();
             return;
         }
+        boolean opened = false;
         try {
             Intent webSearch = new Intent(Intent.ACTION_WEB_SEARCH);
             webSearch.putExtra(android.app.SearchManager.QUERY,clean);
             if (webSearch.resolveActivity(getPackageManager()) != null) {
                 startActivity(webSearch);
+                opened = true;
             } else {
-                open("https://www.google.com/search?q="+Uri.encode(clean));
+                opened = open("https://www.google.com/search?q="+Uri.encode(clean));
             }
-            if (commandInput != null) commandInput.setText("");
-            show("WEB SEARCH","Searching the web for: "+clean);
-            speak("Searching the web for "+clean);
         } catch (Exception e) {
-            open("https://www.google.com/search?q="+Uri.encode(clean));
+            opened = open("https://www.google.com/search?q="+Uri.encode(clean));
+        }
+        if (commandInput != null) commandInput.setText("");
+        if (opened) {
+            show("WEB SEARCH","Opened web search for: "+clean);
+            speak("Opening web search for "+clean);
+        } else {
+            respond("Browser ya web-search app available nahi hai. Search open nahi hua.");
         }
     }
 
     private void refreshUiStatus() {
         if(status==null)return;
-        boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty());
+        boolean cloudReady=secureStore!=null&&(!secureStore.get("gemini_key").isEmpty()||!secureStore.get("groq_key").isEmpty()||!secureStore.get("openai_key").isEmpty());
         status.setText("● "+(WakeWordService.isRunning?"VOICE ACTIVE":"SYSTEM READY")+(cloudReady?"  ·  AI CONNECTED":""));
     }
 
@@ -391,7 +511,7 @@ public class MainActivity extends Activity {
                 status.setText("● MICROPHONE READY");
                 requestNotificationPermissionIfNeeded();
                 startAlwaysOnWakeService();
-                respond("Microphone permission granted. I am ready, Pratik Boss.");
+                respond("Microphone permission granted. I am ready, Boss.");
             } else {
                 status.setText("● MICROPHONE PERMISSION NEEDED");
                 show("SYSTEM", "Android Settings mein JARVIS ke liye Microphone permission Allow karein.");
@@ -409,7 +529,7 @@ public class MainActivity extends Activity {
     private boolean hasMicPermission() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return true;
         ensureAudioPermission();
-        respond("Microphone permission allow karo, Pratik Boss.");
+        respond("Microphone permission allow karo, Boss.");
         return false;
     }
 
@@ -433,8 +553,7 @@ public class MainActivity extends Activity {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
             recognizer.setRecognitionListener(new RecognitionListener() {
                 public void onReadyForSpeech(Bundle p) { status.setText("● LISTENING... "+language); }
-                public void onBeginningOfSpeech() { status.setText("● HEARING YOU..."); }
-                public void onRmsChanged(float r) {}
+                public void onBeginningOfSpeech() { status.setText("● HEARING YOU..."); }                public void onRmsChanged(float r) {}
                 public void onBufferReceived(byte[] b) {}
                 public void onEndOfSpeech() { status.setText("● ANALYSING..."); }
                 public void onError(int error) {
@@ -507,31 +626,44 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        switchTab(1);
+        final long responseToken = responseSequencer.beginRequest();
         lastUserPrompt = raw == null ? "" : raw;
         if (orbView != null) orbView.setState("THINKING");
-        boolean privateMode = memory.getBoolean("memory_private_mode", false);
-        if (longTermMemory != null && !privateMode) longTermMemory.addConversation("Commander", raw);
-        if (!privateMode) autoLearnMemory(raw);
-        String q=raw.toLowerCase(Locale.ROOT); show("COMMANDER",raw); String answer;
-        if (q.contains("time") || q.contains("samay") || q.contains("समय") || q.contains("kitne baje")) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
-        else if (q.contains("date") || q.contains("tareekh") || q.contains("तारीख") || q.contains("aaj ki date")) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
-        else if (q.contains("battery") || q.contains("बैटरी")) answer=batteryReport();
-        else if (q.contains("flashlight") || q.contains("torch")) { setFlashlight(q.contains("on") || q.contains("enable") || q.contains("chalu")); return; }
-        else if (q.contains("volume up") || q.contains("volume badhao")) { adjustVolume(1); return; }
-        else if (q.contains("volume down") || q.contains("volume kam")) { adjustVolume(-1); return; }
-        else if (q.contains("mute volume") || q.equals("mute")) { adjustVolume(0); return; }
-        else if (q.contains("brightness") || q.contains("screen brightness")) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
-        else if (q.contains("system status") || q.contains("system report") || q.contains("ram") || q.contains("storage")) { systemReport(); return; }
-        else if (q.contains("wifi") || q.contains("wi-fi")) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
-        else if (q.contains("bluetooth")) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
-        else if (q.contains("settings") || q.contains("सेटिंग")) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
-        else if (q.contains("youtube")) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw); return; }
-        else if (q.startsWith("search ") || q.contains("google")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
-        else if (q.contains("camera") || q.contains("कैमरा")) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
-        else if (q.contains("map") || q.contains("navigate") || q.contains("raasta")) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
-        else if (q.contains("translate") || q.contains("translation")) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
-        else if (q.contains("alarm")) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
+        String q=raw == null ? "" : raw.toLowerCase(Locale.ROOT);
+        boolean enablingPrivateMode = JarvisIntentRouter.isPrivateModeEnableCommand(raw);
+        boolean privacyToggle = enablingPrivateMode || JarvisIntentRouter.isPrivateModeDisableCommand(raw);
+        boolean privateMode = memory.getBoolean("memory_private_mode", false) || enablingPrivateMode;
+        if (longTermMemory != null && !privateMode && !privacyToggle) longTermMemory.addConversation("Commander", raw);
+        if (!privateMode && !privacyToggle && !JarvisIntentRouter.isRememberCommand(raw)) autoLearnMemory(raw);
+        show("COMMANDER",raw); String answer;
+        if (JarvisIntentRouter.isTimeQuery(raw)) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
+        else if (JarvisIntentRouter.isDateQuery(raw)) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
+        else if (JarvisIntentRouter.isBatteryStatusQuery(raw)) answer=batteryReport();
+        else if (JarvisIntentRouter.isFlashlightCommand(raw)) { setFlashlight(q.contains("on") || q.contains("enable") || q.contains("chalu")); return; }
+        else if (JarvisIntentRouter.isVolumeUpCommand(raw)) { adjustVolume(1); return; }
+        else if (JarvisIntentRouter.isVolumeDownCommand(raw)) { adjustVolume(-1); return; }
+        else if (JarvisIntentRouter.isMuteCommand(raw)) { adjustVolume(0); return; }
+        else if (JarvisIntentRouter.isBrightnessSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS))?"Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta.":"Display settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isSystemReportQuery(raw)) { systemReport(); return; }
+        else if (JarvisIntentRouter.isCancelAgentCommand(raw)) {
+            if (activeAgentRun != null && !activeAgentRun.isFinished()) {
+                activeAgentRun.cancel();
+                AlertDialog approval = activeAgentApprovalDialog;
+                if (approval != null && approval.isShowing()) approval.cancel();
+                answer="Agent cancellation requested. Any in-flight operation may finish; no further steps will start.";
+            } else answer="No active agent task to cancel.";
+        }
+        else if (JarvisIntentRouter.isWifiSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_WIFI_SETTINGS))?"Wi-Fi settings khol raha hoon.":"Wi-Fi settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS))?"Bluetooth settings khol raha hoon.":"Bluetooth settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_SETTINGS))?"Phone settings khol raha hoon.":"Phone settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isOpenYoutubeCommand(raw)) { answer=open("https://www.youtube.com")?"YouTube khol raha hoon.":"YouTube ya browser available nahi hai."; }
+        else if (q.startsWith("web search ") || q.startsWith("search web ")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+search|search\\s+web)\\s*","")); return; }
+        else if (JarvisIntentRouter.isWebSearchCommand(raw)) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
+        else if (JarvisIntentRouter.isOpenCameraCommand(raw)) { answer=launch(new Intent("android.media.action.IMAGE_CAPTURE"))?"Camera khol raha hoon.":"Camera app available nahi hai."; }
+        else if (JarvisIntentRouter.isMapsCommand(raw)) { answer=open("https://maps.google.com/?q="+Uri.encode(raw))?"Maps khol raha hoon. Destination confirm kar lena.":"Maps ya browser available nahi hai."; }
+        else if (JarvisIntentRouter.isOpenTranslateCommand(raw)) { answer=open("https://translate.google.com")?"Translation service khol raha hoon.":"Browser available nahi hai."; }
+        else if (JarvisIntentRouter.isAlarmCommand(raw)) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); answer=launch(a)?"Alarm set karne ke liye Clock khol raha hoon.":"Clock app available nahi hai."; }
         else if (q.startsWith("memory useful ")) { long id=parseLong(raw.replaceFirst("(?i)^memory useful\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,1,raw); answer="Memory usefulness feedback saved for #"+id+"."; }
         else if (q.startsWith("memory wrong ")) { long id=parseLong(raw.replaceFirst("(?i)^memory wrong\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,-1,raw); answer="Memory reliability feedback saved for #"+id+"; its retrieval priority was reduced."; }
         else if (q.startsWith("memory forget ")) { long id=parseLong(raw.replaceFirst("(?i)^memory forget\\s*","")); answer=longTermMemory!=null&&longTermMemory.deleteMemory(id)?"Memory #"+id+" permanently deleted with its indexes.":"Memory ID not found."; }
@@ -545,10 +677,10 @@ public class MainActivity extends Activity {
         else if (q.equals("memory stats") || q.equals("memory status")) { answer=longTermMemory==null?"Memory unavailable.":longTermMemory.getMemoryStatsText(); }
         else if (q.equals("memory consolidate") || q.equals("memory reflect") || q.equals("memory dreaming")) { int made=longTermMemory==null?0:longTermMemory.consolidateMemories(); runAiMemoryReflectionIfEnabled(); answer="Local consolidation complete. "+made+" digest(s) created. AI reflection runs in the background only when opted in."; }
         else if (q.equals("memory embeddings on")) { memory.edit().putBoolean("memory_cloud_embeddings",true).apply(); indexSemanticMemoryIfEnabled(300); answer="Gemini semantic memory ON. Saved memory snippets and future search queries may be sent to Google for embedding. Local recall remains as fallback."; }
-        else if (q.equals("memory embeddings off")) { memory.edit().putBoolean("memory_cloud_embeddings",false).apply(); answer="Cloud semantic embeddings OFF. JARVIS will use on-device lexical, temporal and graph recall."; }
-        else if (q.equals("memory embeddings delete")) { if(longTermMemory!=null)longTermMemory.clearEmbeddings(); answer="Stored semantic vector index deleted. Your original memories are unchanged."; }
-        else if (q.equals("memory privacy on") || q.equals("private mode on") || q.equals("memory band")) { memory.edit().putBoolean("memory_private_mode",true).apply(); answer="Privacy mode ON. Conversation history aur automatic learning save nahi honge."; }
-        else if (q.equals("memory privacy off") || q.equals("private mode off") || q.equals("memory chalu")) { memory.edit().putBoolean("memory_private_mode",false).apply(); answer="Memory mode ON. Local history aur automatic learning resume."; }
+        else if (q.equals("memory embeddings off")) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_cloud_embeddings",false).apply(); answer="Cloud semantic embeddings OFF. JARVIS will use on-device lexical, temporal and graph recall."; }
+        else if (q.equals("memory embeddings delete")) { invalidatePendingMemoryJobs(); if(longTermMemory!=null)longTermMemory.clearEmbeddings(); answer="Stored semantic vector index deleted. Your original memories are unchanged."; }
+        else if (JarvisIntentRouter.isPrivateModeEnableCommand(raw)) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_private_mode",true).remove("last_response").apply(); respondEphemeral("Privacy mode ON. History aur auto-learning save nahi honge; current request phir bhi configured cloud AI ko bheji ja sakti hai."); return; }
+        else if (JarvisIntentRouter.isPrivateModeDisableCommand(raw)) { memory.edit().putBoolean("memory_private_mode",false).apply(); respondEphemeral("Memory mode ON. Local history aur automatic learning resume."); return; }
         else if (q.startsWith("memory delete ")) { long id=parseMemoryId(raw); answer=longTermMemory!=null && longTermMemory.deleteMemory(id)?"Memory #"+id+" delete ho gayi.":"Memory ID nahi mili."; }
         else if (q.startsWith("memory edit ")) { String data=raw.substring("memory edit ".length()).trim(); int bar=data.indexOf('|'); if(bar>0){long id=parseLong(data.substring(0,bar).trim()); answer=longTermMemory!=null && longTermMemory.updateMemory(id,"personal",data.substring(bar+1).trim())?"Memory #"+id+" update ho gayi.":"Memory update nahi hui.";}else answer="Format: memory edit ID | naya text"; }
         else if (q.startsWith("memory search") || q.startsWith("search memory") || q.startsWith("find memory")) { String term=raw.replaceFirst("(?i)^(memory search|search memory|find memory)\\s*", "").trim(); answer=longTermMemory == null ? "Memory database unavailable." : longTermMemory.searchMemories(term, 30); }
@@ -559,36 +691,43 @@ public class MainActivity extends Activity {
         else if (q.startsWith("task done ") || q.startsWith("task complete ")) { long id=parseLong(raw.replaceFirst("(?i)^task (done|complete)\\s*","").trim()); boolean done=longTermMemory!=null && longTermMemory.completeTask(id); if(done)JarvisReminderScheduler.cancel(this,id); answer=done?"Task #"+id+" complete mark kar diya.":"Task ID nahi mili."; }
         else if (q.startsWith("task delete ")) { long id=parseLong(raw.replaceFirst("(?i)^task delete\\s*","").trim()); boolean removed=longTermMemory!=null && longTermMemory.deleteTask(id); if(removed)JarvisReminderScheduler.cancel(this,id); answer=removed?"Task #"+id+" delete kar diya.":"Task ID nahi mili."; }
         else if (q.startsWith("memory temp ")) { java.util.regex.Matcher tm=java.util.regex.Pattern.compile("(?i)^memory temp\\s+(\\d+)\\s*(m|min|h|hour|d|day)s?\\s*\\|\\s*(.+)$").matcher(raw.trim()); if(!tm.matches())answer="Format: memory temp 2h | meeting notes"; else {long n=parseLong(tm.group(1));String unit=tm.group(2).toLowerCase(Locale.ROOT);long factor=unit.startsWith("m")?60000L:unit.startsWith("h")?3600000L:86400000L;long id=longTermMemory==null?-1:longTermMemory.addTransientMemory(tm.group(3),n*factor);answer=id>0?"Temporary memory #"+id+" saved; it will expire automatically.":"Temporary memory could not be saved."; } }
-        else if (q.contains("remember") || q.contains("yaad rakh") || q.contains("याद रख")) { String note=raw.replaceAll("(?i)remember|yaad rakh|yaad rakhna", "").trim(); answer=saveNote(note)?"Memory mein save kar diya: "+note:"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai."; }
-        else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { memoryDialog(); return; }
+        else if (JarvisIntentRouter.isRememberCommand(raw)) { String note=raw.replaceFirst("(?i)^(please\\s+)?remember\\s+(that|this|my)\\s*","").replaceFirst("(?i)^remember\\s*[:,-]?\\s*","").replaceFirst("(?i)^yaad\\s+rakh(na)?\\s*","").replaceFirst("^याद\\s+रख(ना|ो)?\\s*","").trim(); answer=saveNote(note)?"Memory mein save kar diya: "+note:"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai."; }
+        else if (JarvisIntentRouter.isMemoryOverviewQuery(raw)) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
-        else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Pratik Boss. JARVIS systems are ready.";
+        else if (JarvisIntentRouter.isGreeting(raw)) answer="Hello Boss. JARVIS systems are ready.";
         else {
             if (isAgentActionIntent(q)) {
-                runAgent(raw);
+                runAgent(raw, responseToken);
                 return;
             }
             String geminiKey = secureStore.get("gemini_key");
             String groqKey = secureStore.get("groq_key");
-            if (!geminiKey.isEmpty() || !groqKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
+            String openAiKey = secureStore.get("openai_key");
+            if (!geminiKey.isEmpty() || !groqKey.isEmpty() || !openAiKey.isEmpty() || (!localModelPath.isEmpty() && new File(localModelPath).isFile())) {
                 status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
-                new Thread(() -> {
+                new Thread(() -> {                    if (!responseSequencer.isCurrent(responseToken)) return;
                     float[] queryVector = useCloudVector ? JarvisEmbeddingClient.embed(geminiKey, raw, true) : null;
-                    final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
+                    if (!responseSequencer.isCurrent(responseToken)) return;
+                    String baseMemoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
+                    final String memoryContext = privateContext || longTermMemory == null ? baseMemoryContext :
+                        JarvisHistoryVerifier.attachEvidence(baseMemoryContext, longTermMemory.getConversationEvidence(raw, 18));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
-                    final String prompt = memoryContext + "\\nLegacy saved note: " + legacyNote +
-                        "\\nPrevious response: " + lastResponse + "\\nCommander says: " + raw;
+                    final String prompt = JarvisConversationContext.compose(memoryContext, legacyNote,
+                        lastResponse, raw, privateContext);
+                    if (!responseSequencer.isCurrent(responseToken)) return;
                     JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
-                        localModelPath, prompt, raw, result -> runOnUiThread(() -> respond(result)));
+                        localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> {
+                        if (!isFinishing() && responseSequencer.isCurrent(responseToken)) respond(result);
+                    }));
                 }, "Jarvis-HybridBrain").start();
                 return;
             }
-            answer="AI brain configure nahi hai, Pratik Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
+            answer="AI brain configure nahi hai, Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
         }
         respond(answer);
     }
@@ -596,14 +735,15 @@ public class MainActivity extends Activity {
         return JarvisActionIntentRouter.isExplicitAction(q);
     }
 
-    private void runAgent(String objective) {
+    private void runAgent(String objective, long responseToken) {
         String geminiKey = secureStore.get("gemini_key");
         String groqKey = secureStore.get("groq_key");
-        if (geminiKey.isEmpty() && groqKey.isEmpty()) {
+        String openAiKey = secureStore.get("openai_key");
+        if (geminiKey.isEmpty() && groqKey.isEmpty() && openAiKey.isEmpty()) {
             respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
             return;
         }
-        if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+        if (activeAgentRun != null && !activeAgentRun.isFinished()) {
             respond("JARVIS is already handling an agent task. Pehle current task complete hone do.");
             return;
         }
@@ -611,12 +751,13 @@ public class MainActivity extends Activity {
         JarvisAgentEngine engine = new JarvisAgentEngine(
             new JarvisStructuredPlanner(agentToolRegistry, geminiKey,
                 memory.getString("gemini_model", "gemini-2.5-flash"),
-                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b")),
+                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"), openAiKey),
             agentToolRegistry, this::requestAgentApproval);
-        activeAgentRun = engine.submit(objective, new JarvisAgentEngine.Listener() {
+        final JarvisAgentEngine.RunHandle[] submittedRun = new JarvisAgentEngine.RunHandle[1];
+        submittedRun[0] = engine.submit(objective, new JarvisAgentEngine.Listener() {
             @Override public void onState(JarvisAgentEngine.State state, String detail) {
                 runOnUiThread(() -> {
-                    if (status == null || isFinishing()) return;
+                    if (status == null || isFinishing() || !responseSequencer.isCurrent(responseToken)) return;
                     if (state == JarvisAgentEngine.State.AWAITING_APPROVAL) status.setText("● WAITING FOR YOUR APPROVAL");
                     else if (state == JarvisAgentEngine.State.RUNNING) status.setText("● EXECUTING APPROVED ACTION");
                     else if (state == JarvisAgentEngine.State.PLANNING) status.setText("● AI ACTION PLANNING...");
@@ -625,8 +766,8 @@ public class MainActivity extends Activity {
             }
             @Override public void onComplete(JarvisAgentEngine.AgentReport report) {
                 runOnUiThread(() -> {
-                    activeAgentRun = null;
-                    if (isFinishing()) return;
+                    if (activeAgentRun == submittedRun[0]) activeAgentRun = null;
+                    if (isFinishing() || !responseSequencer.isCurrent(responseToken)) return;
                     if (report.finalState == JarvisAgentEngine.State.COMPLETED && report.steps.isEmpty()) {
                         respond("Is request ke liye koi supported Android action identify nahi hua. App ka exact naam batao, ya normal question ki tarah pucho.");
                         return;
@@ -644,6 +785,7 @@ public class MainActivity extends Activity {
                 });
             }
         });
+        activeAgentRun = submittedRun[0];
     }
 
     private boolean requestAgentApproval(JarvisAgentEngine.AgentStep step) {
@@ -677,7 +819,12 @@ public class MainActivity extends Activity {
                 .setOnCancelListener(d -> {
                     if (resolved.compareAndSet(false, true)) latch.countDown();
                 })
+                .setOnDismissListener(d -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                    if (activeAgentApprovalDialog == dialog[0]) activeAgentApprovalDialog = null;
+                })
                 .create();
+            activeAgentApprovalDialog = dialog[0];
             dialog[0].show();
         });
         try {
@@ -702,8 +849,12 @@ public class MainActivity extends Activity {
         for(String key:all.keySet()) if(key.startsWith("custom_")) {
             String value=memory.getString(key,""); String[] pair=value.split("\\|",2);
             if(pair.length==2 && raw.equalsIgnoreCase(pair[0].trim())) { String action=pair[1].trim();
-                if(action.startsWith("https://")||action.startsWith("http://")) open(action);
-                respond("Custom command executing: "+action); return true;
+                if(action.startsWith("https://")||action.startsWith("http://")) {
+                    respond(open(action)?"Custom website opened successfully.":"Browser unavailable; custom command could not be opened.");
+                } else {
+                    respond("Custom command is invalid. Only saved HTTPS website URLs are supported.");
+                }
+                return true;
             }
         } return false;
     }
@@ -717,7 +868,8 @@ public class MainActivity extends Activity {
         if(memory.getBoolean("memory_ai_learning",false))
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-                memory.getString("groq_model","openai/gpt-oss-120b"),note.trim());
+                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),note.trim(),
+                memoryConsentGate());
         return true;
     }
     private void setFlashlight(boolean enabled) {
@@ -750,8 +902,7 @@ public class MainActivity extends Activity {
     }
 
     private void adjustVolume(int direction) {
-        try {
-            android.media.AudioManager audio = (android.media.AudioManager)getSystemService(Context.AUDIO_SERVICE);
+        try {            android.media.AudioManager audio = (android.media.AudioManager)getSystemService(Context.AUDIO_SERVICE);
             if (audio == null) { respond("Audio service unavailable."); return; }
             if (direction > 0) audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
                 android.media.AudioManager.ADJUST_RAISE,android.media.AudioManager.FLAG_SHOW_UI);
@@ -767,17 +918,17 @@ public class MainActivity extends Activity {
     private String batteryReport() { try { Intent b=registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED)); int level=b==null?-1:b.getIntExtra(BatteryManager.EXTRA_LEVEL,-1); return level<0?"Battery status nahi mil raha.":"Battery "+level+" percent hai."; } catch(Exception e){return "Battery status unavailable.";} }
     private void systemReport() { refreshUiStatus(); respond("System report. "+batteryReport()+" Storage and memory information are available in the system report."); }
     private void memoryDialog() {
-        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile","Memory temporary note"};
+        String[] options={"Add memory","Search memories","Edit memory by ID","Delete memory by ID","View conversation history","Clear conversation history","Clear all saved memories","Toggle privacy mode","View knowledge graph","Tasks & reminders","Memory statistics","Consolidate & reflect","View pinned core memories","Toggle Gemini semantic vectors","Delete semantic vector index","Toggle AI extraction & reflection","View structured profile","Memory temporary note","Repair memory index & orphan records"};
         new AlertDialog.Builder(this).setTitle("MEMORY CENTER • "+(longTermMemory==null?0:longTermMemory.getMemoryCount())+" SAVED")
             .setItems(options,(d,which)->{
                 if(which==0){EditText in=new EditText(this);in.setHint("What should JARVIS remember?");in.setMinLines(2);new AlertDialog.Builder(this).setTitle("ADD MEMORY").setView(in).setPositiveButton("SAVE",(x,y)->respond(saveNote(in.getText().toString())?"Memory saved locally.":"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai.")).setNegativeButton("CANCEL",null).show();}
                 else if(which==1){EditText in=new EditText(this);in.setHint("Search word or phrase");new AlertDialog.Builder(this).setTitle("SEARCH MEMORY").setView(in).setPositiveButton("SEARCH",(x,y)->show("MEMORY RESULTS",longTermMemory==null?"Unavailable":longTermMemory.searchMemories(in.getText().toString(),50))).setNegativeButton("CANCEL",null).show();}
-                else if(which==2){EditText in=new EditText(this);in.setHint("ID | replacement text");new AlertDialog.Builder(this).setTitle("EDIT MEMORY").setMessage("Format: 4 | My favourite colour is blue").setView(in).setPositiveButton("UPDATE",(x,y)->{String[] p=in.getText().toString().split("\\|",2);if(p.length==2&&longTermMemory!=null&&longTermMemory.updateMemory(parseLong(p[0].trim()),"personal",p[1].trim()))respond("Memory updated.");else respond("Format or ID invalid.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==2){EditText in=new EditText(this);in.setHint("ID | replacement text");new AlertDialog.Builder(this).setTitle("EDIT MEMORY").setMessage("Format: 4 | My favourite colour is blue").setView(in).setPositiveButton("UPDATE",(x,y)->{String[] p=in.getText().toString().split("\\|",2);if(p.length==2&&longTermMemory!=null&&longTermMemory.updateMemory(parseLong(p[0].trim()),null,p[1].trim()))respond("Memory updated.");else respond("Format or ID invalid.");}).setNegativeButton("CANCEL",null).show();}
                 else if(which==3){EditText in=new EditText(this);in.setHint("Memory ID");new AlertDialog.Builder(this).setTitle("DELETE MEMORY").setView(in).setPositiveButton("DELETE",(x,y)->respond(longTermMemory!=null&&longTermMemory.deleteMemory(parseLong(in.getText().toString()))?"Memory deleted.":"Memory ID not found.")).setNegativeButton("CANCEL",null).show();}
                 else if(which==4){show("CONVERSATION HISTORY",longTermMemory==null?"Unavailable":longTermMemory.getRecentConversation(100));}
-                else if(which==5){new AlertDialog.Builder(this).setTitle("CLEAR HISTORY?").setMessage("Saved memories will remain.").setPositiveButton("CLEAR",(x,y)->{if(longTermMemory!=null)longTermMemory.clearConversationHistory();respond("Conversation history cleared.");}).setNegativeButton("CANCEL",null).show();}
-                else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts and preferences will be permanently deleted.").setPositiveButton("DELETE",(x,y)->{if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All memories cleared.");}).setNegativeButton("CANCEL",null).show();}
-                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
+                else if(which==5){new AlertDialog.Builder(this).setTitle("CLEAR HISTORY?").setMessage("Saved facts will remain. Conversation turns, session digests, and the persisted last response will be cleared. Pending AI memory jobs from this history will be cancelled.").setPositiveButton("CLEAR",(x,y)->{invalidatePendingMemoryJobs();if(longTermMemory!=null)longTermMemory.clearConversationHistory();memory.edit().remove("last_response").apply();if(conversationList!=null)conversationList.removeAllViews();lastUserPrompt="";lastResponse="";respondEphemeral("Conversation history cleared. Saved facts remain; pending history learning cancelled.");lastResponse="";}).setNegativeButton("CANCEL",null).show();}
+                else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts, summaries and indexes will be permanently deleted. Pending AI memory jobs will be cancelled. Chat history remains a separate control.").setPositiveButton("DELETE",(x,y)->{invalidatePendingMemoryJobs();if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All saved memories cleared. Chat history remains.");}).setNegativeButton("CANCEL",null).show();}
+                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);if(on)invalidatePendingMemoryJobs();if(on)memory.edit().remove("last_response").apply();memory.edit().putBoolean("memory_private_mode",on).apply();respondEphemeral(on?"Privacy mode ON. History and auto-learning paused; current requests may still go to your configured cloud AI.":"Privacy mode OFF. Memory resumed.");}
                 else if(which==8){show("KNOWLEDGE GRAPH",longTermMemory==null?"Unavailable":longTermMemory.getKnowledgeGraphText(""));}
                 else if(which==9) taskDialog();
                 else if(which==10) show("MEMORY HEALTH",longTermMemory==null?"Unavailable":longTermMemory.getMemoryStatsText());
@@ -785,7 +936,7 @@ public class MainActivity extends Activity {
                 else if(which==12) show("PINNED CORE MEMORIES",longTermMemory==null?"Unavailable":longTermMemory.getPinnedMemoriesText(50));
                 else if(which==13){
                     boolean enabled=memory.getBoolean("memory_cloud_embeddings",false);
-                    if(enabled){memory.edit().putBoolean("memory_cloud_embeddings",false).apply();respond("Gemini semantic vectors OFF. Local memory recall remains active.");}
+                    if(enabled){invalidatePendingMemoryJobs();memory.edit().putBoolean("memory_cloud_embeddings",false).apply();respond("Gemini semantic vectors OFF. Local memory recall remains active.");}
                     else new AlertDialog.Builder(this).setTitle("ENABLE GEMINI SEMANTIC MEMORY?")
                         .setMessage("This optional feature sends saved memory snippets and future memory-search queries to Google Gemini Embeddings. Your memory database remains on this phone, and local search stays available as fallback. Enable only if you agree.")
                         .setPositiveButton("ENABLE",(x,y)->{memory.edit().putBoolean("memory_cloud_embeddings",true).apply();indexSemanticMemoryIfEnabled(300);respond("Gemini semantic vectors enabled. Existing memories will be indexed in the background.");})
@@ -795,6 +946,7 @@ public class MainActivity extends Activity {
                 else if(which==15) confirmAiMemoryLearning();
                 else if(which==16) show("STRUCTURED PROFILE",longTermMemory==null?"Unavailable":longTermMemory.getProfileSummaryText());
                 else if(which==17){EditText temp=new EditText(this);temp.setHint("TTL command: 2h | short note");new AlertDialog.Builder(this).setTitle("TEMPORARY MEMORY").setMessage("Example: 30m | call the courier").setView(temp).setPositiveButton("SAVE",(x,y)->handle("memory temp "+temp.getText().toString())).setNegativeButton("CANCEL",null).show();}
+                else if(which==18){int removed=longTermMemory==null?0:longTermMemory.cleanupMemoryOrphans();respond("Memory maintenance complete. "+removed+" orphan records removed.");}
             }).setNegativeButton("CLOSE",null).show();
     }
     private String scheduleReminder(String raw) {
@@ -809,11 +961,18 @@ public class MainActivity extends Activity {
         when.set(java.util.Calendar.SECOND,0);when.set(java.util.Calendar.MILLISECOND,0);
         if(when.getTimeInMillis()<=System.currentTimeMillis())when.add(java.util.Calendar.DAY_OF_YEAR,1);
         long dueAt=when.getTimeInMillis();
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            return "Notification permission OFF hai. Android Settings mein JARVIS notifications ON karke reminder dobara set karein; abhi kuch save nahi hua.";
         long id=longTermMemory==null?-1:longTermMemory.addTask(title,dueAt);
         if(id<=0)return "Reminder save nahi ho paya.";
-        if(!JarvisReminderScheduler.schedule(this,id,title,dueAt))
-            return "Reminder list mein save hua, lekin Android Alarm service schedule nahi kar payi.";
-        return "JARVIS reminder schedule ho gaya: "+title+" — "+new SimpleDateFormat("dd MMM, hh:mm a",Locale.getDefault()).format(new Date(dueAt))+". Notification permission ON rakhein.";
+        if(!JarvisReminderScheduler.schedule(getApplicationContext(),id,title,dueAt)) {
+            longTermMemory.deleteTask(id);
+            return "Android Alarm service reminder schedule nahi kar payi; task save nahi rakha gaya.";
+        }
+        return "JARVIS reminder schedule ho gaya: "+title+" — "+new SimpleDateFormat("dd MMM, hh:mm a",Locale.getDefault()).format(new Date(dueAt))+".";
+
     }
     private void taskDialog() {
         EditText in=new EditText(this);in.setHint("New task / reminder");in.setMinLines(2);
@@ -825,19 +984,29 @@ public class MainActivity extends Activity {
     }
     private long parseLong(String s){try{return Long.parseLong(s.trim());}catch(Exception e){return -1;}}
     private long parseMemoryId(String s){return parseLong(s.replaceFirst("(?i)^memory delete\\s*","").trim());}
+    private void invalidatePendingMemoryJobs(){
+        if(memory!=null)memory.edit().putLong("memory_generation",memory.getLong("memory_generation",0L)+1L).apply();
+    }
+    private JarvisMemoryAiWorker.ConsentGate memoryConsentGate(){
+        final long generation=memory==null?0L:memory.getLong("memory_generation",0L);
+        return () -> memory!=null && memory.getBoolean("memory_ai_learning",false) &&
+            !memory.getBoolean("memory_private_mode",false) &&
+            memory.getLong("memory_generation",0L)==generation;
+    }
     private void autoLearnMemory(String raw){
         if(longTermMemory==null||raw==null||memory.getBoolean("memory_private_mode",false))return;
         if(JarvisMemoryExtractor.learn(longTermMemory,raw)) indexSemanticMemoryIfEnabled(1);
         if(memory.getBoolean("memory_ai_learning",false))
             JarvisMemoryAiWorker.learnAsync(longTermMemory,secureStore.get("gemini_key"),
                 memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-                memory.getString("groq_model","openai/gpt-oss-120b"),raw);
+                memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),raw,
+                memoryConsentGate());
     }
     private void runAiMemoryReflectionIfEnabled(){
         if(longTermMemory==null||memory.getBoolean("memory_private_mode",false)||!memory.getBoolean("memory_ai_learning",false))return;
         JarvisMemoryAiWorker.reflectPendingAsync(longTermMemory,secureStore.get("gemini_key"),
             memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-            memory.getString("groq_model","openai/gpt-oss-120b"));
+            memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),            memoryConsentGate());
     }
     private String buildOfflineMemoryPrompt(String raw){
         if(memory==null||memory.getBoolean("memory_private_mode",false)||longTermMemory==null)return raw;
@@ -850,11 +1019,11 @@ public class MainActivity extends Activity {
             respond("AI memory extraction and cloud reflection OFF. Local learning remains available.");
             return;
         }
-        if(secureStore.get("gemini_key").isEmpty()&&secureStore.get("groq_key").isEmpty()){
-            respond("Pehle ONLINE AI SETUP mein Gemini ya Groq API key add karo.");return;
+        if(secureStore.get("gemini_key").isEmpty()&&secureStore.get("groq_key").isEmpty()&&secureStore.get("openai_key").isEmpty()){
+            respond("Pehle ONLINE AI SETUP mein Gemini, Groq ya OpenAI API key add karo.");return;
         }
         new AlertDialog.Builder(this).setTitle("ENABLE AI MEMORY LEARNING?")
-            .setMessage("When enabled, new user messages and eligible past conversation sessions will be sent to your configured Gemini/Groq provider to extract durable facts and create summaries. Sensitive categories are filtered, but cloud processing is still involved. Local memory remains available. Enable only if you agree.")
+            .setMessage("When enabled, new user messages and eligible past conversation sessions may be sent to your configured Gemini, Groq or OpenAI provider to extract durable facts and create summaries. Sensitive categories are filtered, but cloud processing is still involved. Local memory remains available. Enable only if you agree.")
             .setPositiveButton("ENABLE",(d,w)->{
                 memory.edit().putBoolean("memory_ai_learning",true).apply();
                 runAiMemoryReflectionIfEnabled();
@@ -862,8 +1031,13 @@ public class MainActivity extends Activity {
             }).setNegativeButton("CANCEL",null).show();
     }
     private void indexSemanticMemoryIfEnabled(int maximum){
-        if(memory!=null && memory.getBoolean("memory_cloud_embeddings",false) && secureStore!=null)
-            JarvisEmbeddingWorker.indexPending(longTermMemory,secureStore,maximum);
+        if(memory==null||!memory.getBoolean("memory_cloud_embeddings",false)||
+                memory.getBoolean("memory_private_mode",false)||secureStore==null||longTermMemory==null)return;
+        final long generation=memory.getLong("memory_generation",0L);
+        JarvisEmbeddingWorker.indexPending(longTermMemory,secureStore,maximum,()->memory!=null &&
+            memory.getBoolean("memory_cloud_embeddings",false) &&
+            !memory.getBoolean("memory_private_mode",false) &&
+            memory.getLong("memory_generation",0L)==generation);
     }
     private void customCommandDialog() {
         LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(24,8,24,8);
@@ -891,19 +1065,21 @@ public class MainActivity extends Activity {
         EditText geminiModel = new EditText(this); geminiModel.setSingleLine(true); geminiModel.setHint("Gemini model"); geminiModel.setText(memory.getString("gemini_model", "gemini-2.5-flash"));
         EditText groqKey = new EditText(this); groqKey.setSingleLine(true); groqKey.setHint("Groq API key"); groqKey.setInputType(129); groqKey.setText(secureStore.get("groq_key"));
         EditText groqModel = new EditText(this); groqModel.setSingleLine(true); groqModel.setHint("Groq model"); groqModel.setText(memory.getString("groq_model", "openai/gpt-oss-120b"));
-        box.addView(geminiKey); box.addView(geminiModel); box.addView(groqKey); box.addView(groqModel);
-        new AlertDialog.Builder(this).setTitle("JARVIS GEMINI + GROQ HYBRID")
-            .setMessage("Gemini primary, Groq automatic backup. Keys are encrypted at rest with Android Keystore. Free quotas and model access depend on your provider account.")
+        EditText openAiKey = new EditText(this); openAiKey.setSingleLine(true); openAiKey.setHint("Optional OpenAI API key (GPT-6.2 Astra; paid API)"); openAiKey.setInputType(129); openAiKey.setText(secureStore.get("openai_key"));
+        box.addView(geminiKey); box.addView(geminiModel); box.addView(groqKey); box.addView(groqModel); box.addView(openAiKey);
+        new AlertDialog.Builder(this).setTitle("JARVIS MULTI-BRAIN PROVIDERS")
+            .setMessage("Gemini/Groq handle everyday and fallback requests. Optional GPT-6.2 Astra is used for complex coding, research and analysis tasks. OpenAI API usage is billed separately; a ChatGPT subscription does not include API credits. Keys are encrypted at rest with Android Keystore.")
             .setView(scroll).setPositiveButton("SAVE", (d,w) -> {
                 try {
                     secureStore.put("gemini_key", geminiKey.getText().toString().trim());
                     secureStore.put("groq_key", groqKey.getText().toString().trim());
+                    secureStore.put("openai_key", openAiKey.getText().toString().trim());
                     String gm = geminiModel.getText().toString().trim(); String gr = groqModel.getText().toString().trim();
                     memory.edit().putString("gemini_model", gm.isEmpty()?"gemini-2.5-flash":gm)
                         .putString("groq_model", gr.isEmpty()?"openai/gpt-oss-120b":gr).apply();
-                    refreshUiStatus(); respond("Hybrid AI settings saved. Gemini primary, Groq backup.");
+                    refreshUiStatus(); respond("AI provider settings saved. Astra is optional for complex tasks; Gemini/Groq remain fallback providers.");
                 } catch (Exception e) { respond("Secure key storage failed: " + e.getMessage()); }
-            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); refreshUiStatus(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
+            }).setNeutralButton("CLEAR KEYS", (d,w) -> { try { secureStore.put("gemini_key", ""); secureStore.put("groq_key", ""); secureStore.put("openai_key", ""); refreshUiStatus(); respond("Provider keys cleared."); } catch(Exception e) { respond("Could not clear keys."); } })
             .setNegativeButton("CANCEL", null).show();
     }
 
@@ -928,15 +1104,26 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
-    private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
-    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
+    private boolean launch(Intent i) { return JarvisActionResultGuard.run(() -> startActivity(i)); }
+    private boolean open(String url) { return JarvisActionResultGuard.run(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)))); }
+    private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); speak(s); status.setText("● CORE ONLINE"); }
+    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
+
+    /** Private Mode must not leave a persisted copy of the latest response. */
+    private void persistLastResponse(String response) {
+        if (memory == null) return;
+        android.content.SharedPreferences.Editor editor = memory.edit();
+        if (!JarvisPrivacyPolicy.shouldPersistLastResponse(memory.getBoolean("memory_private_mode", false))) editor.remove("last_response");
+        else editor.putString("last_response", response == null ? "" : response);
+        editor.apply();
+    }
     private void speak(String s) { if (orbView != null) orbView.setState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
         tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,"jarvis");
     } }
     private void show(String who,String s) {
+        if(who!=null&&(who.equalsIgnoreCase("YOU")||who.equalsIgnoreCase("COMMANDER"))&&chatWelcomePanel!=null)chatWelcomePanel.setVisibility(View.GONE);
         if(conversationList==null)return;
         final float d=getResources().getDisplayMetrics().density;
         boolean fromUser=who!=null&&(who.equalsIgnoreCase("YOU")||who.equalsIgnoreCase("COMMANDER"));
@@ -1015,5 +1202,5 @@ public class MainActivity extends Activity {
         refreshUiStatus();
     }
     @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
-    @Override protected void onDestroy() { if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { responseSequencer.invalidate(); if(activeAgentRun!=null) activeAgentRun.cancel(); if(activeAgentApprovalDialog!=null) activeAgentApprovalDialog.dismiss(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }

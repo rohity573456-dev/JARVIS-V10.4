@@ -3,38 +3,89 @@ package com.jarvis.personalassistant;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /** Provider-backed extraction/reflection; called only after explicit cloud-memory consent. */
 public final class JarvisMemoryAiWorker {
-    private static final ExecutorService EXECUTOR=Executors.newSingleThreadExecutor();
+    // Bound queued maintenance work while preserving single-threaded memory writes.
+    private static final ThreadPoolExecutor EXECUTOR = new ThreadPoolExecutor(
+        1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(16),
+        new ThreadFactory() {
+            @Override public Thread newThread(Runnable task) {
+                Thread thread = new Thread(task, "Jarvis-Memory-AI");
+                thread.setDaemon(true);
+                return thread;
+            }
+        }, new ThreadPoolExecutor.AbortPolicy());
     private JarvisMemoryAiWorker(){}
 
-    public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String text){
-        if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text))return;
-        if(empty(gKey)&&empty(rKey))return;
-        EXECUTOR.execute(()->storeFacts(db,parseArray(ask(gKey,gModel,rKey,rModel,extractPrompt(text))),"ai-conversation"));
+    public interface ConsentGate { boolean isAllowed(); }
+    private static final ConsentGate DENY_BY_DEFAULT = () -> false;
+
+    /** Legacy callers fail closed; production callers must supply a live consent gate. */
+    public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,String text){
+        learnAsync(db,gKey,gModel,rKey,rModel,openAiKey,text,DENY_BY_DEFAULT);
     }
 
-    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel){
-        if(db==null||(empty(gKey)&&empty(rKey)))return;
-        EXECUTOR.execute(()->{
+    public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,String text,ConsentGate consent){
+        if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text)||
+                consent==null||!consent.isAllowed())return;
+        if("NONE".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey))))return;
+        enqueue(()->{
+            if(!consent.isAllowed())return;
+            String result=ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text));
+            if(!consent.isAllowed())return;
+            storeFacts(db,parseArray(result),"ai-conversation",consent);
+        });
+    }
+
+    /** Legacy callers fail closed; production callers must supply a live consent gate. */
+    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey){
+        reflectPendingAsync(db,gKey,gModel,rKey,rModel,openAiKey,DENY_BY_DEFAULT);
+    }
+
+    public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,ConsentGate consent){
+        if(db==null||"NONE".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey)))||consent==null||!consent.isAllowed())return;
+        enqueue(()->{
+            if(!consent.isAllowed())return;
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
             for(JarvisMemoryStore.PendingSession session:sessions){
-                String prompt="Review this completed conversation session. Return JSON only: "+
-                    "{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\","+
-                    "\"type\":\"core|semantic|procedural|episodic\",\"key\":\"stable.key\",\"content\":\"durable fact\","+
-                    "\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} "+
-                    "Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. "+
-                    "Summary under 600 chars. Session:\n"+session.transcript;
-                JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,prompt));
+                if(!consent.isAllowed())return;
+                // Old transcripts may predate newer privacy filters; never upload a
+                // session containing sensitive text for background AI reflection.
+                if(!isEligibleForAiReflection(session.transcript)){
+                    db.markAiSessionReflectionSkipped(session.sessionId);
+                    continue;
+                }
+                StringBuilder promptBuilder=new StringBuilder();
+                promptBuilder.append("Review this completed conversation session. Return JSON only: ");
+                promptBuilder.append("{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\",");
+                promptBuilder.append("\"type\":\"core|semantic|procedural|episodic\",\"key\":\"stable.key\",\"content\":\"durable fact\",");
+                promptBuilder.append("\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} ");
+                promptBuilder.append("Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. ");
+                promptBuilder.append("Summary under 600 chars. Session:\\n").append(session.transcript);
+                String prompt=promptBuilder.toString();
+                JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,openAiKey,prompt));
+                if(!consent.isAllowed())return;
                 if(root==null)continue;
                 String summary=root.optString("summary","").trim();
-                if(!summary.isEmpty())db.saveAiSessionReflection(session.sessionId,summary);
-                storeFacts(db,root.optJSONArray("facts"),"ai-reflection");
+                if(!summary.isEmpty() && summary.length()<=600 && !sensitive(summary) && consent.isAllowed())
+                    db.saveAiSessionReflection(session.sessionId,summary);
+                if(!consent.isAllowed())return;
+                storeFacts(db,root.optJSONArray("facts"),"ai-reflection",consent);
             }
         });
+    }
+
+    private static void enqueue(Runnable task) {
+        try { EXECUTOR.execute(task); }
+        catch (RejectedExecutionException overloaded) {
+            android.util.Log.w("JARVIS-MEMORY", "Background memory queue is full; skipping this maintenance task.");
+        }
     }
 
     private static String extractPrompt(String text){
@@ -45,30 +96,48 @@ public final class JarvisMemoryAiWorker {
             "Never extract credentials, OTPs, government IDs, financial identifiers, health, religion, political beliefs, sexual or criminal information. "+
             "Confidence 0-1, importance 0-100, pinned only for durable identity and explicit standing instructions. If no fact qualifies return []. User: "+text;
     }
-    private static String ask(String gKey,String gModel,String rKey,String rModel,String prompt){
-        String result="ERROR: no provider";
-        if(!empty(gKey))result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
-            empty(gModel)?"gemini-2.5-flash":gModel,prompt);
+    static String preferredMemoryProvider(boolean geminiConfigured, boolean groqConfigured,
+            boolean openAiConfigured) {
+        // Background memory maintenance must never spend on the optional premium tier.
+        if (geminiConfigured) return "GEMINI";
+        if (groqConfigured) return "GROQ";
+        return "NONE";
+    }
+
+    private static String ask(String gKey,String gModel,String rKey,String rModel,String openAiKey,String prompt){
+        String result="ERROR: no free memory provider configured";
+        if("GEMINI".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey))))
+            result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
+                empty(gModel)?"gemini-2.5-flash":gModel,prompt);
         if(result.startsWith("ERROR")&&!empty(rKey))result=OnlineAiClient.ask("https://api.groq.com/openai/v1",rKey,
             empty(rModel)?"openai/gpt-oss-120b":rModel,prompt);
         return result;
     }
-    private static void storeFacts(JarvisMemoryStore db,JSONArray facts,String source){
-        if(db==null||facts==null)return;
+    private static void storeFacts(JarvisMemoryStore db,JSONArray facts,String source,ConsentGate consent){
+        if(db==null||facts==null||consent==null||!consent.isAllowed())return;
         for(int i=0;i<Math.min(20,facts.length());i++){
+            if(!consent.isAllowed())return;
             JSONObject f=facts.optJSONObject(i);if(f==null)continue;
             String content=f.optString("content","").trim(),key=f.optString("key","").trim();
-            if(content.length()<4||content.length()>500||key.isEmpty()||sensitive(content))continue;
+            String category=f.optString("category","general").trim().toLowerCase(java.util.Locale.ROOT);
+            if(content.length()<4||content.length()>500||key.isEmpty()||key.length()>96||
+                    category.length()>40||isSensitiveCategory(category)||sensitive(content)||sensitive(key))continue;
             String type=f.optString("type","semantic");
             if(!("core".equals(type)||"semantic".equals(type)||"procedural".equals(type)||"episodic".equals(type)))type="semantic";
             long validFrom=f.optLong("valid_from",0),validUntil=f.optLong("valid_until",0);
-            long id=db.upsertFact(f.optString("category","general"),type,key,content,
-                f.optDouble("confidence",0.70),f.optInt("importance",55),f.optBoolean("pinned",false),source);
+            double confidence=Math.max(0.0,Math.min(1.0,f.optDouble("confidence",0.70)));
+            int importance=Math.max(0,Math.min(100,f.optInt("importance",55)));
+            boolean pinned=f.optBoolean("pinned",false)&&isSafePinnedKey(key,category);
+            if(!consent.isAllowed())return;
+            long id=db.upsertFact(category,type,key,content,confidence,importance,pinned,source);
             if(id>0&&(validFrom>0||validUntil>0))db.setMemoryValidity(id,validFrom,validUntil);
             String object=f.optString("object","").trim();
-            if(id>0&&!object.isEmpty())db.addGraphRelation(id,f.optString("subject","Commander"),
-                f.optString("relation","related_to"),object,f.optDouble("confidence",0.70),
-                f.optLong("valid_from",0),f.optLong("valid_until",0));
+            String subject=f.optString("subject","Commander").trim();
+            String relation=f.optString("relation","related_to").trim();
+            if(consent.isAllowed()&&id>0&&!object.isEmpty()&&object.length()<=240&&subject.length()<=120&&
+                    relation.length()<=80&&!sensitive(object)&&!sensitive(subject)&&!sensitive(relation))
+                db.addGraphRelation(id,subject,relation,object,confidence,
+                    f.optLong("valid_from",0),f.optLong("valid_until",0));
         }
     }
     private static JSONArray parseArray(String raw){
@@ -87,10 +156,23 @@ public final class JarvisMemoryAiWorker {
         return s.trim();
     }
     private static boolean empty(String s){return s==null||s.trim().isEmpty();}
-    private static boolean sensitive(String value){
-        String q=value.toLowerCase(java.util.Locale.ROOT);
-        String[] bad={"password","passcode","otp","cvv","aadhaar","aadhar","pan number","bank account","credit card",
-            "debit card","diagnosis","medicine","medical condition","disease","religion","political party","sexual"};
-        for(String b:bad)if(q.contains(b))return true;return false;
+    static boolean isEligibleForAiReflection(String transcript) {
+        return transcript != null && !sensitive(transcript);
     }
-}
+
+    static boolean isSensitiveCategory(String category){
+        if(category==null)return true;
+        String q=category.trim().toLowerCase(java.util.Locale.ROOT);
+        return q.matches(".*(health|medical|diagnos|relig|politic|sexual|sex_life|criminal|credential|password|identity_document|government_id|bank|financial_identifier|biometric).*");
+    }
+    static boolean isSafePinnedKey(String key,String category){
+        if(key==null||category==null||isSensitiveCategory(category))return false;
+        String k=key.trim().toLowerCase(java.util.Locale.ROOT);
+        return k.equals("profile.name")||k.startsWith("instruction.")||
+            k.startsWith("preference.")||k.equals("project.current")||
+            k.equals("goal.primary");
+    }
+    static boolean isSensitiveText(String value){return sensitive(value);}
+    private static boolean sensitive(String value) {
+        return JarvisSensitiveDataFilter.isSensitiveText(value);
+    }}
