@@ -661,3 +661,18 @@ Every project report must label each capability as:
 **Verification**
 - The change is covered by the existing SQLite lifecycle tests for history/session/digest deletion and by the current Android unit-test/compile workflow, which is pending for the latest UI changes.
 - Physical-device confirmation that the UI, restart state and retry controls all reset as expected remains pending.
+
+
+## Current phase status — 23 November 2026
+
+| Blueprint phase | Current status | Evidence / remaining boundary |
+|---|---|---|
+| Phase 0 — Baseline and safety | **Implemented; CI-verified** | Feature branch and draft PR established; source/dependency audit recorded; three bundled ONNX assets have matching base-branch Git blob SHAs. Physical-device wake-word soak test remains open. |
+| Phase 1 — Brain foundation | **Implemented; CI-verified** | Gemini/Groq/local routing, optional Astra adapter, strict foreground/background intent gates, provider fallbacks, prompt budgets and regression tests are integrated. Live provider quota/latency tests are not run in CI. |
+| Phase 2 — Conversation and context | **Implemented; CI-verified** | SQLite multi-turn history, bounded context, follow-up context, stale-response sequencing and Private Mode isolation are integrated and tested. Device-level rapid-turn testing remains open. |
+| Phase 3 — Memory upgrade | **Implemented with remaining planned capabilities** | Local SQLite facts, temporal history, graph, summaries, vectors, tasks, privacy filters, consent gates and lifecycle cleanup are integrated. Cross-device backup/restore and a full memory-precision benchmark are not implemented; Android automatic backup is disabled. |
+| Phase 4 — Verification and specialist agents | **Partially implemented; core paths CI-verified** | Bounded planner/executor, typed allow-listed Android tools, approval gates, verified tool results, safe retry policy and cancellation are tested. The tool catalogue is intentionally small; full researcher/coder/analyst specialist workforces are still planned. |
+| Phase 5 — Multimodal and Android autonomy | **Partially implemented** | Existing ONNX wake-word pipeline, speech recognition/TTS, image analysis, reminders and a small Android tool adapter are present. Screen automation, video understanding, streaming multimodal input and broad device coverage remain planned. |
+| Phase 6 — Evaluation and controlled evolution | **Partially implemented; automated regression baseline active** | Android unit/Robolectric tests and existing Python wake-corpus benchmark tests are included in the final build gate. A full quality benchmark suite, real-device matrix, battery/latency soak tests and controlled model-routing evaluation remain open. |
+
+**Release rule:** The current branch is not described as completing all 107 divisions or as production-ready. The first final APK is deferred until the current source/test queue is green. Real-device validation is still required after installation.
