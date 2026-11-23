@@ -70,6 +70,33 @@ public class JarvisMemoryLifecycleSqliteTest {
         assertEquals(1, store.getMemoryCount());
     }
 
+    @Test public void editingMemoryAtomicallyRebuildsIndexesAndPreservesCategory() {
+        long id = store.saveMemory("preference", "I prefer detailed answers");
+        assertTrue(id > 0);
+        store.putLocalVector(id, JarvisLocalVectorEngine.embed("I prefer detailed answers"));
+        store.putEmbedding(id, new float[]{0.1f, 0.2f});
+        store.recordMemoryFeedback(id, 1, "detailed answers");
+        assertTrue(store.updateMemory(id, null, "I prefer concise answers"));
+
+        android.database.Cursor fact = store.getWritableDatabase().rawQuery(
+            "SELECT category,content FROM memories WHERE id=?", new String[]{String.valueOf(id)});
+        try {
+            assertTrue(fact.moveToFirst());
+            assertEquals("preference", fact.getString(0));
+            assertEquals("I prefer concise answers", fact.getString(1));
+        } finally { fact.close(); }
+        assertEquals(0, count("memory_embeddings", id));
+        assertEquals(0, count("memory_feedback", id));
+        assertEquals(1, count("memory_local_vectors", id));
+    }
+
+    private int count(String table, long id) {
+        android.database.Cursor c = store.getWritableDatabase().rawQuery(
+            "SELECT COUNT(*) FROM " + table + " WHERE memory_id=?", new String[]{String.valueOf(id)});
+        try { c.moveToFirst(); return c.getInt(0); }
+        finally { c.close(); }
+    }
+
     @Test public void deletingMemoryRemovesEveryDependentIndexAtomically() {
         long id = store.saveMemory("project", "JARVIS SQLite lifecycle test fact");
         assertTrue(id > 0);
