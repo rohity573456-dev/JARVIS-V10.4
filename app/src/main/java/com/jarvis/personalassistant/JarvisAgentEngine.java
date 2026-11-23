@@ -171,7 +171,7 @@ public final class JarvisAgentEngine {
     public static final class RunHandle {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final AtomicBoolean finished = new AtomicBoolean(false);
-        public void cancel() { cancelled.set(true); }
+        public void cancel() { if (!finished.get()) cancelled.set(true); }
         public boolean isCancelled() { return cancelled.get(); }
         public boolean isFinished() { return finished.get(); }
     }
