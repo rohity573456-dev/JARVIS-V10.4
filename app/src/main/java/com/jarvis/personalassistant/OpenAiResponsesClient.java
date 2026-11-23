@@ -57,10 +57,7 @@ public final class OpenAiResponsesClient {
             body.put("tools", tools);
             body.put("tool_choice", "auto");
             JSONObject reasoning = new JSONObject();
-            String effort = reasoningEffort == null ? "high" : reasoningEffort.trim().toLowerCase(java.util.Locale.ROOT);
-            if (!("low".equals(effort) || "medium".equals(effort) || "high".equals(effort)
-                    || "xhigh".equals(effort) || "max".equals(effort))) effort = "high";
-            reasoning.put("effort", effort);
+            reasoning.put("effort", normalizeReasoningEffort(reasoningEffort, "high"));
             body.put("reasoning", reasoning);
             body.put("max_output_tokens", 2048);
 
@@ -105,6 +102,13 @@ public final class OpenAiResponsesClient {
         }
     }
 
+    static String normalizeReasoningEffort(String value, String fallback) {
+        String effort = value == null ? "" : value.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("low".equals(effort) || "medium".equals(effort)
+                || "high".equals(effort) || "xhigh".equals(effort)) return effort;
+        return "high".equals(fallback) ? "high" : "medium";
+    }
+
     public static String ask(String apiKey, String model, String instructions,
             String input, String reasoningEffort) {
         if (apiKey == null || apiKey.trim().isEmpty()) return "ERROR: OpenAI API key is not configured.";
@@ -118,10 +122,7 @@ public final class OpenAiResponsesClient {
             body.put("instructions", budget.system);
             body.put("input", budget.input);
             JSONObject reasoning = new JSONObject();
-            String effort = reasoningEffort == null ? "medium" : reasoningEffort.trim().toLowerCase(java.util.Locale.ROOT);
-            if (!("low".equals(effort) || "medium".equals(effort) || "high".equals(effort)
-                    || "xhigh".equals(effort) || "max".equals(effort))) effort = "medium";
-            reasoning.put("effort", effort);
+            reasoning.put("effort", normalizeReasoningEffort(reasoningEffort, "medium"));
             body.put("reasoning", reasoning);
             body.put("max_output_tokens", 4096);
 
