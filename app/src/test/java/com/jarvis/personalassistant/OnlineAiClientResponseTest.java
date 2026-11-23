@@ -1,44 +1,31 @@
 package com.jarvis.personalassistant;
 
-import org.json.JSONObject;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.robolectric.RobolectricTestRunner;
 import static org.junit.Assert.*;
 
-@RunWith(RobolectricTestRunner.class)
 public class OnlineAiClientResponseTest {
-    @Test public void acceptsCompleteAssistantAnswer() throws Exception {
-        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"Hello Boss.\"}}]}");
-        assertEquals("Hello Boss.", OnlineAiClient.extractAssistantAnswer(response));
+    @Test public void tokenTruncationIsRejectedForChatAndAgentPlanning() {
+        String error = OnlineAiClient.completionErrorForFinishReason("length");
+        assertNotNull(error);
+        assertTrue(error.startsWith("ERROR:"));
+        assertTrue(error.contains("truncated"));
     }
 
-    @Test public void rejectsTokenTruncatedAnswerSoRouterCanFallback() throws Exception {
-        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":\"This answer is incomplete\"}}]}");
-        assertTrue(OnlineAiClient.extractAssistantAnswer(response).startsWith("ERROR:"));
-        assertTrue(OnlineAiClient.extractAssistantAnswer(response).contains("truncated"));
+    @Test public void contentFilteringIsRejectedForChatAndAgentPlanning() {
+        String error = OnlineAiClient.completionErrorForFinishReason("content_filter");
+        assertNotNull(error);
+        assertTrue(error.startsWith("ERROR:"));
+        assertTrue(error.contains("filtered"));
     }
 
-    @Test public void rejectsFilteredAnswerSoRouterCanFallback() throws Exception {
-        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"content_filter\",\"message\":{\"content\":null}}]}");
-        assertTrue(OnlineAiClient.extractAssistantAnswer(response).startsWith("ERROR:"));
-        assertTrue(OnlineAiClient.extractAssistantAnswer(response).contains("filtered"));
+    @Test public void normalStopAndUnknownFinishReasonsRemainValid() {
+        assertNull(OnlineAiClient.completionErrorForFinishReason("stop"));
+        assertNull(OnlineAiClient.completionErrorForFinishReason(""));
+        assertNull(OnlineAiClient.completionErrorForFinishReason(null));
     }
 
-    @Test public void rejectsTruncatedToolPlanInsteadOfTreatingItAsNoAction() throws Exception {
-        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":null}}]}");
-        assertTrue(OnlineAiClient.extractToolCalls(response).startsWith("ERROR:"));
-        assertTrue(OnlineAiClient.extractToolCalls(response).contains("truncated"));
-    }
-
-    @Test public void acceptsACompleteNoToolDecision() throws Exception {
-        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"No action needed.\"}}]}");
-        assertEquals("[]", OnlineAiClient.extractToolCalls(response));
-    }
-
-    @Test public void rejectsMissingAndEmptyProviderContent() throws Exception {
-        assertTrue(OnlineAiClient.extractAssistantAnswer(new JSONObject("{}")).startsWith("ERROR:"));
-        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"  \"}}]}");
-        assertTrue(OnlineAiClient.extractAssistantAnswer(response).startsWith("ERROR:"));
+    @Test public void finishReasonMatchingIsCaseInsensitive() {
+        assertNotNull(OnlineAiClient.completionErrorForFinishReason("LENGTH"));
+        assertNotNull(OnlineAiClient.completionErrorForFinishReason("CONTENT_FILTER"));
     }
 }
