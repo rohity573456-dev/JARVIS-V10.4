@@ -723,3 +723,18 @@ Every project report must label each capability as:
 - Robolectric coverage now creates and lists a reminder, verifies the risk classifications, completes it and confirms it no longer appears among open tasks, then deletes it and confirms it is absent from all tasks.
 - GitHub Actions passed the task lifecycle and approval-gate regression suite (run 45114295989).
 - Physical-device approval-dialog interaction and alarm cancellation timing remain pending.
+
+
+### Audit pass 23 — prevent accidental paid Astra agent planning
+
+**Issue found**
+- When an OpenAI API key was configured, the structured agent planner selected Astra first for every action-planning turn, including routine local reminders and Android commands. This could create unexpected paid API usage despite the free-first hybrid design.
+
+**Correction committed**
+- Agent planning now uses Astra only when the user explicitly prefixes the objective with `Astra `.
+- Routine agent planning stays on the configured Gemini/Groq providers. If Astra is explicitly requested but unavailable or errors, the existing free-provider fallback path is used.
+- The conversational brain's existing specialist routing remains separate; this change is scoped to structured tool planning.
+
+**Verification**
+- Added regression tests for normal requests, explicit Astra prefix, case-insensitive prefix, missing key and null objective.
+- Fresh GitHub Actions verification is pending for this change.
