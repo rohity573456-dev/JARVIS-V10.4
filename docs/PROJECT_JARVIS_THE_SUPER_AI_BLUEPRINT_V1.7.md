@@ -854,3 +854,17 @@ Every project report must label each capability as:
 **Verification**
 - Added a regression test for the smaller agent budget and preservation of the latest action request.
 - GitHub Actions validation is pending. This change does not modify provider keys, pricing or ONNX assets.
+
+
+### Audit pass 31 — keep background memory maintenance free-first
+
+**Issue found**
+- When an OpenAI key was configured, automatic memory extraction and session reflection selected the paid Astra endpoint before Gemini or Groq. Enabling cloud-memory consent could therefore create background premium usage without an explicit Astra request.
+
+**Correction committed**
+- Background memory extraction/reflection now uses Gemini first and Groq as fallback. The optional Astra key alone no longer enables automatic memory calls.
+- Existing explicit cloud-memory consent and sensitive-data filters remain mandatory. If neither free provider is configured, background AI memory work is skipped; local memory remains available.
+
+**Verification**
+- Added routing regression coverage proving Gemini/Groq selection and that an OpenAI key alone returns no eligible background provider.
+- GitHub Actions validation is pending. No ONNX assets or wake-word behavior changed.
