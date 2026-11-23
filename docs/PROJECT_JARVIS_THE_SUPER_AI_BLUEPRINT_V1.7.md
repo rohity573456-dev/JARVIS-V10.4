@@ -739,3 +739,15 @@ Every project report must label each capability as:
 **Verification**
 - Added regression tests for normal requests, explicit Astra prefix, case-insensitive prefix, missing key and null objective.
 - GitHub Actions passed the Android unit-test/compile suite, including the new planner routing regression tests (run 45114575005).
+
+
+### Audit pass 24 — privacy-safe device health report
+
+**Capability added**
+- The agent can read battery percentage, available/total RAM, available/total internal storage and Android release/API level in one read-only tool.
+- The report intentionally excludes device serials, IMEI, phone number, account identifiers, installed-app inventories and location.
+
+**Verification**
+- Robolectric test confirms the tool is registered as READ_ONLY and returns the device-status and Android-version fields.
+- GitHub Actions passed the device-status implementation and test (run 45114813433).
+- OEM-specific values and real-device storage/RAM reporting remain to be checked on hardware.
