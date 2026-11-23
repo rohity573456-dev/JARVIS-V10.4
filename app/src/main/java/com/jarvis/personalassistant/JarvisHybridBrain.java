@@ -103,7 +103,9 @@ public final class JarvisHybridBrain {
             }
             if (!empty(localModelPath) && new File(localModelPath).isFile()) {
                 final String cloudFailure = result;
-                LocalAiEngine.ask(localModelPath, directive + "\n\n" + contextPrompt, localResult -> {
+                JarvisPromptBudget.Prompt localBudget = JarvisPromptBudget.fit(
+                    directive, contextPrompt, JarvisPromptBudget.STANDARD_MAX_CHARS);
+                LocalAiEngine.ask(localModelPath, localBudget.system + "\n\n" + localBudget.input, localResult -> {
                     String answer = localResult == null || localResult.trim().isEmpty()
                         ? "Cloud AI unavailable (" + cloudFailure + "). Offline model returned no answer."
                         : "Cloud AI unavailable; using the offline brain.\n" + localResult;
