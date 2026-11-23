@@ -840,11 +840,18 @@ public class MainActivity extends Activity {
         when.set(java.util.Calendar.SECOND,0);when.set(java.util.Calendar.MILLISECOND,0);
         if(when.getTimeInMillis()<=System.currentTimeMillis())when.add(java.util.Calendar.DAY_OF_YEAR,1);
         long dueAt=when.getTimeInMillis();
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            return "Notification permission OFF hai. Android Settings mein JARVIS notifications ON karke reminder dobara set karein; abhi kuch save nahi hua.";
         long id=longTermMemory==null?-1:longTermMemory.addTask(title,dueAt);
         if(id<=0)return "Reminder save nahi ho paya.";
-        if(!JarvisReminderScheduler.schedule(this,id,title,dueAt))
-            return "Reminder list mein save hua, lekin Android Alarm service schedule nahi kar payi.";
-        return "JARVIS reminder schedule ho gaya: "+title+" — "+new SimpleDateFormat("dd MMM, hh:mm a",Locale.getDefault()).format(new Date(dueAt))+". Notification permission ON rakhein.";
+        if(!JarvisReminderScheduler.schedule(getApplicationContext(),id,title,dueAt)) {
+            longTermMemory.deleteTask(id);
+            return "Android Alarm service reminder schedule nahi kar payi; task save nahi rakha gaya.";
+        }
+        return "JARVIS reminder schedule ho gaya: "+title+" — "+new SimpleDateFormat("dd MMM, hh:mm a",Locale.getDefault()).format(new Date(dueAt))+".";
+
     }
     private void taskDialog() {
         EditText in=new EditText(this);in.setHint("New task / reminder");in.setMinLines(2);
