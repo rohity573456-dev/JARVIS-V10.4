@@ -25,11 +25,21 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class JarvisAndroidToolAdapter {
     private static final long MAIN_THREAD_TIMEOUT_SECONDS = 8L;
+    interface ReminderScheduler {
+        boolean schedule(android.content.Context context, long id, String title, long dueAt);
+    }
     private final Activity activity;
+    private final ReminderScheduler reminderScheduler;
 
     public JarvisAndroidToolAdapter(Activity activity) {
-        if (activity == null) throw new IllegalArgumentException("Activity is required");
+        this(activity, JarvisReminderScheduler::schedule);
+    }
+
+    JarvisAndroidToolAdapter(Activity activity, ReminderScheduler reminderScheduler) {
+        if (activity == null || reminderScheduler == null)
+            throw new IllegalArgumentException("Activity and reminder scheduler are required");
         this.activity = activity;
+        this.reminderScheduler = reminderScheduler;
     }
 
     public void registerInto(JarvisToolRegistry registry) {
@@ -136,7 +146,7 @@ public final class JarvisAndroidToolAdapter {
                 try {
                     long id = store.addTask(title.trim(), dueAt);
                     if (id <= 0) return JarvisToolRegistry.ToolResult.failure("Reminder could not be saved.");
-                    if (!JarvisReminderScheduler.schedule(appContext, id, title.trim(), dueAt)) {
+                    if (!reminderScheduler.schedule(appContext, id, title.trim(), dueAt)) {
                         store.deleteTask(id);
                         return JarvisToolRegistry.ToolResult.failure("Reminder alarm could not be scheduled; no task was kept.");
                     }
