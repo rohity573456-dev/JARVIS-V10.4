@@ -833,3 +833,10 @@ Every project report must label each capability as:
 **Verification**
 - Updated routing tests cover specialist requests staying off Astra, explicit prefix opt-in, case-insensitive matching, leading whitespace and missing-key fallback.
 - GitHub Actions validation is pending. No ONNX assets or Android wake-word behavior were changed.
+
+
+### Audit pass 29 — remove stale hard-coded salutation
+
+- Replaced the obsolete hard-coded “Pratik Boss” salutation in startup, microphone-permission, greeting and setup responses with the neutral “Boss” address.
+- This prevents JARVIS from addressing its owner by an unrelated legacy name. No voice recognition, wake-word model or action behavior changed.
+- Android compile/unit-test validation is pending.
