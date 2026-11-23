@@ -813,6 +813,44 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         return out.toString();
     }
 
+    /** Returns source-attributed historical turns matching a query, in chronological order. */
+    public synchronized String getConversationEvidence(String query, int limit) {
+        StringBuilder out = new StringBuilder();
+        List<String> terms = new ArrayList<>();
+        if (query != null) {
+            for (String token : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+                if (token.length() >= 4 && !terms.contains(token) && terms.size() < 8) terms.add(token);
+            }
+        }
+        int safeLimit = Math.max(1, Math.min(30, limit));
+        StringBuilder sql = new StringBuilder(
+            "SELECT speaker,content,created_at FROM (SELECT speaker,content,created_at,id FROM conversations");
+        ArrayList<String> args = new ArrayList<>();
+        if (!terms.isEmpty()) {
+            sql.append(" WHERE ");
+            for (int i = 0; i < terms.size(); i++) {
+                if (i > 0) sql.append(" OR ");
+                sql.append("LOWER(content) LIKE ?");
+                args.add("%" + terms.get(i).replace("%", "").replace("_", "") + "%");
+            }
+        }
+        sql.append(" ORDER BY created_at DESC,id DESC LIMIT ?) ORDER BY created_at ASC");
+        args.add(String.valueOf(safeLimit));
+        Cursor c = getReadableDatabase().rawQuery(sql.toString(), args.toArray(new String[0]));
+        int index = 1;
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
+        try {
+            while (c.moveToNext()) {
+                if (out.length() > 4800) break;
+                out.append("[E").append(index++).append("] ")
+                    .append(c.getString(0)).append(" | ")
+                    .append(format.format(new Date(c.getLong(2)))).append(" | ")
+                    .append(c.getString(1)).append('\n');
+            }
+        } finally { c.close(); }
+        return out.toString().trim();
+    }
+
     public synchronized String getMemoryContext(String query, int limit) {
         return getMemoryContext(query, limit, null);
     }
