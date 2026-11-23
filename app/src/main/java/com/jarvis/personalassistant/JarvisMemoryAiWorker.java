@@ -43,6 +43,9 @@ public final class JarvisMemoryAiWorker {
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
             for(JarvisMemoryStore.PendingSession session:sessions){
                 if(!consent.isAllowed())return;
+                // Old transcripts may predate newer privacy filters; never upload a
+                // session containing sensitive text for background AI reflection.
+                if(!isEligibleForAiReflection(session.transcript))continue;
                 StringBuilder promptBuilder=new StringBuilder();
                 promptBuilder.append("Review this completed conversation session. Return JSON only: ");
                 promptBuilder.append("{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\",");
@@ -131,6 +134,10 @@ public final class JarvisMemoryAiWorker {
         return s.trim();
     }
     private static boolean empty(String s){return s==null||s.trim().isEmpty();}
+    static boolean isEligibleForAiReflection(String transcript) {
+        return transcript != null && !sensitive(transcript);
+    }
+
     static boolean isSensitiveCategory(String category){
         if(category==null)return true;
         String q=category.trim().toLowerCase(java.util.Locale.ROOT);
