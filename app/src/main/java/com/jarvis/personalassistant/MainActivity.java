@@ -528,6 +528,12 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isMuteCommand(raw)) { adjustVolume(0); return; }
         else if (JarvisIntentRouter.isBrightnessSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
         else if (JarvisIntentRouter.isSystemReportQuery(raw)) { systemReport(); return; }
+        else if (JarvisIntentRouter.isCancelAgentCommand(raw)) {
+            if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+                activeAgentRun.cancel();
+                answer="Agent cancellation requested. The current platform call will finish safely, then no further steps will run.";
+            } else answer="No active agent task to cancel.";
+        }
         else if (JarvisIntentRouter.isWifiSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
         else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
