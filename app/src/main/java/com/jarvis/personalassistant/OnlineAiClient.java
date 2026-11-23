@@ -86,9 +86,12 @@ public final class OnlineAiClient {
             c.setRequestProperty("Authorization", "Bearer " + apiKey);
             JSONObject body = new JSONObject();
             body.put("model", model);
+            // Tool schemas and the requested completion also consume the provider's
+            // TPM budget. Keep the planner prompt materially smaller than normal chat
+            // so free-tier Groq requests do not cross the 8k TPM ceiling.
             JarvisPromptBudget.Prompt budget = JarvisPromptBudget.fit(
                     systemPrompt == null ? "Use only supplied tools. Never invent tool results." : systemPrompt,
-                    prompt, JarvisPromptBudget.STANDARD_MAX_CHARS);
+                    prompt, 4500);
             body.put("temperature", 0.1);
             body.put("max_tokens", 1536);
             body.put("tool_choice", "auto");
