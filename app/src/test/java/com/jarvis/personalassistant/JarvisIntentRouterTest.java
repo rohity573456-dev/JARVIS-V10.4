@@ -47,6 +47,15 @@ public class JarvisIntentRouterTest {
         assertTrue(JarvisIntentRouter.isVolumeDownCommand("volume down"));
     }
 
+    @Test public void memorySaveRequiresAnExplicitInstruction() {
+        assertTrue(JarvisIntentRouter.isRememberCommand("Remember that my project budget is 2 crore"));
+        assertTrue(JarvisIntentRouter.isRememberCommand("Please remember my preferred reply style"));
+        assertTrue(JarvisIntentRouter.isRememberCommand("Yaad rakhna mujhe short answers pasand hain"));
+        assertFalse(JarvisIntentRouter.isRememberCommand("Do you remember what I said yesterday?"));
+        assertFalse(JarvisIntentRouter.isRememberCommand("Can you remember our last chat?"));
+        assertFalse(JarvisIntentRouter.isRememberCommand("I don't remember the exact date"));
+    }
+
     @Test public void commandsAreNormalizedAcrossCaseAndPunctuation() {
         assertTrue(JarvisIntentRouter.isBatteryStatusQuery("BATTERY STATUS!"));
         assertTrue(JarvisIntentRouter.isFlashlightCommand("Turn ON flashlight!"));
