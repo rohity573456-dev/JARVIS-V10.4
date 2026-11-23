@@ -74,7 +74,7 @@ public class JarvisMemoryLifecycleSqliteTest {
         long id = store.saveMemory("preference", "I prefer detailed answers");
         assertTrue(id > 0);
         store.putLocalVector(id, JarvisLocalVectorEngine.embed("I prefer detailed answers"));
-        store.putEmbedding(id, new float[]{0.1f, 0.2f});
+        store.putEmbedding(id, new float[]{0.1f, 0.2f}, "test-model");
         store.recordMemoryFeedback(id, 1, "detailed answers");
         assertTrue(store.updateMemory(id, null, "I prefer concise answers"));
 
