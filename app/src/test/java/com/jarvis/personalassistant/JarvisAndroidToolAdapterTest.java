@@ -41,6 +41,19 @@ public class JarvisAndroidToolAdapterTest {
         assertTrue(listed.output.contains("JARVIS agent reminder test"));
         assertEquals(JarvisToolRegistry.Risk.READ_ONLY, registry.get("list_reminders").risk);
 
+        Map<String,String> taskArgs = new HashMap<>();
+        taskArgs.put("id", String.valueOf(createdReminder.id));
+        assertEquals(JarvisToolRegistry.Risk.SENSITIVE, registry.get("complete_task").risk);
+        JarvisToolRegistry.ToolResult completed = registry.invoke("complete_task", taskArgs);
+        assertTrue(completed.output, completed.success);
+        assertFalse(store.getTasksText(false).contains("JARVIS agent reminder test"));
+        assertTrue(store.getTasksText(true).contains("[DONE] JARVIS agent reminder test"));
+
+        assertEquals(JarvisToolRegistry.Risk.SENSITIVE, registry.get("delete_task").risk);
+        JarvisToolRegistry.ToolResult deleted = registry.invoke("delete_task", taskArgs);
+        assertTrue(deleted.output, deleted.success);
+        assertFalse(store.getTasksText(true).contains("JARVIS agent reminder test"));
+
         store.deleteTask(createdReminder.id);
         store.close();
         activity.finish();
