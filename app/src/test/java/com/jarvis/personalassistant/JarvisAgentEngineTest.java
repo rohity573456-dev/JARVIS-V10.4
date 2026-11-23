@@ -123,6 +123,76 @@ public class JarvisAgentEngineTest {
         assertEquals(JarvisAgentEngine.State.FAILED, report[0].finalState);
     }
 
+    @Test public void cancellationDuringApprovalPreventsToolExecution() throws Exception {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        AtomicInteger calls = new AtomicInteger();
+        registry.register(new JarvisToolRegistry.ToolSpec("external_action", "External action",
+            JarvisToolRegistry.Risk.EXTERNAL, Collections.<String>emptySet(),
+            Collections.<String>emptySet(), "", args -> {
+                calls.incrementAndGet();
+                return JarvisToolRegistry.ToolResult.success("done");
+            }));
+        CountDownLatch approvalEntered = new CountDownLatch(1);
+        CountDownLatch releaseApproval = new CountDownLatch(1);
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            objective -> new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
+                new JarvisAgentEngine.AgentStep("s1", "external_action",
+                    Collections.<String,String>emptyMap(), "Needs approval"))),
+            registry, step -> {
+                approvalEntered.countDown();
+                try { releaseApproval.await(2, TimeUnit.SECONDS); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                return true;
+            });
+        CountDownLatch done = new CountDownLatch(1);
+        final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
+        JarvisAgentEngine.RunHandle handle = engine.submit("external action", new JarvisAgentEngine.Listener() {
+            public void onState(JarvisAgentEngine.State state, String detail) {}
+            public void onComplete(JarvisAgentEngine.AgentReport value) { report[0] = value; done.countDown(); }
+        });
+        assertTrue(approvalEntered.await(2, TimeUnit.SECONDS));
+        handle.cancel();
+        releaseApproval.countDown();
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(JarvisAgentEngine.State.CANCELLED, report[0].finalState);
+        assertEquals(0, calls.get());
+        assertTrue(handle.isFinished());
+    }
+
+    @Test public void cancellationDuringPlanningPreventsLateToolExecution() throws Exception {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        AtomicInteger calls = new AtomicInteger();
+        registry.register(new JarvisToolRegistry.ToolSpec("read_status", "Read status",
+            JarvisToolRegistry.Risk.READ_ONLY, Collections.<String>emptySet(),
+            Collections.<String>emptySet(), "", args -> {
+                calls.incrementAndGet();
+                return JarvisToolRegistry.ToolResult.success("ok");
+            }));
+        CountDownLatch planningEntered = new CountDownLatch(1);
+        CountDownLatch releasePlanning = new CountDownLatch(1);
+        JarvisAgentEngine engine = new JarvisAgentEngine(objective -> {
+            planningEntered.countDown();
+            try { releasePlanning.await(2, TimeUnit.SECONDS); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            return new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
+                new JarvisAgentEngine.AgentStep("s1", "read_status",
+                    Collections.<String,String>emptyMap(), "Read after planning")));
+        }, registry, step -> true);
+        CountDownLatch done = new CountDownLatch(1);
+        final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
+        JarvisAgentEngine.RunHandle handle = engine.submit("read status", new JarvisAgentEngine.Listener() {
+            public void onState(JarvisAgentEngine.State state, String detail) {}
+            public void onComplete(JarvisAgentEngine.AgentReport value) { report[0] = value; done.countDown(); }
+        });
+        assertTrue(planningEntered.await(2, TimeUnit.SECONDS));
+        handle.cancel();
+        releasePlanning.countDown();
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(JarvisAgentEngine.State.CANCELLED, report[0].finalState);
+        assertEquals(0, calls.get());
+        assertTrue(handle.isFinished());
+    }
+
     @Test public void planCannotExceedStepLimit() {
         try {
             JarvisAgentEngine.AgentPlan ignored = new JarvisAgentEngine.AgentPlan("large",
