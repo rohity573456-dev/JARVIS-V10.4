@@ -43,12 +43,14 @@ public final class JarvisMemoryAiWorker {
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
             for(JarvisMemoryStore.PendingSession session:sessions){
                 if(!consent.isAllowed())return;
-                String prompt="Review this completed conversation session. Return JSON only: "+
-                    "{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\","+
-                    "\"type\":\"core|semantic|procedural|episodic\",\"key\":\"stable.key\",\"content\":\"durable fact\","+
-                    "\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} "+
-                    "Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. "+
-                    "Summary under 600 chars. Session:\n"+session.transcript;
+                StringBuilder promptBuilder=new StringBuilder();
+                promptBuilder.append("Review this completed conversation session. Return JSON only: ");
+                promptBuilder.append("{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\",");
+                promptBuilder.append("\"type\":\"core|semantic|procedural|episodic\",\"key\":\"stable.key\",\"content\":\"durable fact\",");
+                promptBuilder.append("\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} ");
+                promptBuilder.append("Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. ");
+                promptBuilder.append("Summary under 600 chars. Session:\\n").append(session.transcript);
+                String prompt=promptBuilder.toString();
                 JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,openAiKey,prompt));
                 if(!consent.isAllowed())return;
                 if(root==null)continue;
