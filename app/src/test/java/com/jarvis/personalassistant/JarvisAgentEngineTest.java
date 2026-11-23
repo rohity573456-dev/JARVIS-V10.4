@@ -278,13 +278,16 @@ public class JarvisAgentEngineTest {
             registry, step -> true);
         CountDownLatch done = new CountDownLatch(1);
         final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
-        engine.submit("just answer a question", new JarvisAgentEngine.Listener() {
+        JarvisAgentEngine.RunHandle handle = engine.submit("just answer a question", new JarvisAgentEngine.Listener() {
             public void onState(JarvisAgentEngine.State state, String detail) {}
             public void onComplete(JarvisAgentEngine.AgentReport value) { report[0] = value; done.countDown(); }
         });
         assertTrue(done.await(3, TimeUnit.SECONDS));
         assertEquals(JarvisAgentEngine.State.COMPLETED, report[0].finalState);
         assertTrue(report[0].steps.isEmpty());
+        assertTrue(handle.isFinished());
+        handle.cancel();
+        assertFalse(handle.isCancelled());
     }
 
 }
