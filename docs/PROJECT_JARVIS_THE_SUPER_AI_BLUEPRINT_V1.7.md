@@ -949,3 +949,17 @@ Every project report must label each capability as:
 **Verification**
 - Added regression tests proving Hindi Aadhaar and password-containing historical transcripts are excluded while ordinary preferences remain eligible. A SQLite lifecycle test verifies skipped sessions are marked, create no summary and leave the pending queue. CI Android unit tests and compile passed in run 45128111059.
 - No existing conversation history is deleted or rewritten; ONNX assets remain untouched.
+
+
+### Audit pass 41 — report Android launch outcomes truthfully
+
+**Issue found**
+- Several direct Android commands and custom URL commands announced that an app/site was opening even when `startActivity` threw because no compatible app was installed or the launch was blocked. Web search also announced success after a failed browser fallback.
+
+**Correction committed**
+- Added a small launch-result guard that returns success only when the Android launch call completes normally.
+- Settings, YouTube, camera, Maps, Translate, Clock, web search and custom URL commands now report unavailable/failed launches instead of claiming success. Custom commands remain limited to user-saved HTTPS URLs.
+
+**Verification**
+- Added unit tests for successful launches, platform exceptions and null actions. Android compile/unit-test validation is pending.
+- No new Android permissions, background services or ONNX changes were introduced.
