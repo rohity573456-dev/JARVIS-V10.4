@@ -819,7 +819,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         List<String> terms = new ArrayList<>();
         if (query != null) {
             for (String token : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
-                if (token.length() >= 4 && !terms.contains(token) && terms.size() < 8) terms.add(token);
+                String stem = token.endsWith("ies") && token.length() > 5 ? token.substring(0, token.length() - 3) + "y" : (token.endsWith("y") && token.length() > 4 ? token.substring(0, token.length() - 1) : token);\n                if (stem.length() >= 4 && !terms.contains(stem) && terms.size() < 8) terms.add(stem);
             }
         }
         int safeLimit = Math.max(1, Math.min(30, limit));
