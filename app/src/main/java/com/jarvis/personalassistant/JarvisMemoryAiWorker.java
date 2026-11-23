@@ -44,10 +44,11 @@ public final class JarvisMemoryAiWorker {
             for(JarvisMemoryStore.PendingSession session:sessions){
                 if(!consent.isAllowed())return;
                 String prompt="Review this completed conversation session. Return JSON only: "+
-                    "{\\"summary\\":\\"short factual summary\\",\\"facts\\":[{\\"category\\":\\"profile|preference|goal|project|general\\","+
-                    "\\"type\\":\\"core|semantic|procedural|episodic\\",\\"key\\":\\"stable.key\\",\\"content\\":\\"durable fact\\","+
-                    "\\"subject\\":\\"entity\\",\\"relation\\":\\"relation\\",\\"object\\":\\"value\\",\\"confidence\\":0.8,\\"importance\\":60,\\"pinned\\":false}]} "+
+                    "{\"summary\":\"short factual summary\",\"facts\":[{\"category\":\"profile|preference|goal|project|general\","+
+                    "\"type\":\"core|semantic|procedural|episodic\",\"key\":\"stable.key\",\"content\":\"durable fact\","+
+                    "\"subject\":\"entity\",\"relation\":\"relation\",\"object\":\"value\",\"confidence\":0.8,\"importance\":60,\"pinned\":false}]} "+
                     "Only include user-stated facts; do not trust assistant guesses. Never infer credentials, IDs, health, religion, politics, sexual or criminal information. "+
+                    "Summary under 600 chars. Session:\n"+session.transcript;
                     "Summary under 600 chars. Session:\\n"+session.transcript;
                 JSONObject root=parseObject(ask(gKey,gModel,rKey,rModel,openAiKey,prompt));
                 if(!consent.isAllowed())return;
