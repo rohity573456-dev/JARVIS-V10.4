@@ -20,6 +20,13 @@ public class JarvisMemoryPrivacyTest {
         assertFalse(JarvisMemoryAiWorker.isSensitiveText("I prefer concise answers"));
     }
 
+    @Test public void backgroundMemoryLearningNeverSelectsPaidAstra() {
+        assertEquals("GEMINI", JarvisMemoryAiWorker.preferredMemoryProvider(true, true, true));
+        assertEquals("GROQ", JarvisMemoryAiWorker.preferredMemoryProvider(false, true, true));
+        assertEquals("NONE", JarvisMemoryAiWorker.preferredMemoryProvider(false, false, true));
+        assertEquals("NONE", JarvisMemoryAiWorker.preferredMemoryProvider(false, false, false));
+    }
+
     @Test public void modelCannotPinArbitraryOrSensitiveFacts() {
         assertTrue(JarvisMemoryAiWorker.isSafePinnedKey("profile.name", "profile"));
         assertTrue(JarvisMemoryAiWorker.isSafePinnedKey("instruction.response_style", "preference"));
