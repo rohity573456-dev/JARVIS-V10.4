@@ -22,7 +22,7 @@ public final class JarvisMemoryAiWorker {
     public static void learnAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,String text,ConsentGate consent){
         if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text)||
                 consent==null||!consent.isAllowed())return;
-        if(empty(gKey)&&empty(rKey)&&empty(openAiKey))return;
+        if("NONE".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey))))return;
         EXECUTOR.execute(()->{
             if(!consent.isAllowed())return;
             String result=ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text));
@@ -37,7 +37,7 @@ public final class JarvisMemoryAiWorker {
     }
 
     public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,ConsentGate consent){
-        if(db==null||(empty(gKey)&&empty(rKey)&&empty(openAiKey))||consent==null||!consent.isAllowed())return;
+        if(db==null||"NONE".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey)))||consent==null||!consent.isAllowed())return;
         EXECUTOR.execute(()->{
             if(!consent.isAllowed())return;
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
@@ -71,12 +71,19 @@ public final class JarvisMemoryAiWorker {
             "Never extract credentials, OTPs, government IDs, financial identifiers, health, religion, political beliefs, sexual or criminal information. "+
             "Confidence 0-1, importance 0-100, pinned only for durable identity and explicit standing instructions. If no fact qualifies return []. User: "+text;
     }
+    static String preferredMemoryProvider(boolean geminiConfigured, boolean groqConfigured,
+            boolean openAiConfigured) {
+        // Background memory maintenance must never spend on the optional premium tier.
+        if (geminiConfigured) return "GEMINI";
+        if (groqConfigured) return "GROQ";
+        return "NONE";
+    }
+
     private static String ask(String gKey,String gModel,String rKey,String rModel,String openAiKey,String prompt){
-        String result="ERROR: no provider";
-        if(!empty(openAiKey))result=OpenAiResponsesClient.ask(openAiKey,OpenAiResponsesClient.DEFAULT_MODEL,
-            "You are JARVIS memory curator. Extract only explicit, durable user facts. Return valid JSON only. Never infer sensitive information.",prompt,"medium");
-        if(result.startsWith("ERROR")&&!empty(gKey))result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
-            empty(gModel)?"gemini-2.5-flash":gModel,prompt);
+        String result="ERROR: no free memory provider configured";
+        if("GEMINI".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey))))
+            result=OnlineAiClient.ask("https://generativelanguage.googleapis.com/v1beta/openai",gKey,
+                empty(gModel)?"gemini-2.5-flash":gModel,prompt);
         if(result.startsWith("ERROR")&&!empty(rKey))result=OnlineAiClient.ask("https://api.groq.com/openai/v1",rKey,
             empty(rModel)?"openai/gpt-oss-120b":rModel,prompt);
         return result;
