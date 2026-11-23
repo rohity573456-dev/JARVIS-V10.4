@@ -334,7 +334,7 @@ Every project report must label each capability as:
 - Conversation context: JarvisConversationContext is wired into the foreground AI path. JarvisMemoryStore persists conversations and combines pinned facts, relevant memories, graph relations, session summaries and recent turns.
 - Provider routing: JarvisHybridBrain routes between configured Astra, Gemini, Groq and local inference. Current classification is keyword-based and should not yet be treated as a complete intent/complexity classifier.
 - Memory: existing SQLite implementation includes profile facts, temporal records, graph edges, semantic/cloud embeddings, local feature vectors, summaries, tasks and transient notes. This does not yet prove all 20 memory types or lifecycle guarantees in Division 51.
-- Voice: WakeWordService retains the existing ONNX/OpenWakeWord pipeline. No ONNX asset was changed by this audit pass.
+- Voice: WakeWordService retains the existing ONNX/OpenWakeWord pipeline. The three bundled ONNX assets (`Jarvis_20260313_215039.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`) were compared with the PR base branch by Git blob SHA and byte size; all three are identical.
 - Voice evidence limitation: docs/VOICE_ENGINE_IMPLEMENTATION_STATUS.md explicitly records that real-phone accuracy, battery/latency evidence and full background command parity still require validation.
 
 **Issue found and corrected**
