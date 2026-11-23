@@ -882,3 +882,10 @@ Every project report must label each capability as:
 **Verification**
 - Added unit tests for complete answers, token truncation, content filtering, missing choices and empty content. CI validation is pending.
 - No provider credentials, ONNX assets or wake-word behavior changed.
+
+
+### Audit pass 33 — prevent truncated agent plans from appearing complete
+
+- Extended the completion guard to native tool-call responses. A provider `finish_reason=length` or `content_filter` is now an explicit planning error, allowing the existing Gemini/Groq fallback chain to run.
+- A complete response with no tool calls still means “no action needed”; it is not conflated with a response cut off before the model could decide.
+- Added regression tests for truncated tool plans and valid no-tool decisions. CI validation is pending.
