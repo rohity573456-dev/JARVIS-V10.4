@@ -70,8 +70,13 @@ public final class JarvisAndroidToolAdapter {
                 else if ("sound".equals(panel)) intent = new Intent(Settings.ACTION_SOUND_SETTINGS);
                 else if ("general".equals(panel)) intent = new Intent(Settings.ACTION_SETTINGS);
                 else if ("app_notifications".equals(panel)) {
-                    intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-                    intent.putExtra(Settings.EXTRA_APP_PACKAGE, activity.getPackageName());
+                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                        intent.putExtra(Settings.EXTRA_APP_PACKAGE, activity.getPackageName());
+                    } else {
+                        intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + activity.getPackageName()));
+                    }
                 }
                 else return JarvisToolRegistry.ToolResult.failure("Unsupported settings panel. Allowed: wifi, bluetooth, display, sound, general, app_notifications.");
                 if (intent.resolveActivity(activity.getPackageManager()) == null)
