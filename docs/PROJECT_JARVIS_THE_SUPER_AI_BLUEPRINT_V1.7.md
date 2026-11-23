@@ -976,3 +976,16 @@ Every project report must label each capability as:
 **Verification**
 - Added tests for UTF-8 decoding, null streams and rejection of oversized bodies. Android unit tests and compile passed in GitHub Actions run 45129735144.
 - Request payloads, model routing, conversation storage and the existing ONNX wake-word assets are unchanged.
+
+
+### Audit pass 43 — validate agent tool argument sizes locally
+
+**Issue found**
+- Structured planner schemas describe maximum lengths, but provider-side schema enforcement is not guaranteed. The registry previously checked required and unexpected keys without independently limiting argument values, allowing oversized model-generated tool inputs to reach handlers.
+
+**Correction committed**
+- The local tool registry now caps argument count, key length and value length by argument type before invoking any handler. This is enforced even if a provider ignores the JSON schema.
+
+**Verification**
+- Added a regression test proving an overlong web-search query is rejected before the tool handler runs. Android unit-test/compile validation is pending.
+- No additional tool permissions or automatic side effects were introduced.
