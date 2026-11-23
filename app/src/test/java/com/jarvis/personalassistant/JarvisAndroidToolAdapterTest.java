@@ -122,6 +122,25 @@ public class JarvisAndroidToolAdapterTest {
         activity.finish();
     }
 
+    @Test public void failedAlarmSchedulingRollsBackTheSavedReminder() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
+        org.robolectric.Shadows.shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        new JarvisAndroidToolAdapter(activity, (context, id, title, dueAt) -> false).registerInto(registry);
+        Map<String,String> args = new HashMap<>();
+        args.put("title", "Alarm scheduling rollback test");
+        args.put("delay_minutes", "5");
+
+        JarvisToolRegistry.ToolResult result = registry.invoke("create_reminder", args);
+        assertFalse(result.success);
+        assertTrue(result.output.contains("alarm could not be scheduled"));
+        assertTrue(store.getUpcomingReminders().stream().noneMatch(r -> "Alarm scheduling rollback test".equals(r.title)));
+        assertFalse(store.getTasksText(true).contains("Alarm scheduling rollback test"));
+        store.close();
+        activity.finish();
+    }
+
     @Test public void invalidReminderDelayDoesNotPersistATask() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
