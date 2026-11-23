@@ -868,3 +868,17 @@ Every project report must label each capability as:
 **Verification**
 - Added routing regression coverage proving Gemini/Groq selection and that an OpenAI key alone returns no eligible background provider.
 - GitHub Actions validation is pending. No ONNX assets or wake-word behavior changed.
+
+
+### Audit pass 32 — detect incomplete provider completions
+
+**Issue found**
+- The OpenAI-compatible chat client accepted any non-empty assistant content, including responses whose `finish_reason` reported `length` (token-limit truncation) or `content_filter`. That could surface a partial answer as if it were complete instead of allowing the existing bounded provider fallback to run.
+
+**Correction committed**
+- Normal chat completion parsing now rejects token-truncated and filtered responses as provider errors. The existing hybrid router can then try its configured fallback provider or local model.
+- Complete `stop` responses remain unchanged; missing and empty content remain errors.
+
+**Verification**
+- Added unit tests for complete answers, token truncation, content filtering, missing choices and empty content. CI validation is pending.
+- No provider credentials, ONNX assets or wake-word behavior changed.
