@@ -902,3 +902,10 @@ Every project report must label each capability as:
 
 - Extended the boundary-safe coding specialist vocabulary to recognize JavaScript, TypeScript, Android Studio and React Native explicitly. This fixes a false negative where “Build a JavaScript app” previously fell through to general chat after Java was made whole-word-only.
 - Added a regression test for JavaScript app requests. Existing false-positive boundary tests remain in place; validation is pending.
+
+
+### Audit pass 36 — handle incomplete Astra Responses API results
+
+- Added equivalent truncation/failure checks for the optional Astra Responses API. `status=incomplete` / `max_output_tokens` and `status=failed` now return an explicit provider error instead of passing partial text or an empty tool plan as complete.
+- The hybrid router can fall back to configured free providers when an explicit Astra request returns an incomplete response.
+- Added pure unit coverage for incomplete, failed and completed Responses statuses. CI validation is pending.
