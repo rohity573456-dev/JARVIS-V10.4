@@ -818,3 +818,18 @@ Every project report must label each capability as:
 - The test asserts the tool reports failure and the reminder is absent from both upcoming reminders and the complete task listing.
 - This extends coverage of the existing fail-closed implementation; no production reminder behavior or ONNX assets were changed.
 - GitHub Actions validation is pending for this audit pass. Real-device alarm delivery and OEM battery restrictions remain separate release checks.
+
+
+### Audit pass 28 — prevent silent premium Astra usage
+
+**Issue found**
+- The conversational brain selected the paid Astra route automatically for coding, research and data-analysis requests whenever an OpenAI key was configured. This contradicted the free-first hybrid budget and the explicit opt-in behavior already used by the structured action planner.
+
+**Correction committed**
+- Astra is now selected only when the user explicitly begins a request with the Astra prefix (case-insensitive, leading whitespace ignored).
+- Specialist classification continues to select the free Gemini/Groq provider and does not trigger paid requests.
+- The second-pass Astra verification remains limited to requests that actually selected Astra.
+
+**Verification**
+- Updated routing tests cover specialist requests staying off Astra, explicit prefix opt-in, case-insensitive matching, leading whitespace and missing-key fallback.
+- GitHub Actions validation is pending. No ONNX assets or Android wake-word behavior were changed.
