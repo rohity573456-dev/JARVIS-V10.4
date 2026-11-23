@@ -339,19 +339,25 @@ public class MainActivity extends Activity {
                 .setNegativeButton("CANCEL",null).show();
             return;
         }
+        boolean opened = false;
         try {
             Intent webSearch = new Intent(Intent.ACTION_WEB_SEARCH);
             webSearch.putExtra(android.app.SearchManager.QUERY,clean);
             if (webSearch.resolveActivity(getPackageManager()) != null) {
                 startActivity(webSearch);
+                opened = true;
             } else {
-                open("https://www.google.com/search?q="+Uri.encode(clean));
+                opened = open("https://www.google.com/search?q="+Uri.encode(clean));
             }
-            if (commandInput != null) commandInput.setText("");
-            show("WEB SEARCH","Searching the web for: "+clean);
-            speak("Searching the web for "+clean);
         } catch (Exception e) {
-            open("https://www.google.com/search?q="+Uri.encode(clean));
+            opened = open("https://www.google.com/search?q="+Uri.encode(clean));
+        }
+        if (commandInput != null) commandInput.setText("");
+        if (opened) {
+            show("WEB SEARCH","Opened web search for: "+clean);
+            speak("Opening web search for "+clean);
+        } else {
+            respond("Browser ya web-search app available nahi hai. Search open nahi hua.");
         }
     }
 
@@ -527,7 +533,7 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isVolumeUpCommand(raw)) { adjustVolume(1); return; }
         else if (JarvisIntentRouter.isVolumeDownCommand(raw)) { adjustVolume(-1); return; }
         else if (JarvisIntentRouter.isMuteCommand(raw)) { adjustVolume(0); return; }
-        else if (JarvisIntentRouter.isBrightnessSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
+        else if (JarvisIntentRouter.isBrightnessSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS))?"Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta.":"Display settings is device par available nahi hain."; }
         else if (JarvisIntentRouter.isSystemReportQuery(raw)) { systemReport(); return; }
         else if (JarvisIntentRouter.isCancelAgentCommand(raw)) {
             if (activeAgentRun != null && !activeAgentRun.isFinished()) {
@@ -537,16 +543,16 @@ public class MainActivity extends Activity {
                 answer="Agent cancellation requested. Any in-flight operation may finish; no further steps will start.";
             } else answer="No active agent task to cancel.";
         }
-        else if (JarvisIntentRouter.isWifiSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
-        else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
-        else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
-        else if (JarvisIntentRouter.isOpenYoutubeCommand(raw)) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
+        else if (JarvisIntentRouter.isWifiSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_WIFI_SETTINGS))?"Wi-Fi settings khol raha hoon.":"Wi-Fi settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS))?"Bluetooth settings khol raha hoon.":"Bluetooth settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { answer=launch(new Intent(Settings.ACTION_SETTINGS))?"Phone settings khol raha hoon.":"Phone settings is device par available nahi hain."; }
+        else if (JarvisIntentRouter.isOpenYoutubeCommand(raw)) { answer=open("https://www.youtube.com")?"YouTube khol raha hoon.":"YouTube ya browser available nahi hai."; }
         else if (q.startsWith("web search ") || q.startsWith("search web ")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+search|search\\s+web)\\s*","")); return; }
         else if (JarvisIntentRouter.isWebSearchCommand(raw)) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
-        else if (JarvisIntentRouter.isOpenCameraCommand(raw)) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
-        else if (JarvisIntentRouter.isMapsCommand(raw)) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
-        else if (JarvisIntentRouter.isOpenTranslateCommand(raw)) { open("https://translate.google.com"); answer="Translation service khol raha hoon."; }
-        else if (JarvisIntentRouter.isAlarmCommand(raw)) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); launch(a,"Clock"); answer="Alarm set karne ke liye Clock khol raha hoon."; }
+        else if (JarvisIntentRouter.isOpenCameraCommand(raw)) { answer=launch(new Intent("android.media.action.IMAGE_CAPTURE"))?"Camera khol raha hoon.":"Camera app available nahi hai."; }
+        else if (JarvisIntentRouter.isMapsCommand(raw)) { answer=open("https://maps.google.com/?q="+Uri.encode(raw))?"Maps khol raha hoon. Destination confirm kar lena.":"Maps ya browser available nahi hai."; }
+        else if (JarvisIntentRouter.isOpenTranslateCommand(raw)) { answer=open("https://translate.google.com")?"Translation service khol raha hoon.":"Browser available nahi hai."; }
+        else if (JarvisIntentRouter.isAlarmCommand(raw)) { Intent a=new Intent(AlarmClock.ACTION_SET_ALARM); a.putExtra(AlarmClock.EXTRA_SKIP_UI,false); answer=launch(a)?"Alarm set karne ke liye Clock khol raha hoon.":"Clock app available nahi hai."; }
         else if (q.startsWith("memory useful ")) { long id=parseLong(raw.replaceFirst("(?i)^memory useful\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,1,raw); answer="Memory usefulness feedback saved for #"+id+"."; }
         else if (q.startsWith("memory wrong ")) { long id=parseLong(raw.replaceFirst("(?i)^memory wrong\\s*","")); if(longTermMemory!=null)longTermMemory.recordMemoryFeedback(id,-1,raw); answer="Memory reliability feedback saved for #"+id+"; its retrieval priority was reduced."; }
         else if (q.startsWith("memory forget ")) { long id=parseLong(raw.replaceFirst("(?i)^memory forget\\s*","")); answer=longTermMemory!=null&&longTermMemory.deleteMemory(id)?"Memory #"+id+" permanently deleted with its indexes.":"Memory ID not found."; }
@@ -984,8 +990,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
-    private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
+    private boolean launch(Intent i) { return JarvisActionResultGuard.run(() -> startActivity(i)); }
+    private boolean open(String url) { return JarvisActionResultGuard.run(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)))); }
     private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); speak(s); status.setText("● CORE ONLINE"); }
     private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
 
