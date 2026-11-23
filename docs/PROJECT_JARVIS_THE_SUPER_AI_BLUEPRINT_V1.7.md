@@ -471,3 +471,35 @@ Every project report must label each capability as:
 **Verification**
 - GitHub Actions completed successfully for the latest agent retry source and regression-test changes using `gradle testDebugUnitTest`.
 - Device tests remain necessary for activity destruction during approval, delayed Android main-thread dispatch, and cancellation while a platform action is already executing.
+
+
+### Audit pass 7 — mixed-script prompt/token protection
+
+**Issue found**
+- The previous character-to-token estimate assumed roughly two characters per token. That is reasonable only as a rough English estimate; Devanagari and many other non-ASCII scripts can consume substantially more tokens per character and could still hit a provider TPM limit.
+
+**Correction committed**
+- Prompt budgeting now counts non-ASCII UTF-16 code units conservatively at one estimated token each, while retaining the lower-cost ASCII estimate.
+- If non-ASCII content exceeds the mixed-script threshold, the standard prompt cap is reduced to 6,000 total characters. With the existing 1,536-token output cap, this keeps the rough request budget below the previously observed 8,000 TPM limit for mixed Hindi/English requests.
+- Astra retains its separate larger budget.
+- Added a Hindi/Unicode regression test for conservative token estimation and bounded mixed-script prompt size.
+
+**Verification**
+- GitHub Actions passed `gradle testDebugUnitTest` for both the prompt-budget change and the Hindi regression test (runs 45110719487 and 45110723545).
+- This remains an estimate, not a provider tokenizer. Provider-specific token accounting and response limits may still differ.
+
+### Audit pass 8 — Private Mode persistence boundary
+
+**Issue found**
+- Conversation turns were correctly excluded from SQLite in Private Mode, but the latest assistant response was still copied into the persistent SharedPreferences `last_response` field and restored on next launch.
+
+**Correction committed**
+- Added a central `JarvisPrivacyPolicy` for conversation and last-response persistence decisions.
+- Assistant responses and ephemeral confirmations now remove/avoid the persisted last-response field whenever Private Mode is active.
+- Enabling Private Mode removes any previously persisted last response; startup also clears the field if Private Mode is already enabled.
+- The visible in-session response remains available in RAM/UI, but is not restored from persistent storage after restart while Private Mode is active.
+- Added unit tests for both Private Mode and normal-mode persistence decisions.
+
+**Verification**
+- GitHub Actions passed `gradle testDebugUnitTest` for the current Private Mode source and policy tests (run 45110883872).
+- Physical-device restart/backup inspection is still required to validate the full Android storage lifecycle.
