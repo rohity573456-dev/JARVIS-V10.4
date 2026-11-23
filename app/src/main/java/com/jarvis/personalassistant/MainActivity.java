@@ -979,7 +979,7 @@ public class MainActivity extends Activity {
 
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
-    private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
+    private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); speak(s); status.setText("● CORE ONLINE"); }
     private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
 
     /** Private Mode must not leave a persisted copy of the latest response. */
