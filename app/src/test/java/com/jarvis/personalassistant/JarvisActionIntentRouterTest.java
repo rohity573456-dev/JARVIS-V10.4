@@ -18,6 +18,13 @@ public class JarvisActionIntentRouterTest {
         assertTrue(JarvisActionIntentRouter.isExplicitAction("internet pe search karo latest news"));
     }
 
+    @Test public void technicalOpenPhrasesAreNotTreatedAsAppLaunches() {
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("Explain open source licensing"));
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("What is open AI architecture?"));
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("Compare open source Android launchers"));
+        assertTrue(JarvisActionIntentRouter.isExplicitAction("Can you open WhatsApp?"));
+    }
+
     @Test public void doesNotRouteGeneralQuestionsAsActions() {
         assertFalse(JarvisActionIntentRouter.isExplicitAction("How do I open WhatsApp?"));
         assertFalse(JarvisActionIntentRouter.isExplicitAction("Why should I launch Instagram?"));
