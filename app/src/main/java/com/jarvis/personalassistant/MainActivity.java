@@ -135,6 +135,7 @@ public class MainActivity extends Activity {
         longTermMemory.expireTransientMemories();
         longTermMemory.indexMissingLocalVectors(500);
         longTermMemory.consolidateMemories();
+        if (memory.getBoolean("memory_private_mode", false)) memory.edit().remove("last_response").apply();
         lastResponse = memory.getString("last_response", lastResponse);
         localModelPath = memory.getString("local_model_path", "");
         if (!localModelPath.isEmpty() && !new File(localModelPath).exists()) localModelPath = "";
@@ -547,7 +548,7 @@ public class MainActivity extends Activity {
         else if (q.equals("memory embeddings on")) { memory.edit().putBoolean("memory_cloud_embeddings",true).apply(); indexSemanticMemoryIfEnabled(300); answer="Gemini semantic memory ON. Saved memory snippets and future search queries may be sent to Google for embedding. Local recall remains as fallback."; }
         else if (q.equals("memory embeddings off")) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_cloud_embeddings",false).apply(); answer="Cloud semantic embeddings OFF. JARVIS will use on-device lexical, temporal and graph recall."; }
         else if (q.equals("memory embeddings delete")) { invalidatePendingMemoryJobs(); if(longTermMemory!=null)longTermMemory.clearEmbeddings(); answer="Stored semantic vector index deleted. Your original memories are unchanged."; }
-        else if (q.equals("memory privacy on") || q.equals("private mode on") || q.equals("memory band")) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_private_mode",true).apply(); answer="Privacy mode ON. Conversation history aur automatic learning save nahi honge."; }
+        else if (q.equals("memory privacy on") || q.equals("private mode on") || q.equals("memory band")) { invalidatePendingMemoryJobs(); memory.edit().putBoolean("memory_private_mode",true).remove("last_response").apply(); answer="Privacy mode ON. Conversation history aur automatic learning save nahi honge."; }
         else if (q.equals("memory privacy off") || q.equals("private mode off") || q.equals("memory chalu")) { memory.edit().putBoolean("memory_private_mode",false).apply(); answer="Memory mode ON. Local history aur automatic learning resume."; }
         else if (q.startsWith("memory delete ")) { long id=parseMemoryId(raw); answer=longTermMemory!=null && longTermMemory.deleteMemory(id)?"Memory #"+id+" delete ho gayi.":"Memory ID nahi mili."; }
         else if (q.startsWith("memory edit ")) { String data=raw.substring("memory edit ".length()).trim(); int bar=data.indexOf('|'); if(bar>0){long id=parseLong(data.substring(0,bar).trim()); answer=longTermMemory!=null && longTermMemory.updateMemory(id,"personal",data.substring(bar+1).trim())?"Memory #"+id+" update ho gayi.":"Memory update nahi hui.";}else answer="Format: memory edit ID | naya text"; }
@@ -780,7 +781,7 @@ public class MainActivity extends Activity {
                 else if(which==4){show("CONVERSATION HISTORY",longTermMemory==null?"Unavailable":longTermMemory.getRecentConversation(100));}
                 else if(which==5){new AlertDialog.Builder(this).setTitle("CLEAR HISTORY?").setMessage("Saved facts will remain. Pending AI memory jobs from this history will be cancelled.").setPositiveButton("CLEAR",(x,y)->{invalidatePendingMemoryJobs();if(longTermMemory!=null)longTermMemory.clearConversationHistory();respondEphemeral("Conversation history cleared. Pending history learning cancelled.");}).setNegativeButton("CANCEL",null).show();}
                 else if(which==6){new AlertDialog.Builder(this).setTitle("DELETE ALL MEMORIES?").setMessage("Saved facts, summaries and indexes will be permanently deleted. Pending AI memory jobs will be cancelled. Chat history remains a separate control.").setPositiveButton("DELETE",(x,y)->{invalidatePendingMemoryJobs();if(longTermMemory!=null)longTermMemory.clearMemories();memory.edit().remove("note").apply();respond("All saved memories cleared. Chat history remains.");}).setNegativeButton("CANCEL",null).show();}
-                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);if(on)invalidatePendingMemoryJobs();memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
+                else if(which==7){boolean on=!memory.getBoolean("memory_private_mode",false);if(on)invalidatePendingMemoryJobs();if(on)memory.edit().remove("last_response").apply();memory.edit().putBoolean("memory_private_mode",on).apply();respond(on?"Privacy mode ON. History and auto-learning paused.":"Privacy mode OFF. Memory resumed.");}
                 else if(which==8){show("KNOWLEDGE GRAPH",longTermMemory==null?"Unavailable":longTermMemory.getKnowledgeGraphText(""));}
                 else if(which==9) taskDialog();
                 else if(which==10) show("MEMORY HEALTH",longTermMemory==null?"Unavailable":longTermMemory.getMemoryStatsText());
@@ -952,8 +953,17 @@ public class MainActivity extends Activity {
 
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
-    private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
-    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); memory.edit().putString("last_response",s).apply(); speak(s); status.setText("● CORE ONLINE"); }
+    private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
+    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
+
+    /** Private Mode must not leave a persisted copy of the latest response. */
+    private void persistLastResponse(String response) {
+        if (memory == null) return;
+        android.content.SharedPreferences.Editor editor = memory.edit();
+        if (memory.getBoolean("memory_private_mode", false)) editor.remove("last_response");
+        else editor.putString("last_response", response == null ? "" : response);
+        editor.apply();
+    }
     private void speak(String s) { if (orbView != null) orbView.setState("SPEAKING"); if(!ttsReady) { pendingSpeech = s; return; } if(ttsReady) {
         boolean hindi = s != null && s.matches("(?s).*\\p{InDevanagari}.*");
         tts.setLanguage(hindi ? new Locale("hi","IN") : new Locale("en","IN"));
