@@ -518,7 +518,7 @@ public class MainActivity extends Activity {
         boolean privacyToggle = enablingPrivateMode || JarvisIntentRouter.isPrivateModeDisableCommand(raw);
         boolean privateMode = memory.getBoolean("memory_private_mode", false) || enablingPrivateMode;
         if (longTermMemory != null && !privateMode && !privacyToggle) longTermMemory.addConversation("Commander", raw);
-        if (!privateMode && !privacyToggle) autoLearnMemory(raw);
+        if (!privateMode && !privacyToggle && !JarvisIntentRouter.isRememberCommand(raw)) autoLearnMemory(raw);
         show("COMMANDER",raw); String answer;
         if (JarvisIntentRouter.isTimeQuery(raw)) answer="Abhi " + new SimpleDateFormat("hh:mm a", Locale.getDefault()).format(new Date()) + " baj rahe hain.";
         else if (JarvisIntentRouter.isDateQuery(raw)) answer="Aaj " + new SimpleDateFormat("dd MMMM yyyy", new Locale("hi","IN")).format(new Date()) + " hai.";
