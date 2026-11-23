@@ -27,6 +27,13 @@ public class JarvisMemoryPrivacyTest {
         assertEquals("NONE", JarvisMemoryAiWorker.preferredMemoryProvider(false, false, false));
     }
 
+    @Test public void sensitiveHistoricalTranscriptsAreNeverSentForAiReflection() {
+        assertFalse(JarvisMemoryAiWorker.isEligibleForAiReflection("Commander: मेरा आधार कार्ड 123456789012"));
+        assertFalse(JarvisMemoryAiWorker.isEligibleForAiReflection("Commander: My password is secret"));
+        assertTrue(JarvisMemoryAiWorker.isEligibleForAiReflection("Commander: I prefer concise answers"));
+        assertFalse(JarvisMemoryAiWorker.isEligibleForAiReflection(null));
+    }
+
     @Test public void modelCannotPinArbitraryOrSensitiveFacts() {
         assertTrue(JarvisMemoryAiWorker.isSafePinnedKey("profile.name", "profile"));
         assertTrue(JarvisMemoryAiWorker.isSafePinnedKey("instruction.response_style", "preference"));
