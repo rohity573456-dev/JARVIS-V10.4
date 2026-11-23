@@ -676,3 +676,20 @@ Every project report must label each capability as:
 | Phase 6 — Evaluation and controlled evolution | **Partially implemented; automated regression baseline active** | Android unit/Robolectric tests and existing Python wake-corpus benchmark tests are included in the final build gate. A full quality benchmark suite, real-device matrix, battery/latency soak tests and controlled model-routing evaluation remain open. |
 
 **Release rule:** The current branch is not described as completing all 107 divisions or as production-ready. The first final APK is deferred until the current source/test queue is green. Real-device validation is still required after installation.
+
+
+### Audit pass 20 — atomic memory editing
+
+**Issue found**
+- Editing a saved memory updated the fact row and rebuilt graph/vector indexes without one encompassing transaction. It also left stale feedback and the Memory Center forced the category to `personal`, losing the original memory classification.
+
+**Correction committed**
+- Memory edits now run as one SQLite transaction.
+- The edit removes stale graph edges, cloud/local vectors and feedback, prunes orphan graph nodes, then rebuilds the graph relation and local vector from the new content.
+- Passing a null category preserves the existing category; the Memory Center now uses this path rather than overwriting it with `personal`.
+- Sensitive-content filtering remains enforced before any edit is applied.
+
+**Verification**
+- Added a Robolectric SQLite regression test that checks category preservation, updated content, removal of stale cloud vectors/feedback and creation of the replacement local vector.
+- GitHub Actions passed the corrected memory-edit source and test suite (run 45113376203).
+- Real-device SQLite stress testing remains pending.
