@@ -60,6 +60,43 @@ public final class JarvisAndroidToolAdapter {
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
+            "get_device_status", "Read non-identifying battery, RAM, storage and Android version details.",
+            JarvisToolRegistry.Risk.READ_ONLY, none(), none(), "", args -> {
+                android.content.Context appContext = activity.getApplicationContext();
+                StringBuilder report = new StringBuilder("Device status");
+                try {
+                    Intent battery = appContext.registerReceiver(null,
+                        new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                    if (battery != null) {
+                        int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                        int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                        if (level >= 0 && scale > 0)
+                            report.append("\nBattery: ").append(Math.round(level * 100f / scale)).append("%");
+                    }
+                } catch (Exception ignored) {}
+                try {
+                    android.app.ActivityManager manager = (android.app.ActivityManager)
+                        appContext.getSystemService(Activity.ACTIVITY_SERVICE);
+                    if (manager != null) {
+                        android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+                        manager.getMemoryInfo(info);
+                        if (info.totalMem > 0)
+                            report.append("\nRAM available: ").append(formatBytes(info.availMem))
+                                .append(" / ").append(formatBytes(info.totalMem));
+                    }
+                } catch (Exception ignored) {}
+                try {
+                    android.os.StatFs storage = new android.os.StatFs(android.os.Environment.getDataDirectory().getPath());
+                    report.append("\nInternal storage available: ").append(formatBytes(storage.getAvailableBytes()))
+                        .append(" / ").append(formatBytes(storage.getTotalBytes()));
+                } catch (Exception ignored) {}
+                report.append("\nAndroid: ").append(android.os.Build.VERSION.RELEASE)
+                    .append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")");
+                return JarvisToolRegistry.ToolResult.success(report.toString());
+            }
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
             "open_settings", "Open one supported Android settings panel.", JarvisToolRegistry.Risk.REVERSIBLE,
             setOf("panel"), none(), "", args -> onMain(() -> {
                 String panel = args.get("panel");
@@ -270,6 +307,11 @@ public final class JarvisAndroidToolAdapter {
         }
         if (error.get() != null) return JarvisToolRegistry.ToolResult.failure("Android action failed: " + error.get().getClass().getSimpleName());
         return result.get() == null ? JarvisToolRegistry.ToolResult.failure("Android action returned no result.") : result.get();
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 0) return "unknown";
+        return String.format(java.util.Locale.ROOT, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
     private static Set<String> none() { return Collections.emptySet(); }
