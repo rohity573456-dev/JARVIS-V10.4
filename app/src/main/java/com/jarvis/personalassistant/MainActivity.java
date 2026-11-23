@@ -737,8 +737,12 @@ public class MainActivity extends Activity {
         for(String key:all.keySet()) if(key.startsWith("custom_")) {
             String value=memory.getString(key,""); String[] pair=value.split("\\|",2);
             if(pair.length==2 && raw.equalsIgnoreCase(pair[0].trim())) { String action=pair[1].trim();
-                if(action.startsWith("https://")||action.startsWith("http://")) open(action);
-                respond("Custom command executing: "+action); return true;
+                if(action.startsWith("https://")||action.startsWith("http://")) {
+                    respond(open(action)?"Custom website opened successfully.":"Browser unavailable; custom command could not be opened.");
+                } else {
+                    respond("Custom command is invalid. Only saved HTTPS website URLs are supported.");
+                }
+                return true;
             }
         } return false;
     }
