@@ -148,6 +148,13 @@ public class JarvisAgentEngineTest {
         assertTrue(handle.isFinished());
     }
 
+    @Test public void approvalPolicyKeepsReadOnlyAndReversibleActionsLowFriction() {
+        assertFalse(JarvisToolRegistry.requiresApproval(JarvisToolRegistry.Risk.READ_ONLY));
+        assertFalse(JarvisToolRegistry.requiresApproval(JarvisToolRegistry.Risk.REVERSIBLE));
+        assertTrue(JarvisToolRegistry.requiresApproval(JarvisToolRegistry.Risk.SENSITIVE));
+        assertTrue(JarvisToolRegistry.requiresApproval(JarvisToolRegistry.Risk.EXTERNAL));
+    }
+
     @Test public void cancellationDuringApprovalPreventsToolExecution() throws Exception {
         JarvisToolRegistry registry = new JarvisToolRegistry();
         AtomicInteger calls = new AtomicInteger();
