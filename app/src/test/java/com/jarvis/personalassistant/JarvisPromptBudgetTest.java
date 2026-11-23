@@ -20,6 +20,14 @@ public class JarvisPromptBudgetTest {
         assertEquals("System", p.system);
     }
 
+    @Test public void hindiPromptUsesConservativeUnicodeTokenBudget() {
+        String hindi = "नमस्ते दुनिया ".repeat(700);
+        JarvisPromptBudget.Prompt p = JarvisPromptBudget.fit("JARVIS_SYSTEM", hindi, 9000);
+        assertTrue(p.system.length() + p.input.length() <= 6000);
+        assertTrue(p.estimatedTokens >= p.input.length() / 2);
+        assertTrue(JarvisPromptBudget.estimateTokens("नमस्ते") >= "नमस्ते".length());
+    }
+
     @Test public void tokenEstimateIsConservativeAndEmptySafe() {
         assertEquals(0, JarvisPromptBudget.estimateTokens(""));
         assertTrue(JarvisPromptBudget.estimateTokens("abcdef") >= 2);
