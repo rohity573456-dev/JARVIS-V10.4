@@ -22,7 +22,13 @@ public final class JarvisActionIntentRouter {
             q.startsWith("internet pe search ") || q.startsWith("google par search ")) return true;
         if (APP_ACTION.matcher(q).find()) return true;
         if (q.startsWith("how to ") || q.startsWith("how do i ") ||
-            q.startsWith("kaise ") || q.startsWith("why ")) return false;
+            q.startsWith("kaise ") || q.startsWith("why ") || q.startsWith("what ")
+            || q.startsWith("explain ") || q.startsWith("tell me ")
+            || q.startsWith("compare ") || q.startsWith("define ")
+            || q.startsWith("is ") || q.startsWith("are ") || q.startsWith("does ")
+            || q.startsWith("can i ")) return false;
+        if (q.startsWith("open source ") || q.startsWith("open-source ")
+                || q.startsWith("open ai ")) return false;
         return HINDI_SUFFIX.matcher(q).matches();
     }
 }
