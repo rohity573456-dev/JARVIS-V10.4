@@ -21,6 +21,21 @@ public class JarvisAgentEngineTest {
         assertFalse(registry.invoke("read_status", invalid).success);
     }
 
+    @Test public void registryRejectsOversizedToolArgumentsBeforeHandler() {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        AtomicInteger calls = new AtomicInteger();
+        registry.register(new JarvisToolRegistry.ToolSpec("web_search", "Search the web",
+            JarvisToolRegistry.Risk.READ_ONLY, Collections.singleton("query"),
+            Collections.<String>emptySet(), "", args -> {
+                calls.incrementAndGet();
+                return JarvisToolRegistry.ToolResult.success("searched");
+            }));
+        Map<String,String> oversized = Collections.singletonMap("query", new String(new char[301]).replace('\0', 'x'));
+        JarvisToolRegistry.ToolResult result = registry.invoke("web_search", oversized);
+        assertFalse(result.success);
+        assertEquals(0, calls.get());
+    }
+
     @Test public void sensitiveAndExternalToolsRequireApproval() {
         assertTrue(JarvisToolRegistry.requiresApproval(JarvisToolRegistry.Risk.SENSITIVE));
         assertTrue(JarvisToolRegistry.requiresApproval(JarvisToolRegistry.Risk.EXTERNAL));
