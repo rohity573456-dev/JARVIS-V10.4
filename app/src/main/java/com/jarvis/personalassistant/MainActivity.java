@@ -77,6 +77,12 @@ public class MainActivity extends Activity {
     private boolean serviceRetryUsed = false;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private EditText commandInput;
+    private LinearLayout contentHost;
+    private LinearLayout homeScreen;
+    private LinearLayout chatScreen;
+    private LinearLayout exploreScreen;
+    private LinearLayout navigationBar;
+    private int activeTab = 0;
     private String lastResponse = "I am ready, Boss.";
     private String lastUserPrompt = "";
     private android.content.BroadcastReceiver wakeReceiver;
@@ -175,80 +181,330 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        final float d=getResources().getDisplayMetrics().density;
-        final int pad=(int)(18*d);
+        final float d = getResources().getDisplayMetrics().density;
+        final int pad = (int)(18*d);
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        LinearLayout root=new LinearLayout(this);
+
+        LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad,(int)(10*d),pad,(int)(12*d));
+        root.setPadding(pad,(int)(8*d),pad,(int)(8*d));
         root.setClipToPadding(false);
         root.setBackground(new android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(5,10,24),Color.rgb(8,19,37),Color.rgb(3,8,19)}));
-        LinearLayout header=new LinearLayout(this);
+            new int[]{Color.rgb(2,8,18),Color.rgb(4,24,43),Color.rgb(2,9,19)}));
+
+        LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout brand=new LinearLayout(this);
+        LinearLayout brand = new LinearLayout(this);
         brand.setOrientation(LinearLayout.VERTICAL);
         brand.setGravity(Gravity.CENTER_VERTICAL);
-        TextView wordmark=new TextView(this);
-        wordmark.setText("JARVIS"); wordmark.setTextColor(Color.rgb(242,248,255));
-        wordmark.setTextSize(21); wordmark.setLetterSpacing(0.20f);
-        wordmark.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        TextView wordmark = new TextView(this);
+        wordmark.setText("JARVIS");
+        wordmark.setTextColor(Color.rgb(244,250,255));
+        wordmark.setTextSize(23);
+        wordmark.setLetterSpacing(0.22f);
+        wordmark.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
         brand.addView(wordmark,new LinearLayout.LayoutParams(-2,-2));
-        status=new TextView(this); status.setText("● SYSTEM READY");
-        status.setTextColor(Color.rgb(107,231,210)); status.setTextSize(10); status.setLetterSpacing(0.10f);
+        status = new TextView(this);
+        status.setText("● SYSTEM READY   ·   AI CONNECTED");
+        status.setTextColor(Color.rgb(111,232,216));
+        status.setTextSize(10);
+        status.setLetterSpacing(0.08f);
         brand.addView(status,new LinearLayout.LayoutParams(-2,-2));
         header.addView(brand,new LinearLayout.LayoutParams(0,-2,1f));
-        TextView menu=new TextView(this); menu.setText("···"); menu.setTextColor(Color.rgb(185,220,246));
-        menu.setTextSize(27); menu.setGravity(Gravity.CENTER);
-        menu.setBackground(panel(Color.rgb(17,31,51),Color.rgb(43,76,108),18));
-        header.addView(menu,new LinearLayout.LayoutParams((int)(46*d),(int)(42*d)));
-        menu.setOnClickListener(v->openSettingsMenu());
-        root.addView(header,new LinearLayout.LayoutParams(-1,(int)(48*d)));
 
-        conversationScroll=new ScrollView(this);
-        conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false);
-        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
-        conversationList=new LinearLayout(this); conversationList.setOrientation(LinearLayout.VERTICAL);
-        conversationList.setPadding((int)(2*d),(int)(4*d),(int)(2*d),(int)(12*d));
-        conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
-        root.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        TextView menu = new TextView(this);
+        menu.setText("⋯");
+        menu.setTextColor(Color.rgb(205,229,248));
+        menu.setTextSize(27);
+        menu.setGravity(Gravity.CENTER);
+        menu.setBackground(panel(Color.rgb(15,34,55),Color.rgb(48,91,127),24));
+        header.addView(menu,new LinearLayout.LayoutParams((int)(48*d),(int)(44*d)));
+        menu.setOnClickListener(v -> openSettingsMenu());
+        root.addView(header,new LinearLayout.LayoutParams(-1,(int)(54*d)));
 
-        orbView=new JarvisOrbView(this); orbView.setState("STANDBY");
-        LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(88*d));
-        orbLp.topMargin=(int)(2*d); orbLp.bottomMargin=(int)(2*d);
-        root.addView(orbView,orbLp);
+        contentHost = new LinearLayout(this);
+        contentHost.setOrientation(LinearLayout.VERTICAL);
+        root.addView(contentHost,new LinearLayout.LayoutParams(-1,0,1f));
 
-        LinearLayout composer=new LinearLayout(this); composer.setOrientation(LinearLayout.HORIZONTAL);
-        composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
-        composer.setBackground(panel(Color.rgb(14,27,46),Color.rgb(46,83,119),27));
-        TextView mic=new TextView(this); mic.setText("◉"); mic.setTextColor(Color.rgb(135,225,255));
-        mic.setTextSize(21); mic.setGravity(Gravity.CENTER);
-        composer.addView(mic,new LinearLayout.LayoutParams((int)(44*d),(int)(46*d)));
-        mic.setOnClickListener(v->listen());
-        commandInput=new EditText(this); commandInput.setSingleLine(true);
-        commandInput.setTextColor(Color.rgb(244,249,255)); commandInput.setHintTextColor(Color.rgb(125,151,180));
-        commandInput.setHint("Ask JARVIS anything"); commandInput.setTextSize(15);
-        commandInput.setPadding((int)(8*d),0,(int)(4*d),0); commandInput.setBackgroundColor(Color.TRANSPARENT);
+        buildHomeScreen(d);
+        buildChatScreen(d);
+        buildExploreScreen(d);
+
+        LinearLayout composer = new LinearLayout(this);
+        composer.setOrientation(LinearLayout.HORIZONTAL);
+        composer.setGravity(Gravity.CENTER_VERTICAL);
+        composer.setPadding((int)(7*d),(int)(5*d),(int)(7*d),(int)(5*d));
+        composer.setBackground(panel(Color.rgb(13,29,49),Color.rgb(53,101,143),30));
+
+        TextView mic = new TextView(this);
+        mic.setText("◉");
+        mic.setTextColor(Color.rgb(140,225,255));
+        mic.setTextSize(21);
+        mic.setGravity(Gravity.CENTER);
+        composer.addView(mic,new LinearLayout.LayoutParams((int)(43*d),(int)(46*d)));
+        mic.setOnClickListener(v -> { switchTab(1); listen(); });
+
+        commandInput = new EditText(this);
+        commandInput.setSingleLine(true);
+        commandInput.setTextColor(Color.rgb(244,249,255));
+        commandInput.setHintTextColor(Color.rgb(133,160,188));
+        commandInput.setHint("Ask JARVIS anything...");
+        commandInput.setTextSize(15);
+        commandInput.setPadding((int)(8*d),0,(int)(4*d),0);
+        commandInput.setBackgroundColor(Color.TRANSPARENT);
         commandInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        commandInput.setOnEditorActionListener((v,actionId,event)->{
-            if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){
-                submitTypedCommand(); return true;
-            } return false;
+        commandInput.setOnEditorActionListener((v,actionId,event) -> {
+            if(actionId==EditorInfo.IME_ACTION_SEND || actionId==EditorInfo.IME_ACTION_DONE || actionId==EditorInfo.IME_ACTION_GO) {
+                submitTypedCommand();
+                return true;
+            }
+            return false;
         });
         composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(46*d),1f));
-        TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(5,16,30));
-        send.setTextSize(19); send.setGravity(Gravity.CENTER);
-        android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(
+
+        TextView send = new TextView(this);
+        send.setText("➤");
+        send.setTextColor(Color.rgb(3,17,31));
+        send.setTextSize(19);
+        send.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable sendBg = new android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{Color.rgb(132,235,255),Color.rgb(77,174,232)});
-        sendBg.setCornerRadius(22*d); send.setBackground(sendBg);
-        composer.addView(send,new LinearLayout.LayoutParams((int)(44*d),(int)(44*d)));
-        send.setOnClickListener(v->submitTypedCommand());
-        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(58*d));
-        composerLp.topMargin=(int)(8*d); root.addView(composer,composerLp);
+            new int[]{Color.rgb(144,239,255),Color.rgb(69,169,235)});
+        sendBg.setCornerRadius(24*d);
+        send.setBackground(sendBg);
+        composer.addView(send,new LinearLayout.LayoutParams((int)(46*d),(int)(46*d)));
+        send.setOnClickListener(v -> submitTypedCommand());
+
+        LinearLayout.LayoutParams composerLp = new LinearLayout.LayoutParams(-1,(int)(58*d));
+        composerLp.topMargin = (int)(7*d);
+        root.addView(composer,composerLp);
+
+        buildNavigation(d);
+        root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(58*d)));
         setContentView(root);
+        switchTab(0);
+    }
+
+    private void buildHomeScreen(float d) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        homeScreen = new LinearLayout(this);
+        homeScreen.setOrientation(LinearLayout.VERTICAL);
+        homeScreen.setGravity(Gravity.CENTER_HORIZONTAL);
+        homeScreen.setPadding((int)(2*d),(int)(8*d),(int)(2*d),(int)(12*d));
+
+        TextView greeting = new TextView(this);
+        greeting.setText("Hello, Boss");
+        greeting.setTextColor(Color.WHITE);
+        greeting.setTextSize(24);
+        greeting.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        greeting.setGravity(Gravity.CENTER);
+        homeScreen.addView(greeting,new LinearLayout.LayoutParams(-1,-2));
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("How can I help you today?");
+        subtitle.setTextColor(Color.rgb(172,203,228));
+        subtitle.setTextSize(13);
+        subtitle.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1,-2);
+        subLp.topMargin = (int)(3*d);
+        homeScreen.addView(subtitle,subLp);
+
+        orbView = new JarvisOrbView(this);
+        orbView.setState("STANDBY");
+        LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(190*d));
+        orbLp.topMargin = (int)(2*d);
+        orbLp.bottomMargin = (int)(4*d);
+        homeScreen.addView(orbView,orbLp);
+
+        TextView toolsTitle = sectionTitle("Discover AI tools",d);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1,-2);
+        titleLp.topMargin = (int)(7*d);
+        homeScreen.addView(toolsTitle,titleLp);
+
+        LinearLayout rowOne = new LinearLayout(this);
+        rowOne.setOrientation(LinearLayout.HORIZONTAL);
+        rowOne.setGravity(Gravity.CENTER);
+        addFeatureCard(rowOne,"◈","Image tools","Create or analyze images",() -> pickImage(),d);
+        addFeatureCard(rowOne,"⌕","Web research","Search information online",() -> searchWeb(""),d);
+        addFeatureCard(rowOne,"✧","Mission planner","Plan a task with JARVIS",() -> { switchTab(1); handle("mission plan"); },d);
+        homeScreen.addView(rowOne,new LinearLayout.LayoutParams(-1,(int)(112*d)));
+
+        LinearLayout rowTwo = new LinearLayout(this);
+        rowTwo.setOrientation(LinearLayout.HORIZONTAL);
+        rowTwo.setGravity(Gravity.CENTER);
+        addFeatureCard(rowTwo,"◉","Voice assistant","Talk to JARVIS",() -> { switchTab(1); listen(); },d);
+        addFeatureCard(rowTwo,"⌘","Memory center","Open saved memories",() -> memoryDialog(),d);
+        addFeatureCard(rowTwo,"⚙","System status","View device status",() -> systemReport(),d);
+        homeScreen.addView(rowTwo,new LinearLayout.LayoutParams(-1,(int)(112*d)));
+
+        scroll.addView(homeScreen,new ScrollView.LayoutParams(-1,-2));
+        homeScreen.setTag(scroll);
+    }
+
+    private void buildChatScreen(float d) {
+        chatScreen = new LinearLayout(this);
+        chatScreen.setOrientation(LinearLayout.VERTICAL);
+        conversationScroll = new ScrollView(this);
+        conversationScroll.setFillViewport(true);
+        conversationScroll.setVerticalScrollBarEnabled(false);
+        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        conversationScroll.setClipToPadding(false);
+        conversationList = new LinearLayout(this);
+        conversationList.setOrientation(LinearLayout.VERTICAL);
+        conversationList.setPadding((int)(2*d),(int)(6*d),(int)(2*d),(int)(12*d));
+        conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
+        chatScreen.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
+        chatScreen.setBackgroundColor(Color.TRANSPARENT);
+    }
+
+    private void buildExploreScreen(float d) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding((int)(3*d),(int)(12*d),(int)(3*d),(int)(20*d));
+        TextView title = sectionTitle("Explore JARVIS",d);
+        list.addView(title);
+        addExploreRow(list,"Image studio","Analyze a photo with your configured vision AI",() -> pickImage(),d);
+        addExploreRow(list,"Deep research","Search the web and investigate a topic",() -> searchWeb(""),d);
+        addExploreRow(list,"Memory center","Review, search and manage long-term memory",() -> memoryDialog(),d);
+        addExploreRow(list,"Tasks & reminders","Create and manage your tasks",() -> taskDialog(),d);
+        addExploreRow(list,"AI brain & models","Configure online providers or local model",() -> aiBrainDialog(),d);
+        addExploreRow(list,"System diagnostics","Check battery, storage and JARVIS status",() -> systemReport(),d);
+        scroll.addView(list,new ScrollView.LayoutParams(-1,-2));
+        exploreScreen = list;
+        exploreScreen.setTag(scroll);
+    }
+
+    private TextView sectionTitle(String text,float d) {
+        TextView title = new TextView(this);
+        title.setText(text);
+        title.setTextColor(Color.rgb(226,243,255));
+        title.setTextSize(16);
+        title.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        title.setPadding((int)(5*d),(int)(7*d),(int)(5*d),(int)(7*d));
+        return title;
+    }
+
+    private void addFeatureCard(LinearLayout row,String icon,String title,String subtitle,Runnable action,float d) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding((int)(9*d),(int)(8*d),(int)(7*d),(int)(8*d));
+        card.setBackground(panel(Color.rgb(12,35,57),Color.rgb(35,86,122),17));
+        TextView glyph = new TextView(this);
+        glyph.setText(icon);
+        glyph.setTextColor(Color.rgb(132,221,255));
+        glyph.setTextSize(19);
+        card.addView(glyph);
+        TextView name = new TextView(this);
+        name.setText(title);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(11);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(name);
+        TextView desc = new TextView(this);
+        desc.setText(subtitle);
+        desc.setTextColor(Color.rgb(151,183,210));
+        desc.setTextSize(8);
+        desc.setMaxLines(2);
+        card.addView(desc);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,-1,1f);
+        lp.setMargins((int)(3*d),(int)(3*d),(int)(3*d),(int)(3*d));
+        row.addView(card,lp);
+        card.setOnClickListener(v -> action.run());
+    }
+
+    private void addExploreRow(LinearLayout parent,String title,String description,Runnable action,float d) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding((int)(15*d),(int)(12*d),(int)(15*d),(int)(12*d));
+        card.setBackground(panel(Color.rgb(11,31,52),Color.rgb(37,79,112),17));
+        TextView name = new TextView(this);
+        name.setText(title);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(14);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(name);
+        TextView detail = new TextView(this);
+        detail.setText(description);
+        detail.setTextColor(Color.rgb(155,188,216));
+        detail.setTextSize(11);
+        LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(-1,-2);
+        detailLp.topMargin = (int)(3*d);
+        card.addView(detail,detailLp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,-2);
+        lp.setMargins(0,(int)(5*d),0,(int)(5*d));
+        parent.addView(card,lp);
+        card.setOnClickListener(v -> action.run());
+    }
+
+    private void buildNavigation(float d) {
+        navigationBar = new LinearLayout(this);
+        navigationBar.setOrientation(LinearLayout.HORIZONTAL);
+        navigationBar.setGravity(Gravity.CENTER);
+        navigationBar.setPadding((int)(5*d),(int)(4*d),(int)(5*d),(int)(4*d));
+        navigationBar.setBackground(panel(Color.rgb(12,29,47),Color.rgb(40,77,107),28));
+        addNavigationItem("⌂","Home",0,d);
+        addNavigationItem("◌","Chat",1,d);
+        addNavigationItem("✧","Explore",2,d);
+    }
+
+    private void addNavigationItem(String icon,String label,int tab,float d) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setGravity(Gravity.CENTER);
+        TextView glyph = new TextView(this);
+        glyph.setText(icon);
+        glyph.setTextSize(17);
+        glyph.setGravity(Gravity.CENTER);
+        glyph.setTextColor(Color.rgb(159,193,220));
+        item.addView(glyph);
+        TextView text = new TextView(this);
+        text.setText(label);
+        text.setTextSize(9);
+        text.setGravity(Gravity.CENTER);
+        text.setTextColor(Color.rgb(159,193,220));
+        item.addView(text);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,-1,1f);
+        item.setLayoutParams(lp);
+        item.setTag(new View[]{glyph,text});
+        item.setOnClickListener(v -> switchTab(tab));
+        navigationBar.addView(item);
+    }
+
+    private void switchTab(int tab) {
+        if (contentHost == null || navigationBar == null) return;
+        activeTab = tab;
+        contentHost.removeAllViews();
+        View screen;
+        if (tab == 1) screen = chatScreen;
+        else if (tab == 2) screen = (View)exploreScreen.getTag();
+        else screen = (View)homeScreen.getTag();
+        if (orbView != null && orbView.getParent() != null) ((android.view.ViewGroup)orbView.getParent()).removeView(orbView);
+        if (tab == 0) {
+            homeScreen.addView(orbView,2,new LinearLayout.LayoutParams(-1,(int)(190*getResources().getDisplayMetrics().density)));
+        } else if (tab == 1) {
+            LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(150*getResources().getDisplayMetrics().density));
+            orbLp.topMargin = (int)(3*getResources().getDisplayMetrics().density);
+            chatScreen.addView(orbView,orbLp);
+        }
+        contentHost.addView(screen,new LinearLayout.LayoutParams(-1,-1));
+        for (int i=0;i<navigationBar.getChildCount();i++) {
+            LinearLayout item = (LinearLayout)navigationBar.getChildAt(i);
+            View[] parts = (View[])item.getTag();
+            boolean selected = i == tab;
+            parts[0].setAlpha(selected?1f:0.68f);
+            parts[1].setAlpha(selected?1f:0.68f);
+            parts[0].setBackground(selected?panel(Color.rgb(24,73,108),Color.rgb(73,174,225),18):null);
+            ((TextView)parts[0]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220));
+            ((TextView)parts[1]).setTextColor(selected?Color.rgb(149,231,255):Color.rgb(159,193,220));
+        }
     }
 
     private void openSettingsMenu() {
@@ -297,8 +553,7 @@ public class MainActivity extends Activity {
     }
 
     private void pickImage() {
-        try {
-            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        try {            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             pick.setType("image/*");
             pick.addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(pick,PICK_IMAGE);
@@ -516,6 +771,7 @@ public class MainActivity extends Activity {
     }
 
     private void handle(String raw) {
+        switchTab(1);
         final long responseToken = responseSequencer.beginRequest();
         lastUserPrompt = raw == null ? "" : raw;
         if (orbView != null) orbView.setState("THINKING");
@@ -597,8 +853,7 @@ public class MainActivity extends Activity {
                 status.setText("● HYBRID AI ROUTING...");
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
-                new Thread(() -> {
-                    if (!responseSequencer.isCurrent(responseToken)) return;
+                new Thread(() -> {                    if (!responseSequencer.isCurrent(responseToken)) return;
                     float[] queryVector = useCloudVector ? JarvisEmbeddingClient.embed(geminiKey, raw, true) : null;
                     if (!responseSequencer.isCurrent(responseToken)) return;
                     String baseMemoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
@@ -897,8 +1152,7 @@ public class MainActivity extends Activity {
         if(longTermMemory==null||memory.getBoolean("memory_private_mode",false)||!memory.getBoolean("memory_ai_learning",false))return;
         JarvisMemoryAiWorker.reflectPendingAsync(longTermMemory,secureStore.get("gemini_key"),
             memory.getString("gemini_model","gemini-2.5-flash"),secureStore.get("groq_key"),
-            memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),
-            memoryConsentGate());
+            memory.getString("groq_model","openai/gpt-oss-120b"),secureStore.get("openai_key"),            memoryConsentGate());
     }
     private String buildOfflineMemoryPrompt(String raw){
         if(memory==null||memory.getBoolean("memory_private_mode",false)||longTermMemory==null)return raw;
