@@ -19,6 +19,16 @@ final class JarvisIntentRouter {
                 .trim().replaceAll("\\s+", " ");
     }
 
+    static boolean isRememberCommand(String raw) {
+        String q = normalize(raw);
+        return q.startsWith("remember that ") || q.startsWith("remember this ")
+                || q.startsWith("remember my ") || q.startsWith("please remember that ")
+                || q.startsWith("please remember this ") || q.startsWith("please remember my ")
+                || q.startsWith("yaad rakh ") || q.startsWith("yaad rakhna ")
+                || q.startsWith("याद रख ") || q.startsWith("याद रखना ")
+                || q.startsWith("याद रखो ");
+    }
+
     static boolean isTimeQuery(String raw) {
         String q = normalize(raw);
         return oneOf(q, "time", "current time", "time now", "what time is it",
