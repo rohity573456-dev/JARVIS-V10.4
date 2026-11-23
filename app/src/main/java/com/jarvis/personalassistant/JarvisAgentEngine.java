@@ -148,9 +148,13 @@ public final class JarvisAgentEngine {
             if (handle.cancelled.get()) state = State.CANCELLED;
             else if (state != State.FAILED && state != State.CANCELLED) state = State.COMPLETED;
         } catch (Exception e) {
-            state = State.FAILED;
-            reports.add(new StepReport(new AgentStep("planner", "planner_error", Collections.<String,String>emptyMap(), ""),
-                JarvisToolRegistry.ToolResult.failure(e.getClass().getSimpleName() + ": " + e.getMessage()), 1));
+            if (handle.cancelled.get()) {
+                state = State.CANCELLED;
+            } else {
+                state = State.FAILED;
+                reports.add(new StepReport(new AgentStep("planner", "planner_error", Collections.<String,String>emptyMap(), ""),
+                    JarvisToolRegistry.ToolResult.failure(e.getClass().getSimpleName() + ": " + e.getMessage()), 1));
+            }
         }
         String summary = state == State.COMPLETED ? "Agent planning finished; every executed action was verified."
             : state == State.CANCELLED ? "Execution cancelled or approval denied; no further steps were started."
