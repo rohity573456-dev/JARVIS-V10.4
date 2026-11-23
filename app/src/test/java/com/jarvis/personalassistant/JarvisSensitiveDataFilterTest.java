@@ -33,6 +33,8 @@ public class JarvisSensitiveDataFilterTest {
         assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरा पैन कार्ड"));
         assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरी दवा और बीमारी"));
         assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरा धर्म"));
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("Mera PAN card"));
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("meri dawai aur bimari"));
     }
 
     @Test public void allowsOrdinaryNonSensitivePreferences() {
