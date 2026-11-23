@@ -116,7 +116,7 @@ public final class JarvisAndroidToolAdapter {
 
         registry.register(new JarvisToolRegistry.ToolSpec(
             "create_reminder", "Create a local reminder after an explicit user request.",
-            JarvisToolRegistry.Risk.REVERSIBLE, setOf("title", "delay_minutes"), none(), "", args -> onMain(() -> {
+            JarvisToolRegistry.Risk.REVERSIBLE, setOf("title", "delay_minutes"), none(), "", args -> {
                 String title = args.get("title");
                 String delayRaw = args.get("delay_minutes");
                 long delay;
@@ -127,11 +127,12 @@ public final class JarvisAndroidToolAdapter {
                 if (delay < 1 || delay > 10080)
                     return JarvisToolRegistry.ToolResult.failure("Reminder delay must be between 1 minute and 7 days.");
                 long dueAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delay);
-                JarvisMemoryStore store = new JarvisMemoryStore(activity);
+                android.content.Context appContext = activity.getApplicationContext();
+                JarvisMemoryStore store = new JarvisMemoryStore(appContext);
                 try {
                     long id = store.addTask(title.trim(), dueAt);
                     if (id <= 0) return JarvisToolRegistry.ToolResult.failure("Reminder could not be saved.");
-                    if (!JarvisReminderScheduler.schedule(activity, id, title.trim(), dueAt)) {
+                    if (!JarvisReminderScheduler.schedule(appContext, id, title.trim(), dueAt))
                         store.deleteTask(id);
                         return JarvisToolRegistry.ToolResult.failure("Reminder alarm could not be scheduled; no task was kept.");
                     }
@@ -139,7 +140,7 @@ public final class JarvisAndroidToolAdapter {
                         new java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault())
                             .format(new java.util.Date(dueAt)) + ": " + title.trim());
                 } finally { store.close(); }
-            })
+            }
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
