@@ -135,7 +135,7 @@ public class MainActivity extends Activity {
         longTermMemory.expireTransientMemories();
         longTermMemory.indexMissingLocalVectors(500);
         longTermMemory.consolidateMemories();
-        if (memory.getBoolean("memory_private_mode", false)) memory.edit().remove("last_response").apply();
+        if (!JarvisPrivacyPolicy.shouldPersistLastResponse(memory.getBoolean("memory_private_mode", false))) memory.edit().remove("last_response").apply();
         lastResponse = memory.getString("last_response", lastResponse);
         localModelPath = memory.getString("local_model_path", "");
         if (!localModelPath.isEmpty() && !new File(localModelPath).exists()) localModelPath = "";
@@ -954,13 +954,13 @@ public class MainActivity extends Activity {
     private void launch(Intent i,String label) { try { startActivity(i); } catch(Exception e) { show("SYSTEM",label+" app available nahi hai."); } }
     private void open(String url) { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch(Exception ignored) {} }
     private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
-    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && !memory.getBoolean("memory_private_mode", false)) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
+    private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
 
     /** Private Mode must not leave a persisted copy of the latest response. */
     private void persistLastResponse(String response) {
         if (memory == null) return;
         android.content.SharedPreferences.Editor editor = memory.edit();
-        if (memory.getBoolean("memory_private_mode", false)) editor.remove("last_response");
+        if (!JarvisPrivacyPolicy.shouldPersistLastResponse(memory.getBoolean("memory_private_mode", false))) editor.remove("last_response");
         else editor.putString("last_response", response == null ? "" : response);
         editor.apply();
     }
