@@ -20,7 +20,7 @@ public class JarvisAndroidToolAdapterTest {
         JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
         org.robolectric.Shadows.shadowOf(activity).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
         JarvisToolRegistry registry = new JarvisToolRegistry();
-        new JarvisAndroidToolAdapter(activity).registerInto(registry);
+        new JarvisAndroidToolAdapter(activity, (context, id, title, dueAt) -> true).registerInto(registry);
         Map<String,String> args = new HashMap<>();
         args.put("title", "JARVIS agent reminder test");
         args.put("delay_minutes", "5");
@@ -41,7 +41,6 @@ public class JarvisAndroidToolAdapterTest {
         assertTrue(listed.output.contains("JARVIS agent reminder test"));
         assertEquals(JarvisToolRegistry.Risk.READ_ONLY, registry.get("list_reminders").risk);
 
-        JarvisReminderScheduler.cancel(activity, createdReminder.id);
         store.deleteTask(createdReminder.id);
         store.close();
         activity.finish();
