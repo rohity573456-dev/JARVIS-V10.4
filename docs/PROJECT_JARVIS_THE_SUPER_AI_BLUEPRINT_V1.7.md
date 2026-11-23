@@ -320,7 +320,7 @@ Every project report must label each capability as:
 - Routing policy: explicit `Astra ...` prefix only for the optional paid Astra route; otherwise Groq is preferred for coding/data-analysis/planning when available, Gemini is preferred for general/research, the other configured cloud provider is the fallback, and local inference is the final offline fallback.
 - Normal cloud chat prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling. Free-provider structured tool-planning prompts use a tighter 4,500-character ceiling to reserve provider TPM headroom for tool schemas and completion tokens; explicit Astra planning keeps its separate bounded premium context budget. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
 - All providers receive a silent answer self-check instruction. Complex Astra specialist responses may receive a second-pass audit; do not spend a second API call on routine conversation.
-- These changes are automated-test covered but remain pending latest CI completion and real-device validation. Character/token estimates are protective approximations, not exact tokenizer measurements.
+- These changes are automated-test covered; GitHub Actions Android unit tests and compile passed in run 45130984564. Real-device validation remains pending. Character/token estimates are protective approximations, not exact tokenizer measurements.
 
 ## Implementation audit log — 23 November 2026
 
@@ -341,7 +341,7 @@ Every project report must label each capability as:
 - Before this pass, WakeWordService.executeBackgroundCommand() used broad substring checks for time, date, battery, volume and flashlight. A technical question mentioning one of those words could be intercepted as a device action.
 - Updated the background voice path to use the same strict JarvisIntentRouter predicates as the foreground path for those local actions.
 - Added unit-test cases covering explanatory battery/time/flashlight/volume questions and explicit commands.
-- **Verification state:** source changes committed to the active feature branch; the next GitHub Actions run must pass before this fix is marked verified. Real-device voice testing remains pending.
+- **Verification state:** source changes committed to the active feature branch; GitHub Actions Android unit tests and compile passed in run 45130984564. Real-device voice testing remains pending.
 
 **Preliminary division status (source-level only)**
 - **Partially implemented; further audit required:** 4 (Memory & Learning), 7 (Multimodal Intelligence), 9 (Android Intelligence), 13 (Security Intelligence), 16 (Command & Action Intelligence), 24 (Developer Intelligence), 51 (Complete Cognitive Memory Architecture), 52 (Foundation Model Intelligence), 60 (Dynamic Intelligence & Compute Management), 64 (Tool Intelligence & API Ecosystem), 69 (Universal Personal Agent), 70 (Frontier Intelligence Routing), 97 (Intelligent Intent Router), 98 (Central AI Orchestrator), 99 (Advanced Context Manager), 100 (Multi-Turn Conversation Engine), 101 (Response Quality Verifier), 102 (Intelligent Model Fallback), 103 (AI Performance & Token Optimizer), 104 (Advanced Cognitive Brain), 105 (ChatGPT-Style Memory Intelligence), 106 (Conversational Personality Engine), 107 (Cognitive Self-Evaluation Engine).
@@ -382,7 +382,7 @@ Every project report must label each capability as:
 
 **Verification state**
 - Source changes and new unit tests committed on the active feature branch.
-- CI for the latest commits has not yet been confirmed by the available workflow status query. Do not mark these changes verified until GitHub Actions passes.
+- GitHub Actions Android unit tests and compile passed for the current source tree in run 45130984564. No device validation performed.
 - No device validation performed.
 
 **Next audit targets**
@@ -403,7 +403,7 @@ Every project report must label each capability as:
 - MainActivity supplies a gate that reads the current memory_ai_learning and memory_private_mode settings. The same protection now covers both normal user messages and saved-note extraction.
 
 **Verification**
-- Source committed to the active feature branch. Fresh GitHub Actions result is not yet available/confirmed.
+- Source committed to the active feature branch. GitHub Actions Android unit tests and compile passed in run 45130984564; real-device race testing remains open.
 - Runtime race testing (turn private mode on while a cloud request is queued/in flight) remains a required device/integration test.
 
 ### Audit pass 4 — memory deletion, retention and index integrity
@@ -660,7 +660,7 @@ Every project report must label each capability as:
 - Saved facts remain intact, matching the separate history-versus-memory controls.
 
 **Verification**
-- The change is covered by the existing SQLite lifecycle tests for history/session/digest deletion and by the current Android unit-test/compile workflow, which is pending for the latest UI changes.
+- The change is covered by the existing SQLite lifecycle tests for history/session/digest deletion and by the current Android unit-test/compile workflow, which passed in run 45130984564.
 - Physical-device confirmation that the UI, restart state and retry controls all reset as expected remains pending.
 
 
@@ -867,7 +867,7 @@ Every project report must label each capability as:
 
 **Verification**
 - Added routing regression coverage proving Gemini/Groq selection and that an OpenAI key alone returns no eligible background provider.
-- GitHub Actions validation is pending. No ONNX assets or wake-word behavior changed.
+- GitHub Actions Android unit tests and compile passed in run 45130984564. No ONNX assets or wake-word behavior changed.
 
 
 ### Audit pass 32 — detect incomplete provider completions
@@ -888,34 +888,34 @@ Every project report must label each capability as:
 
 - Extended the completion guard to native tool-call responses. A provider `finish_reason=length` or `content_filter` is now an explicit planning error, allowing the existing Gemini/Groq fallback chain to run.
 - A complete response with no tool calls still means “no action needed”; it is not conflated with a response cut off before the model could decide.
-- Added regression tests for truncated tool plans and valid no-tool decisions. CI validation is pending.
+- Added regression tests for truncated tool plans and valid no-tool decisions. GitHub Actions Android unit tests and compile passed in run 45130984564.
 
 
 ### Audit pass 34 — reduce specialist-routing false positives
 
 - Replaced substring-only specialist keyword matching with Unicode-aware word/phrase boundaries. Ordinary words such as “planets” and “decode” no longer accidentally activate planning or coding modes.
 - Added explicit inflections such as “planning”, “debugging”, “compiled” and “programming” so genuine requests retain their specialist route.
-- Added regression tests for both false-positive and positive cases. CI validation is pending; provider priority and paid Astra opt-in policy are unchanged.
+- Added regression tests for both false-positive and positive cases. GitHub Actions Android unit tests and compile passed in run 45130984564; provider priority and paid Astra opt-in policy are unchanged.
 
 
 ### Audit pass 35 — broaden modern coding-language recognition
 
 - Extended the boundary-safe coding specialist vocabulary to recognize JavaScript, TypeScript, Android Studio and React Native explicitly. This fixes a false negative where “Build a JavaScript app” previously fell through to general chat after Java was made whole-word-only.
-- Added a regression test for JavaScript app requests. Existing false-positive boundary tests remain in place; validation is pending.
+- Added a regression test for JavaScript app requests. Existing false-positive boundary tests remain in place; GitHub Actions Android unit tests and compile passed in run 45130984564.
 
 
 ### Audit pass 36 — handle incomplete Astra Responses API results
 
 - Added equivalent truncation/failure checks for the optional Astra Responses API. `status=incomplete` / `max_output_tokens` and `status=failed` now return an explicit provider error instead of passing partial text or an empty tool plan as complete.
 - The hybrid router can fall back to configured free providers when an explicit Astra request returns an incomplete response.
-- Added pure unit coverage for incomplete, failed and completed Responses statuses. CI validation is pending.
+- Added pure unit coverage for incomplete, failed and completed Responses statuses. GitHub Actions Android unit tests and compile passed in run 45130984564.
 
 
 ### Audit pass 37 — preserve explicit Astra opt-in for Android actions
 
 - Fixed an intent-routing edge case: `Astra open YouTube` and `Astra remind me in ...` previously missed the action router because the provider prefix came before the action verb.
 - The router now strips the prefix only for action-intent detection while leaving the original objective intact for the structured planner. Thus Astra is still selected only when explicitly requested; without an Astra key the free-provider fallback remains available.
-- Added tests for Astra-prefixed app launch, reminder creation and ordinary explanatory questions. CI validation is pending.
+- Added tests for Astra-prefixed app launch, reminder creation and ordinary explanatory questions. GitHub Actions Android unit tests and compile passed in run 45130984564.
 
 
 ### Audit pass 38 — unify local and AI memory sensitive-data filters
@@ -1001,7 +1001,7 @@ Every project report must label each capability as:
 - Listener callback exceptions are isolated from planning/execution results, preventing a detached Activity/UI failure from converting an already completed side effect into a retry or a false failure.
 
 **Verification**
-- Added a regression test proving a throwing state callback does not interrupt a verified tool action. GitHub Actions Android unit-test/compile validation is pending.
+- Added a regression test proving a throwing state callback does not interrupt a verified tool action. GitHub Actions Android unit tests and compile passed in run 45130984564.
 - Existing approval gates, cancellation checks, eight-step execution ceiling and no-retry rule for side-effecting tools remain unchanged.
 
 
@@ -1015,11 +1015,11 @@ Every project report must label each capability as:
 - The existing consent checks and sensitive-transcript revalidation still run inside each accepted task immediately before provider use and storage.
 
 **Verification**
-- This is a queue/resource-bound change; Android unit-test/compile validation is pending. No database schema, stored memory, provider priority or ONNX asset changed.
+- This is a queue/resource-bound change; Android unit tests and compile passed in run 45130984564. No database schema, stored memory, provider priority or ONNX asset changed.
 
 
 ### Audit pass 46 — harden local embedding worker lifecycle
 
 - The optional embedding indexer now uses a daemon worker with a one-entry bounded queue. Its existing single-flight guard prevents duplicate indexing runs; if executor submission is rejected, the guard is reset so a later attempt can retry pending rows.
 - Pending embedding rows remain in SQLite on provider failure or interrupted work. Consent is rechecked before each remote embedding request and before storing the result.
-- Android unit-test/compile validation is pending. No embedding schema, vector model, API key or ONNX asset changed.
+- Android unit tests and compile passed in run 45130984564. No embedding schema, vector model, API key or ONNX asset changed.
