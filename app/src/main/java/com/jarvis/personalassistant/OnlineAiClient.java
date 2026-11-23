@@ -64,6 +64,14 @@ public final class OnlineAiClient {
      * Calls an OpenAI-compatible model with native tool schemas. Returns only
      * normalized tool-call requests; this method never executes a tool.
      */
+    static String completionErrorForFinishReason(String finishReason) {
+        if ("length".equalsIgnoreCase(finishReason))
+            return "ERROR: Provider response was truncated by its token limit.";
+        if ("content_filter".equalsIgnoreCase(finishReason))
+            return "ERROR: Provider filtered the response.";
+        return null;
+    }
+
     /** Reject incomplete or filtered completions so the router can use its bounded fallback. */
     static String extractAssistantAnswer(JSONObject response) {
         if (response == null) return "ERROR: Provider response was empty.";
@@ -71,11 +79,8 @@ public final class OnlineAiClient {
         if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
         JSONObject choice = choices.optJSONObject(0);
         if (choice == null) return "ERROR: Provider response format was unexpected.";
-        String finishReason = choice.optString("finish_reason", "");
-        if ("length".equalsIgnoreCase(finishReason))
-            return "ERROR: Provider response was truncated by its token limit.";
-        if ("content_filter".equalsIgnoreCase(finishReason))
-            return "ERROR: Provider filtered the response.";
+        String finishReasonError = completionErrorForFinishReason(choice.optString("finish_reason", ""));
+        if (finishReasonError != null) return finishReasonError;
         JSONObject message = choice.optJSONObject("message");
         if (message == null) return "ERROR: Provider response format was unexpected.";
         Object content = message.opt("content");
@@ -91,11 +96,8 @@ public final class OnlineAiClient {
         if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
         JSONObject choice = choices.optJSONObject(0);
         if (choice == null) return "ERROR: Provider response format was unexpected.";
-        String finishReason = choice.optString("finish_reason", "");
-        if ("length".equalsIgnoreCase(finishReason))
-            return "ERROR: Tool-planning response was truncated by its token limit.";
-        if ("content_filter".equalsIgnoreCase(finishReason))
-            return "ERROR: Provider filtered the tool-planning response.";
+        String finishReasonError = completionErrorForFinishReason(choice.optString("finish_reason", ""));
+        if (finishReasonError != null) return finishReasonError;
         JSONObject message = choice.optJSONObject("message");
         if (message == null) return "ERROR: Provider response format was unexpected.";
         JSONArray calls = message.optJSONArray("tool_calls");
