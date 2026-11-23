@@ -74,11 +74,7 @@ public final class OpenAiResponsesClient {
             InputStream stream = status >= 200 && status < 300
                     ? connection.getInputStream() : connection.getErrorStream();
             StringBuilder raw = new StringBuilder();
-            if (stream != null) try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) raw.append(line);
-            }
+            if (stream != null) raw.append(JarvisHttpBodyReader.read(stream, 2097152));
             if (status < 200 || status >= 300) return "ERROR " + status + ": " + raw;
             JSONObject response = new JSONObject(raw.toString());
             String responseError = incompleteResponseError(response.optString("status", ""),
@@ -152,11 +148,7 @@ public final class OpenAiResponsesClient {
             InputStream stream = status >= 200 && status < 300
                     ? connection.getInputStream() : connection.getErrorStream();
             StringBuilder raw = new StringBuilder();
-            if (stream != null) try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) raw.append(line);
-            }
+            if (stream != null) raw.append(JarvisHttpBodyReader.read(stream, 2097152));
             if (status < 200 || status >= 300) return "ERROR " + status + ": " + raw;
             JSONObject response = new JSONObject(raw.toString());
             String responseError = incompleteResponseError(response.optString("status", ""),
