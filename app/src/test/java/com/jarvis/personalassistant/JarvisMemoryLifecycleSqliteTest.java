@@ -70,6 +70,34 @@ public class JarvisMemoryLifecycleSqliteTest {
         assertEquals(1, store.getMemoryCount());
     }
 
+    @Test public void supersedingFactRetainsHistoryButRemovesStaleVectors() {
+        long oldId = store.upsertFact("profile", "semantic", "profile.city",
+            "I live in Deoria", 0.9, 80, true, "ai");
+        assertTrue(oldId > 0);
+        store.putEmbedding(oldId, new float[]{0.2f, 0.4f}, "test-model");
+        store.recordMemoryFeedback(oldId, 1, "city fact");
+        assertEquals(1, count("memory_local_vectors", oldId));
+        assertEquals(1, count("memory_embeddings", oldId));
+
+        long newId = store.upsertFact("profile", "semantic", "profile.city",
+            "I live in Mumbai", 0.95, 85, true, "ai");
+        assertTrue(newId > 0);
+        assertNotEquals(oldId, newId);
+        assertEquals(0, count("memory_local_vectors", oldId));
+        assertEquals(0, count("memory_embeddings", oldId));
+        assertEquals(1, count("memory_local_vectors", newId));
+
+        android.database.Cursor oldFact = store.getWritableDatabase().rawQuery(
+            "SELECT is_active,valid_until FROM memories WHERE id=?", new String[]{String.valueOf(oldId)});
+        try {
+            assertTrue(oldFact.moveToFirst());
+            assertEquals(0, oldFact.getInt(0));
+            assertTrue(oldFact.getLong(1) > 0);
+        } finally { oldFact.close(); }
+        assertTrue(store.getMemoryContext("city", 10).contains("I live in Mumbai"));
+        assertFalse(store.getMemoryContext("city", 10).contains("I live in Deoria"));
+    }
+
     @Test public void editingMemoryAtomicallyRebuildsIndexesAndPreservesCategory() {
         long id = store.saveMemory("preference", "I prefer detailed answers");
         assertTrue(id > 0);
