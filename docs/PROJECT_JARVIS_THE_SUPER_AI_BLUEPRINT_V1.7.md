@@ -526,8 +526,8 @@ Every project report must label each capability as:
 
 **Correction committed**
 - Private Mode enable/disable phrases are now recognized before any conversation insertion or automatic memory learning.
-- Both transition commands are excluded from history and automatic learning.
-- Transition confirmations use the ephemeral response path, preventing orphan assistant-only turns.
+- Both command-driven transitions are excluded from history and automatic learning.
+- Command and Memory Center UI transition confirmations use the ephemeral response path; they do not create orphan assistant-only turns or persist a last-response copy.
 - The enable path still invalidates queued background memory work and clears the persisted last-response field.
 
 **Verification**
