@@ -273,8 +273,9 @@ public final class JarvisAndroidToolAdapter {
                     return JarvisToolRegistry.ToolResult.failure("URL must contain 1-2048 characters.");
                 Uri uri = Uri.parse(raw.trim());
                 String scheme = uri.getScheme();
-                if (uri.getHost() == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)))
-                    return JarvisToolRegistry.ToolResult.failure("Only valid HTTP or HTTPS URLs can be opened.");
+                if (uri.getHost() == null || uri.getUserInfo() != null
+                        || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)))
+                    return JarvisToolRegistry.ToolResult.failure("Only valid HTTP or HTTPS URLs without embedded credentials can be opened.");
                 return onMain(() -> {
                     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
                     if (intent.resolveActivity(activity.getPackageManager()) == null)
