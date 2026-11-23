@@ -564,10 +564,10 @@ public class MainActivity extends Activity {
         else if (q.startsWith("task delete ")) { long id=parseLong(raw.replaceFirst("(?i)^task delete\\s*","").trim()); boolean removed=longTermMemory!=null && longTermMemory.deleteTask(id); if(removed)JarvisReminderScheduler.cancel(this,id); answer=removed?"Task #"+id+" delete kar diya.":"Task ID nahi mili."; }
         else if (q.startsWith("memory temp ")) { java.util.regex.Matcher tm=java.util.regex.Pattern.compile("(?i)^memory temp\\s+(\\d+)\\s*(m|min|h|hour|d|day)s?\\s*\\|\\s*(.+)$").matcher(raw.trim()); if(!tm.matches())answer="Format: memory temp 2h | meeting notes"; else {long n=parseLong(tm.group(1));String unit=tm.group(2).toLowerCase(Locale.ROOT);long factor=unit.startsWith("m")?60000L:unit.startsWith("h")?3600000L:86400000L;long id=longTermMemory==null?-1:longTermMemory.addTransientMemory(tm.group(3),n*factor);answer=id>0?"Temporary memory #"+id+" saved; it will expire automatically.":"Temporary memory could not be saved."; } }
         else if (JarvisIntentRouter.isRememberCommand(raw)) { String note=raw.replaceFirst("(?i)^(please\\s+)?remember\\s+(that|this|my)\\s*","").replaceFirst("(?i)^remember\\s*[:,-]?\\s*","").replaceFirst("(?i)^yaad\\s+rakh(na)?\\s*","").replaceFirst("^याद\\s+रख(ना|ो)?\\s*","").trim(); answer=saveNote(note)?"Memory mein save kar diya: "+note:"Memory save nahi hui. Text empty, sensitive ya invalid ho sakta hai."; }
-        else if (q.contains("what did i ask you to remember") || q.contains("maine kya yaad") || q.equals("memory") || q.contains("show memory") || q.contains("meri memory")) { memoryDialog(); return; }
+        else if (JarvisIntentRouter.isMemoryOverviewQuery(raw)) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
-        else if (q.contains("hello") || q.contains("namaste") || q.contains("हेलो")) answer="Hello Pratik Boss. JARVIS systems are ready.";
+        else if (JarvisIntentRouter.isGreeting(raw)) answer="Hello Pratik Boss. JARVIS systems are ready.";
         else {
             if (isAgentActionIntent(q)) {
                 runAgent(raw);
