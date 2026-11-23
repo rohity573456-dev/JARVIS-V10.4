@@ -534,7 +534,7 @@ public class MainActivity extends Activity {
                 activeAgentRun.cancel();
                 AlertDialog approval = activeAgentApprovalDialog;
                 if (approval != null && approval.isShowing()) approval.cancel();
-                answer="Agent cancellation requested. The current platform call will finish safely, then no further steps will run.";
+                answer="Agent cancellation requested. Any in-flight operation may finish; no further steps will start.";
             } else answer="No active agent task to cancel.";
         }
         else if (JarvisIntentRouter.isWifiSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_WIFI_SETTINGS),"Wi-Fi settings"); answer="Wi-Fi settings khol raha hoon."; }
