@@ -583,12 +583,15 @@ public class MainActivity extends Activity {
                 final boolean privateContext = memory.getBoolean("memory_private_mode", false);
                 final boolean useCloudVector = !privateContext && memory.getBoolean("memory_cloud_embeddings", false) && !geminiKey.isEmpty();
                 new Thread(() -> {
+                    if (!responseSequencer.isCurrent(responseToken)) return;
                     float[] queryVector = useCloudVector ? JarvisEmbeddingClient.embed(geminiKey, raw, true) : null;
+                    if (!responseSequencer.isCurrent(responseToken)) return;
                     final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
                     final String prompt = JarvisConversationContext.compose(memoryContext, legacyNote,
                         lastResponse, raw, privateContext);
+                    if (!responseSequencer.isCurrent(responseToken)) return;
                     JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
                         localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> {
