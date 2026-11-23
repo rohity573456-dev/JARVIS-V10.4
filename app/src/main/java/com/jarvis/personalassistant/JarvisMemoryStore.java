@@ -150,15 +150,8 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     private boolean isSensitiveContent(String value) {
-        if (value == null) return false;
-        String s = value.toLowerCase(Locale.ROOT);
-        String[] blocked = {"password", "passcode", "pin code", "otp", "one time password", "cvv",
-            "credit card number", "debit card number", "aadhaar number", "aadhar number",
-            "pan number", "passport number", "bank account number", "account number is"};
-        for (String term : blocked) if (s.contains(term)) return true;
-        return false;
+        return JarvisSensitiveDataFilter.isSensitiveText(value);
     }
-
     private long insertMemory(SQLiteDatabase db, String category, String type, String key,
             String content, double confidence, int importance, boolean pinned, String source) {
         long now = System.currentTimeMillis();
