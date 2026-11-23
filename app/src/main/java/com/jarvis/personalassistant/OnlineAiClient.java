@@ -48,10 +48,7 @@ public final class OnlineAiClient {
             int code = c.getResponseCode();
             InputStream stream = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
             StringBuilder raw = new StringBuilder();
-            if (stream != null) try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) raw.append(line);
-            }
+            if (stream != null) raw.append(JarvisHttpBodyReader.read(stream, 1048576));
             if (code < 200 || code >= 300) return "ERROR " + code + ": " + raw;
             return extractAssistantAnswer(new JSONObject(raw.toString()));
         } catch (Exception e) {
@@ -152,10 +149,7 @@ public final class OnlineAiClient {
             int code = c.getResponseCode();
             InputStream stream = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
             StringBuilder raw = new StringBuilder();
-            if (stream != null) try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) raw.append(line);
-            }
+            if (stream != null) raw.append(JarvisHttpBodyReader.read(stream, 1048576));
             if (code < 200 || code >= 300) return "ERROR " + code + ": " + raw;
             return extractToolCalls(new JSONObject(raw.toString()));
         } catch (Exception e) {
