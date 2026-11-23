@@ -175,6 +175,34 @@ public class JarvisMemoryLifecycleSqliteTest {
         assertEquals(0, store.expireTransientMemories());
     }
 
+    @Test public void skippedSensitiveSessionIsMarkedWithoutSavingSummaryOrStarvingQueue() {
+        SQLiteDatabase db = store.getWritableDatabase();
+        long old = System.currentTimeMillis() - 30L * 60L * 1000L;
+        ContentValues session = new ContentValues();
+        session.put("session_id", "sensitive-session");
+        session.put("started_at", old);
+        session.put("ended_at", old);
+        session.put("turn_count", 4);
+        session.put("summary", "");
+        db.insert("memory_sessions", null, session);
+        for (int i = 0; i < 4; i++) {
+            ContentValues turn = new ContentValues();
+            turn.put("speaker", i % 2 == 0 ? "Commander" : "JARVIS");
+            turn.put("content", "Safe old transcript turn " + i);
+            turn.put("created_at", old + i);
+            turn.put("session_id", "sensitive-session");
+            turn.put("importance", 0);
+            db.insert("conversations", null, turn);
+        }
+        assertEquals(1, store.getPendingReflectionSessions(6).size());
+
+        store.markAiSessionReflectionSkipped("sensitive-session");
+
+        assertTrue(store.getPendingReflectionSessions(6).isEmpty());
+        assertEquals(1, countWhere("memory_ai_reflections", "session_id='sensitive-session'"));
+        assertEquals(0, countWhere("memory_summaries", "summary_type='ai-session'"));
+    }
+
     @Test public void clearHistoryRemovesSessionsAndDigestsButKeepsFacts() {
         long factId = store.saveMemory("preference", "Keep this durable preference");
         store.addConversation("USER", "First turn in a test session");
