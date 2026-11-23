@@ -974,5 +974,5 @@ Every project report must label each capability as:
 - Added a shared UTF-8 response reader with strict character ceilings: 1 MiB for compatible free-provider responses and 2 MiB for Astra Responses API replies. Oversized bodies fail closed and are handled by the existing provider fallback/error path.
 
 **Verification**
-- Added tests for UTF-8 decoding, null streams and rejection of oversized bodies. Android unit-test/compile validation is pending.
+- Added tests for UTF-8 decoding, null streams and rejection of oversized bodies. Android unit tests and compile passed in GitHub Actions run 45129735144.
 - Request payloads, model routing, conversation storage and the existing ONNX wake-word assets are unchanged.
