@@ -1,5 +1,7 @@
 package com.jarvis.personalassistant;
 
+// JARVIS three-screen reference UI: home, project chat, and tool exploration.
+
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
