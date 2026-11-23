@@ -27,6 +27,14 @@ public class JarvisActionIntentRouterTest {
         assertTrue(JarvisActionIntentRouter.isExplicitAction("Can you open WhatsApp?"));
     }
 
+    @Test public void routesExplicitRelativeReminderCommandsButNotQuestions() {
+        assertTrue(JarvisActionIntentRouter.isExplicitAction("remind me in 10 minutes to call home"));
+        assertTrue(JarvisActionIntentRouter.isExplicitAction("set a reminder in 2 hours to take the parcel"));
+        assertTrue(JarvisActionIntentRouter.isExplicitAction("mujhe 15 minute baad yaad dilana ki call karna hai"));
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("How do reminders work in JARVIS?"));
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("What is a reminder in 10 minutes?"));
+    }
+
     @Test public void doesNotRouteGeneralQuestionsAsActions() {
         assertFalse(JarvisActionIntentRouter.isExplicitAction("How do I open WhatsApp?"));
         assertFalse(JarvisActionIntentRouter.isExplicitAction("Why should I launch Instagram?"));
