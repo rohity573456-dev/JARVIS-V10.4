@@ -78,6 +78,32 @@ public class JarvisAgentEngineTest {
         assertEquals(0, calls.get());
     }
 
+    @Test public void failedExternalActionIsNeverRetriedAutomatically() throws Exception {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        AtomicInteger calls = new AtomicInteger();
+        registry.register(new JarvisToolRegistry.ToolSpec("send_message", "Send a message",
+            JarvisToolRegistry.Risk.EXTERNAL, Collections.singleton("text"),
+            Collections.<String>emptySet(), "", args -> {
+                calls.incrementAndGet();
+                return JarvisToolRegistry.ToolResult.failure("response lost after send");
+            }));
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            objective -> new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
+                new JarvisAgentEngine.AgentStep("s1", "send_message",
+                    Collections.singletonMap("text","hello"), "Send once"))),
+            registry, step -> true);
+        CountDownLatch done = new CountDownLatch(1);
+        final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
+        engine.submit("send message", new JarvisAgentEngine.Listener() {
+            public void onState(JarvisAgentEngine.State state, String detail) {}
+            public void onComplete(JarvisAgentEngine.AgentReport value) { report[0] = value; done.countDown(); }
+        });
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(JarvisAgentEngine.State.FAILED, report[0].finalState);
+        assertEquals("A side-effecting action must not be repeated", 1, calls.get());
+        assertEquals(1, report[0].steps.get(0).attempts);
+    }
+
     @Test public void unverifiedToolResultStopsExecution() throws Exception {
         JarvisToolRegistry registry = new JarvisToolRegistry();
         registry.register(new JarvisToolRegistry.ToolSpec("unsafe_check", "Unverified",
