@@ -22,7 +22,12 @@ public final class SiriEdgeGlowView extends View {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final float density;
     private final long startedAt = SystemClock.uptimeMillis();
-    private final SweepGradient rainbow;
+    private SweepGradient rainbow;
+    private final int[] rainbowColors = new int[] {
+        0xff42d9ff, 0xff617bff, 0xffbd65ff, 0xffff68c8,
+        0xffffa45b, 0xffffe17a, 0xff65f0d0, 0xff42d9ff
+    };
+    private final float[] rainbowStops = new float[] {0f, .15f, .30f, .45f, .60f, .74f, .88f, 1f};
     private String state = "STANDBY";
 
     private final Runnable thinkingTimeout = () -> setState("STANDBY");
@@ -30,20 +35,19 @@ public final class SiriEdgeGlowView extends View {
     public SiriEdgeGlowView(Context context) {
         super(context);
         density = getResources().getDisplayMetrics().density;
-        int[] colors = new int[] {
-            0xff42d9ff, 0xff617bff, 0xffbd65ff, 0xffff68c8,
-            0xffffa45b, 0xffffe17a, 0xff65f0d0, 0xff42d9ff
-        };
-        float[] stops = new float[] {0f, .15f, .30f, .45f, .60f, .74f, .88f, 1f};
-        rainbow = new SweepGradient(0f, 0f, colors, stops);
         glowPaint.setStyle(Paint.Style.STROKE);
         glowPaint.setStrokeCap(Paint.Cap.ROUND);
-        glowPaint.setShader(rainbow);
         setLayerType(View.LAYER_TYPE_HARDWARE, null);
         setClickable(false);
         setFocusable(false);
         setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         setContentDescription(null);
+    }
+
+    @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        rainbow = new SweepGradient(w * .5f, h * .5f, rainbowColors, rainbowStops);
+        glowPaint.setShader(rainbow);
     }
 
     public void setState(String nextState) {
@@ -59,7 +63,7 @@ public final class SiriEdgeGlowView extends View {
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        if ("STANDBY".equals(state) || getWidth() <= 0 || getHeight() <= 0) return;
+        if ("STANDBY".equals(state) || rainbow == null || getWidth() <= 0 || getHeight() <= 0) return;
 
         float t = (SystemClock.uptimeMillis() - startedAt) / 1000f;
         float speed = "THINKING".equals(state) ? 145f :
