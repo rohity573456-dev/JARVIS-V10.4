@@ -47,6 +47,13 @@ public class JarvisIntentRouterTest {
         assertTrue(JarvisIntentRouter.isVolumeDownCommand("volume down"));
     }
 
+    @Test public void agentCancellationRequiresExplicitCommand() {
+        assertTrue(JarvisIntentRouter.isCancelAgentCommand("stop agent"));
+        assertTrue(JarvisIntentRouter.isCancelAgentCommand("cancel current task"));
+        assertFalse(JarvisIntentRouter.isCancelAgentCommand("How do I stop an agent?"));
+        assertFalse(JarvisIntentRouter.isCancelAgentCommand("Explain task cancellation"));
+    }
+
     @Test public void greetingsAndMemoryOverviewRequireClearIntent() {
         assertTrue(JarvisIntentRouter.isGreeting("Namaste"));
         assertTrue(JarvisIntentRouter.isGreeting("Hello JARVIS"));
