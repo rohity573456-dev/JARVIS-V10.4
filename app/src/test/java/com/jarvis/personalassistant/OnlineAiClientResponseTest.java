@@ -22,6 +22,17 @@ public class OnlineAiClientResponseTest {
         assertTrue(OnlineAiClient.extractAssistantAnswer(response).contains("filtered"));
     }
 
+    @Test public void rejectsTruncatedToolPlanInsteadOfTreatingItAsNoAction() throws Exception {
+        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":null}}]}");
+        assertTrue(OnlineAiClient.extractToolCalls(response).startsWith("ERROR:"));
+        assertTrue(OnlineAiClient.extractToolCalls(response).contains("truncated"));
+    }
+
+    @Test public void acceptsACompleteNoToolDecision() throws Exception {
+        JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"No action needed.\"}}]}");
+        assertEquals("[]", OnlineAiClient.extractToolCalls(response));
+    }
+
     @Test public void rejectsMissingAndEmptyProviderContent() throws Exception {
         assertTrue(OnlineAiClient.extractAssistantAnswer(new JSONObject("{}")).startsWith("ERROR:"));
         JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"  \"}}]}");
