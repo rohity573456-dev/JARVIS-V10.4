@@ -896,3 +896,9 @@ Every project report must label each capability as:
 - Replaced substring-only specialist keyword matching with Unicode-aware word/phrase boundaries. Ordinary words such as “planets” and “decode” no longer accidentally activate planning or coding modes.
 - Added explicit inflections such as “planning”, “debugging”, “compiled” and “programming” so genuine requests retain their specialist route.
 - Added regression tests for both false-positive and positive cases. CI validation is pending; provider priority and paid Astra opt-in policy are unchanged.
+
+
+### Audit pass 35 — broaden modern coding-language recognition
+
+- Extended the boundary-safe coding specialist vocabulary to recognize JavaScript, TypeScript, Android Studio and React Native explicitly. This fixes a false negative where “Build a JavaScript app” previously fell through to general chat after Java was made whole-word-only.
+- Added a regression test for JavaScript app requests. Existing false-positive boundary tests remain in place; validation is pending.
