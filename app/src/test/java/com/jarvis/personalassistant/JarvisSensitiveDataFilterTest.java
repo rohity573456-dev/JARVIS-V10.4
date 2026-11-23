@@ -27,6 +27,14 @@ public class JarvisSensitiveDataFilterTest {
         assertFalse(JarvisMemoryExtractor.sensitive(null));
     }
 
+    @Test public void blocksCommonHindiAndHinglishSensitiveTerms() {
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("Mera Aadhaar number 123456789012"));
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरा आधार कार्ड"));
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरा पैन कार्ड"));
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरी दवा और बीमारी"));
+        assertTrue(JarvisSensitiveDataFilter.isSensitiveText("मेरा धर्म"));
+    }
+
     @Test public void allowsOrdinaryNonSensitivePreferences() {
         assertFalse(JarvisSensitiveDataFilter.isSensitiveText("I prefer concise answers"));
         assertFalse(JarvisSensitiveDataFilter.isSensitiveText("My current project is JARVIS"));
