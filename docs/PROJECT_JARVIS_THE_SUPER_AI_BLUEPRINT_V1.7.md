@@ -702,7 +702,7 @@ Every project report must label each capability as:
 - The agent can read the device's local date/time/timezone, list saved reminders/tasks, and create a local reminder for an explicitly requested delay.
 - Reminder creation validates a non-empty title (maximum 160 characters) and a delay from 1 minute to 7 days.
 - The reminder is stored locally and scheduled with Android AlarmManager. If scheduling fails, the newly created task row is rolled back.
-- Creation requires notification permission on Android 13+; if permission is off, the agent reports the requirement and does not save a reminder. Delivery catches a permission-revocation race to avoid crashing the receiver.
+- Creation requires notification permission on Android 13+; if permission is off, the agent reports the requirement and does not save a reminder. The `open_settings` tool can navigate directly to JARVIS app-notification settings (or app details on older Android). Delivery catches a permission-revocation race to avoid crashing the receiver.
 - Listing and local date/time reads are READ_ONLY; creation is REVERSIBLE and not automatically retried. Completing or deleting a task is SENSITIVE and requires explicit approval. External web actions remain approval-gated.
 
 **Verification**
