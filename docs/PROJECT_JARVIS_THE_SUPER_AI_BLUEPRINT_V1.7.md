@@ -1023,3 +1023,11 @@ Every project report must label each capability as:
 - The optional embedding indexer now uses a daemon worker with a one-entry bounded queue. Its existing single-flight guard prevents duplicate indexing runs; if executor submission is rejected, the guard is reset so a later attempt can retry pending rows.
 - Pending embedding rows remain in SQLite on provider failure or interrupted work. Consent is rechecked before each remote embedding request and before storing the result.
 - Android unit tests and compile passed in run 45130984564. No embedding schema, vector model, API key or ONNX asset changed.
+
+
+### Release-candidate gate — 23 November 2026
+
+- Latest source tree passed the GitHub Actions Android unit-test and compile workflow (run `45131195853`). This includes the bounded agent executor, bounded background memory queue, bounded embedding worker, provider response ceilings and local tool-argument validation.
+- The existing three OpenWakeWord ONNX assets remain unchanged from the feature base branch; no model replacement or re-training was performed.
+- The final APK workflow is now being requested. It will rerun the Python wake-corpus benchmark tests and Android unit tests before assembling the installable debug APK and uploading the artifact.
+- Scope remains accurately labelled: phases 0–3 are implemented with remaining capabilities, phases 4–6 are partial. A passing build does not mean all 107 blueprint divisions are complete or production-ready. Real-device microphone, battery, background lifecycle, alarm and rapid-turn checks remain required after installation.
