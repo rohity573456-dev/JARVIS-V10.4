@@ -929,3 +929,10 @@ Every project report must label each capability as:
 **Verification**
 - Added regression coverage for PAN, Aadhaar, password and ordinary preference text through the local extractor filter. CI validation is pending.
 - This is a privacy guard only; no saved memory schema, provider routing or ONNX assets changed.
+
+
+### Audit pass 39 — extend sensitive-memory filtering to Hindi/Hinglish
+
+- Expanded the shared sensitive-data filter with common Hindi terms for passwords, OTPs, Aadhaar/PAN cards, bank accounts, medicines/illness, religion, political beliefs and biometric identifiers.
+- Because local conversation storage, manual memory saves and AI memory extraction share this filter, the language coverage applies consistently before persistent storage.
+- Added Hindi/Hinglish regression tests. CI validation is pending.
