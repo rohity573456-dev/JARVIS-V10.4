@@ -916,3 +916,16 @@ Every project report must label each capability as:
 - Fixed an intent-routing edge case: `Astra open YouTube` and `Astra remind me in ...` previously missed the action router because the provider prefix came before the action verb.
 - The router now strips the prefix only for action-intent detection while leaving the original objective intact for the structured planner. Thus Astra is still selected only when explicitly requested; without an Astra key the free-provider fallback remains available.
 - Added tests for Astra-prefixed app launch, reminder creation and ordinary explanatory questions. CI validation is pending.
+
+
+### Audit pass 38 — unify local and AI memory sensitive-data filters
+
+**Issue found**
+- Automatic local fact extraction used a shorter keyword blocklist than the AI memory worker. Some sensitive identifiers could therefore be missed by the local path even though the cloud-learning path rejected them.
+
+**Correction committed**
+- Local automatic memory extraction now applies the shared `JarvisSensitiveDataFilter` before its existing category/keyword checks. Explicit user-controlled memory editing remains a separate intentional action.
+
+**Verification**
+- Added regression coverage for PAN, Aadhaar, password and ordinary preference text through the local extractor filter. CI validation is pending.
+- This is a privacy guard only; no saved memory schema, provider routing or ONNX assets changed.
