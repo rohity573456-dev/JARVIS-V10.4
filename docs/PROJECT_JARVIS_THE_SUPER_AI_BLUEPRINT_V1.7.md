@@ -936,3 +936,16 @@ Every project report must label each capability as:
 - Expanded the shared sensitive-data filter with common Hindi terms for passwords, OTPs, Aadhaar/PAN cards, bank accounts, medicines/illness, religion, political beliefs and biometric identifiers.
 - Because local conversation storage, manual memory saves and AI memory extraction share this filter, the language coverage applies consistently before persistent storage.
 - Added Hindi/Hinglish regression tests. CI validation is pending.
+
+
+### Audit pass 40 — block sensitive historical transcripts from AI reflection
+
+**Issue found**
+- Background AI reflection could process old pending conversation sessions without rechecking their full transcript. Sessions saved before newer privacy filters were added might still contain sensitive text.
+
+**Correction committed**
+- The reflection worker now checks each historical transcript with the shared sensitive-data filter immediately before constructing or sending its provider prompt. Sensitive sessions are skipped; explicit cloud-memory consent remains required for all other sessions.
+
+**Verification**
+- Added regression tests proving Hindi Aadhaar and password-containing historical transcripts are excluded while ordinary preferences remain eligible. CI validation is pending.
+- No existing conversation history is deleted or rewritten; ONNX assets remain untouched.
