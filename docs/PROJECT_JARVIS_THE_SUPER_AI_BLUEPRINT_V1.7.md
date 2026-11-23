@@ -646,3 +646,18 @@ Every project report must label each capability as:
 
 **Verification**
 - No final APK has been built or uploaded yet. The single final build is intentionally deferred until implementation and validation work is complete.
+
+
+### Audit pass 19 — complete conversation-history clearing
+
+**Issue found**
+- Clearing SQLite conversation history did not clear the persisted `last_response`, visible conversation bubbles, or the retry prompt held in Activity memory. A later turn or app restart could therefore retain part of the supposedly cleared conversation.
+
+**Correction committed**
+- The clear-history action now clears SQLite conversations/sessions/digests, removes the persisted last response, clears visible chat bubbles and the retry prompt, and resets the in-memory previous-response context.
+- The confirmation is displayed/spoken ephemerally and is not written back into the history that was just cleared.
+- Saved facts remain intact, matching the separate history-versus-memory controls.
+
+**Verification**
+- The change is covered by the existing SQLite lifecycle tests for history/session/digest deletion and by the current Android unit-test/compile workflow, which is pending for the latest UI changes.
+- Physical-device confirmation that the UI, restart state and retry controls all reset as expected remains pending.
