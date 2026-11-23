@@ -889,3 +889,10 @@ Every project report must label each capability as:
 - Extended the completion guard to native tool-call responses. A provider `finish_reason=length` or `content_filter` is now an explicit planning error, allowing the existing Gemini/Groq fallback chain to run.
 - A complete response with no tool calls still means “no action needed”; it is not conflated with a response cut off before the model could decide.
 - Added regression tests for truncated tool plans and valid no-tool decisions. CI validation is pending.
+
+
+### Audit pass 34 — reduce specialist-routing false positives
+
+- Replaced substring-only specialist keyword matching with Unicode-aware word/phrase boundaries. Ordinary words such as “planets” and “decode” no longer accidentally activate planning or coding modes.
+- Added explicit inflections such as “planning”, “debugging”, “compiled” and “programming” so genuine requests retain their specialist route.
+- Added regression tests for both false-positive and positive cases. CI validation is pending; provider priority and paid Astra opt-in policy are unchanged.
