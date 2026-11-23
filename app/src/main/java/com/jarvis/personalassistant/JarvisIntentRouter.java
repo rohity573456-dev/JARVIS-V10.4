@@ -19,6 +19,16 @@ final class JarvisIntentRouter {
                 .trim().replaceAll("\\s+", " ");
     }
 
+    static boolean isPrivateModeEnableCommand(String raw) {
+        String q = normalize(raw);
+        return oneOf(q, "memory privacy on", "private mode on", "memory band");
+    }
+
+    static boolean isPrivateModeDisableCommand(String raw) {
+        String q = normalize(raw);
+        return oneOf(q, "memory privacy off", "private mode off", "memory chalu");
+    }
+
     static boolean isRememberCommand(String raw) {
         String q = normalize(raw);
         return q.startsWith("remember that ") || q.startsWith("remember this ")
