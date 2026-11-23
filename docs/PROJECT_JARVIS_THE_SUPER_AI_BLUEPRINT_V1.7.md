@@ -927,7 +927,7 @@ Every project report must label each capability as:
 - Local automatic memory extraction now applies the shared `JarvisSensitiveDataFilter` before its existing category/keyword checks. Explicit user-controlled memory editing remains a separate intentional action.
 
 **Verification**
-- Added regression coverage for PAN, Aadhaar, password and ordinary preference text through the local extractor filter. CI validation is pending.
+- Added regression coverage for PAN, Aadhaar, password and ordinary preference text through the local extractor filter. CI Android unit tests and compile passed in run 45128111059.
 - This is a privacy guard only; no saved memory schema, provider routing or ONNX assets changed.
 
 
@@ -935,7 +935,7 @@ Every project report must label each capability as:
 
 - Expanded the shared sensitive-data filter with common Hindi terms for passwords, OTPs, Aadhaar/PAN cards, bank accounts, medicines/illness, religion, political beliefs and biometric identifiers.
 - Because local conversation storage, manual memory saves and AI memory extraction share this filter, the language coverage applies consistently before persistent storage.
-- Added Hindi/Hinglish regression tests. CI validation is pending.
+- Added Hindi/Hinglish regression tests. CI Android unit tests and compile passed in run 45128111059.
 
 
 ### Audit pass 40 — block sensitive historical transcripts from AI reflection
@@ -947,5 +947,5 @@ Every project report must label each capability as:
 - The reflection worker now checks each historical transcript with the shared sensitive-data filter immediately before constructing or sending its provider prompt. Sensitive sessions are skipped and receive a marker in `memory_ai_reflections` without storing a summary, so they are not repeatedly queued and cannot starve later eligible sessions. Explicit cloud-memory consent remains required for all other sessions.
 
 **Verification**
-- Added regression tests proving Hindi Aadhaar and password-containing historical transcripts are excluded while ordinary preferences remain eligible. A SQLite lifecycle test verifies skipped sessions are marked, create no summary and leave the pending queue. CI validation is pending.
+- Added regression tests proving Hindi Aadhaar and password-containing historical transcripts are excluded while ordinary preferences remain eligible. A SQLite lifecycle test verifies skipped sessions are marked, create no summary and leave the pending queue. CI Android unit tests and compile passed in run 45128111059.
 - No existing conversation history is deleted or rewritten; ONNX assets remain untouched.
