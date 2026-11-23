@@ -20,6 +20,7 @@ public class JarvisHybridBrainTest {
         assertEquals(JarvisHybridBrain.Specialist.GENERAL, JarvisHybridBrain.classify("Explain how planets form"));
         assertEquals(JarvisHybridBrain.Specialist.GENERAL, JarvisHybridBrain.classify("How do I decode this message?"));
         assertEquals(JarvisHybridBrain.Specialist.CODING, JarvisHybridBrain.classify("Help me with JavaScript code"));
+        assertEquals(JarvisHybridBrain.Specialist.CODING, JarvisHybridBrain.classify("Build a JavaScript app"));
         assertEquals(JarvisHybridBrain.Specialist.PLANNING, JarvisHybridBrain.classify("Help me with planning"));
     }
 
