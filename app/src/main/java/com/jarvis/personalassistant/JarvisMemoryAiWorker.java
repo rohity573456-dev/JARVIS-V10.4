@@ -3,12 +3,24 @@ package com.jarvis.personalassistant;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /** Provider-backed extraction/reflection; called only after explicit cloud-memory consent. */
 public final class JarvisMemoryAiWorker {
-    private static final ExecutorService EXECUTOR=Executors.newSingleThreadExecutor();
+    // Bound queued maintenance work while preserving single-threaded memory writes.
+    private static final ThreadPoolExecutor EXECUTOR = new ThreadPoolExecutor(
+        1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(16),
+        new ThreadFactory() {
+            @Override public Thread newThread(Runnable task) {
+                Thread thread = new Thread(task, "Jarvis-Memory-AI");
+                thread.setDaemon(true);
+                return thread;
+            }
+        }, new ThreadPoolExecutor.AbortPolicy());
     private JarvisMemoryAiWorker(){}
 
     public interface ConsentGate { boolean isAllowed(); }
@@ -23,7 +35,7 @@ public final class JarvisMemoryAiWorker {
         if(db==null||text==null||text.trim().length()<8||text.length()>2500||sensitive(text)||
                 consent==null||!consent.isAllowed())return;
         if("NONE".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey))))return;
-        EXECUTOR.execute(()->{
+        enqueue(()->{
             if(!consent.isAllowed())return;
             String result=ask(gKey,gModel,rKey,rModel,openAiKey,extractPrompt(text));
             if(!consent.isAllowed())return;
@@ -38,7 +50,7 @@ public final class JarvisMemoryAiWorker {
 
     public static void reflectPendingAsync(JarvisMemoryStore db,String gKey,String gModel,String rKey,String rModel,String openAiKey,ConsentGate consent){
         if(db==null||"NONE".equals(preferredMemoryProvider(!empty(gKey),!empty(rKey),!empty(openAiKey)))||consent==null||!consent.isAllowed())return;
-        EXECUTOR.execute(()->{
+        enqueue(()->{
             if(!consent.isAllowed())return;
             List<JarvisMemoryStore.PendingSession> sessions=db.getPendingReflectionSessions(6);
             for(JarvisMemoryStore.PendingSession session:sessions){
@@ -67,6 +79,13 @@ public final class JarvisMemoryAiWorker {
                 storeFacts(db,root.optJSONArray("facts"),"ai-reflection",consent);
             }
         });
+    }
+
+    private static void enqueue(Runnable task) {
+        try { EXECUTOR.execute(task); }
+        catch (RejectedExecutionException overloaded) {
+            android.util.Log.w("JARVIS-MEMORY", "Background memory queue is full; skipping this maintenance task.");
+        }
     }
 
     private static String extractPrompt(String text){
