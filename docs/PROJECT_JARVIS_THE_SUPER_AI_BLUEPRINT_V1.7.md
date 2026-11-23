@@ -304,7 +304,7 @@ Every project report must label each capability as:
 
 - JARVIS does not contain or copy OpenAI's proprietary model weights, hidden source code, or private internal memory implementation.
 - The app includes an independent Responses API adapter for the public GPT-6.2 Astra model ID `gpt-6.2-astra`.
-- Gemini/Groq remain the everyday and fallback providers. Astra is selected for complex coding, research, data-analysis and planning requests when an OpenAI API key is configured; the explicit `Astra ...` prefix can request Astra for a general question.
+- Gemini/Groq remain the everyday and fallback providers. Astra is strictly opt-in and is selected only when the user explicitly starts a request with `Astra ...`; specialist classification alone never triggers paid requests.
 - The same optional Astra adapter can produce structured function-call plans for the existing Android agent. The existing local schema validation and user approval gate remain mandatory; model output never executes a device action directly.
 - GPT-6.2 Astra API usage is paid separately from a ChatGPT subscription. Do not make it the default for routine turns; preserve a free-first route and expose the cost implication in provider setup.
 - The OpenAI key is stored through the existing Android Keystore-backed SecureStore. Never commit keys to GitHub or embed them in source.
@@ -317,8 +317,8 @@ Every project report must label each capability as:
 - Conversation turns are persisted in the existing SQLite conversations table; each user request receives up to 12 recent chronological turns (six user/assistant pairs), relevant long-term facts, pinned profile facts, session digests and related knowledge-graph context.
 - Context ordering is deterministic for equal timestamps. If memory context must be shortened, preserve its useful opening facts and newest conversational tail instead of cutting off the latest turn.
 - A bounded context composer keeps follow-up instructions, prevents unsupported memory claims, and suppresses saved memory, legacy notes and previous-turn context in private mode.
-- Routing policy: optional Astra first for configured complex specialist work; Groq is preferred for coding/data-analysis/planning when available; Gemini is preferred for general/research; the other configured cloud provider is the fallback; local inference is the final offline fallback.
-- Cloud prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling to reduce provider TPM/context failures. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
+- Routing policy: explicit `Astra ...` prefix only for the optional paid Astra route; otherwise Groq is preferred for coding/data-analysis/planning when available, Gemini is preferred for general/research, the other configured cloud provider is the fallback, and local inference is the final offline fallback.
+- Normal cloud chat prompts use a conservative 9,000-character standard budget and 1,536-token response ceiling. Structured tool-planning prompts use a tighter 4,500-character ceiling to reserve provider TPM headroom for tool schemas and completion tokens. Astra uses a separate bounded context budget. Truncation preserves both the earlier context prefix and latest user-turn tail.
 - All providers receive a silent answer self-check instruction. Complex Astra specialist responses may receive a second-pass audit; do not spend a second API call on routine conversation.
 - These changes are automated-test covered but remain pending latest CI completion and real-device validation. Character/token estimates are protective approximations, not exact tokenizer measurements.
 
