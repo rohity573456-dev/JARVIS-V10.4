@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
     private boolean serviceRetryUsed = false;
     private final Handler voiceHandler = new Handler(Looper.getMainLooper());
     private EditText commandInput;
-    private String lastResponse = "I am ready, Pratik Boss.";
+    private String lastResponse = "I am ready, Boss.";
     private String lastUserPrompt = "";
     private android.content.BroadcastReceiver wakeReceiver;
     private boolean wakeReceiverRegistered = false;
@@ -163,7 +163,7 @@ public class MainActivity extends Activity {
         });
         refreshUiStatus();
         show("JARVIS CORE", "V9 foundation online. Voice, memory and command modules ready.");
-        speak("JARVIS systems online. At your service, Pratik Boss.");
+        speak("JARVIS systems online. At your service, Boss.");
     }
 
     private android.graphics.drawable.GradientDrawable panel(int fill, int stroke, int radiusDp) {
@@ -394,7 +394,7 @@ public class MainActivity extends Activity {
                 status.setText("● MICROPHONE READY");
                 requestNotificationPermissionIfNeeded();
                 startAlwaysOnWakeService();
-                respond("Microphone permission granted. I am ready, Pratik Boss.");
+                respond("Microphone permission granted. I am ready, Boss.");
             } else {
                 status.setText("● MICROPHONE PERMISSION NEEDED");
                 show("SYSTEM", "Android Settings mein JARVIS ke liye Microphone permission Allow karein.");
@@ -412,7 +412,7 @@ public class MainActivity extends Activity {
     private boolean hasMicPermission() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return true;
         ensureAudioPermission();
-        respond("Microphone permission allow karo, Pratik Boss.");
+        respond("Microphone permission allow karo, Boss.");
         return false;
     }
 
@@ -578,7 +578,7 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isMemoryOverviewQuery(raw)) { memoryDialog(); return; }
         else if (q.startsWith("mission plan") || q.contains("plan my task") || q.contains("mission briefing")) answer="Mission protocol: objective define karein, task ko steps mein divide karein, risks aur required resources check karein, phir execution se pehle confirmation lein. Main abhi local planning template use kar raha hoon.";
         else if (runCustomCommand(raw)) return;
-        else if (JarvisIntentRouter.isGreeting(raw)) answer="Hello Pratik Boss. JARVIS systems are ready.";
+        else if (JarvisIntentRouter.isGreeting(raw)) answer="Hello Boss. JARVIS systems are ready.";
         else {
             if (isAgentActionIntent(q)) {
                 runAgent(raw, responseToken);
@@ -609,7 +609,7 @@ public class MainActivity extends Activity {
                 }, "Jarvis-HybridBrain").start();
                 return;
             }
-            answer="AI brain configure nahi hai, Pratik Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
+            answer="AI brain configure nahi hai, Boss. ONLINE AI SETUP mein Gemini ya Groq key add karein, ya AI BRAIN / MODEL mein offline model load karein.";
         }
         respond(answer);
     }
