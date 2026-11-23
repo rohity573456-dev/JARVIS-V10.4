@@ -4,6 +4,12 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class JarvisActionIntentRouterTest {
+    @Test public void explicitAstraPrefixDoesNotHideAndroidActions() {
+        assertTrue(JarvisActionIntentRouter.isExplicitAction("Astra open YouTube"));
+        assertTrue(JarvisActionIntentRouter.isExplicitAction("ASTRA remind me in 5 minutes to call home"));
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("Astra explain battery health"));
+    }
+
     @Test public void recognizesEnglishAppAndSearchCommands() {
         assertTrue(JarvisActionIntentRouter.isExplicitAction("open WhatsApp"));
         assertTrue(JarvisActionIntentRouter.isExplicitAction("Please launch Instagram"));
