@@ -631,6 +631,7 @@ Every project report must label each capability as:
 
 **Correction committed**
 - Normalizes reasoning effort to the supported adapter allowlist: low, medium, high and xhigh; invalid values fall back to a safe configured default.
+- Separately billed Astra is never selected silently for routine agent planning. The structured planner uses Astra only when the user explicitly prefixes the agent objective with `Astra `; otherwise it stays on the Gemini/Groq free-first route.
 
 **Verification**
 - Unit tests cover all accepted values and fallback behavior.
