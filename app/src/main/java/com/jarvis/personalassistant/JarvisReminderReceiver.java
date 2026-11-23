@@ -43,6 +43,9 @@ public final class JarvisReminderReceiver extends BroadcastReceiver {
             .setAutoCancel(true)
             .setContentIntent(content);
         if (Build.VERSION.SDK_INT < 26) builder.setPriority(Notification.PRIORITY_HIGH);
-        manager.notify(notificationId, builder.build());
+        try { manager.notify(notificationId, builder.build()); }
+        catch (SecurityException ignored) {
+            // Notification permission may be revoked between scheduling and delivery.
+        }
     }
 }
