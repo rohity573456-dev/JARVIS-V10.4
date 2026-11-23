@@ -19,6 +19,8 @@ public class JarvisActionIntentRouterTest {
     }
 
     @Test public void technicalOpenPhrasesAreNotTreatedAsAppLaunches() {
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("open source licensing"));
+        assertFalse(JarvisActionIntentRouter.isExplicitAction("open AI architecture"));
         assertFalse(JarvisActionIntentRouter.isExplicitAction("Explain open source licensing"));
         assertFalse(JarvisActionIntentRouter.isExplicitAction("What is open AI architecture?"));
         assertFalse(JarvisActionIntentRouter.isExplicitAction("Compare open source Android launchers"));
