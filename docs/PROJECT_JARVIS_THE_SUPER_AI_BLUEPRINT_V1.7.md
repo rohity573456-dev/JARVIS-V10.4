@@ -503,3 +503,47 @@ Every project report must label each capability as:
 **Verification**
 - GitHub Actions passed `gradle testDebugUnitTest` for the current Private Mode source and policy tests (run 45110883872).
 - Physical-device restart/backup inspection is still required to validate the full Android storage lifecycle.
+
+
+### Audit pass 9 — explicit memory-save intent
+
+**Issue found**
+- MainActivity previously treated any user utterance containing the word "remember" as a save-memory command. Recall questions such as "Do you remember what I said?" could therefore be misinterpreted as a new memory to save.
+
+**Correction committed**
+- Added a deterministic memory-save intent gate for explicit phrases such as "remember that", "remember this", "remember my", "yaad rakhna" and Hindi equivalents.
+- Recall questions and ordinary sentences containing "remember" now remain on the conversational AI path.
+- The save handler removes only the recognized instruction prefix before saving the remaining note.
+
+**Verification**
+- Added regression tests for explicit save commands and false-positive recall questions.
+- GitHub Actions passed `gradle testDebugUnitTest` for the memory-save intent tests (run 45111102108).
+
+### Audit pass 10 — Private Mode transition turns
+
+**Issue found**
+- The user message that enabled Private Mode was written to conversation history before the mode toggle was processed. Disabling Private Mode could also leave an assistant-only confirmation turn in the history.
+
+**Correction committed**
+- Private Mode enable/disable phrases are now recognized before any conversation insertion or automatic memory learning.
+- Both transition commands are excluded from history and automatic learning.
+- Transition confirmations use the ephemeral response path, preventing orphan assistant-only turns.
+- The enable path still invalidates queued background memory work and clears the persisted last-response field.
+
+**Verification**
+- Added tests for exact enable/disable command matching and explanatory questions that must not toggle privacy.
+- GitHub Actions passed the Private Mode transition source and test changes (runs 45111137890 and 45111141029).
+
+### Audit pass 11 — Robolectric runtime dependency resilience
+
+**Issue found**
+- Robolectric resolves Android runtime jars through its own MavenArtifactFetcher, separate from Gradle dependency resolution. The Gradle Maven Central mirror alone did not protect this runtime download path; six SQLite lifecycle tests failed when Maven Central runtime downloads were unavailable.
+
+**Correction committed**
+- Configured Robolectric's documented `robolectric.dependency.repo.url` and `robolectric.dependency.repo.id` system properties for Android unit tests to use the Google-hosted Maven Central mirror.
+- Kept the Gradle dependency mirror as well, covering both dependency resolution paths.
+
+**Verification**
+- GitHub Actions passed the full `gradle testDebugUnitTest` job with the Robolectric runtime mirror and current source (run 45111187652).
+- The earlier runtime-fetch failure is treated as infrastructure/dependency resolution, not as a passing SQLite test run. The successful mirrored run is the authoritative validation.
+- Real-device memory lifecycle and Private Mode restart tests remain pending.
