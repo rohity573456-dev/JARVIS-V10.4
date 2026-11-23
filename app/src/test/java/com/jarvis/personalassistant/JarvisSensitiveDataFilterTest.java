@@ -19,6 +19,14 @@ public class JarvisSensitiveDataFilterTest {
         assertTrue(JarvisSensitiveDataFilter.isSensitiveText("my fingerprint data"));
     }
 
+    @Test public void localAutomaticMemoryUsesTheSameSensitiveDataFilter() {
+        assertTrue(JarvisMemoryExtractor.sensitive("PAN ABCDE1234F"));
+        assertTrue(JarvisMemoryExtractor.sensitive("My Aadhaar is 123456789012"));
+        assertTrue(JarvisMemoryExtractor.sensitive("My password is secret"));
+        assertFalse(JarvisMemoryExtractor.sensitive("I prefer concise answers"));
+        assertFalse(JarvisMemoryExtractor.sensitive(null));
+    }
+
     @Test public void allowsOrdinaryNonSensitivePreferences() {
         assertFalse(JarvisSensitiveDataFilter.isSensitiveText("I prefer concise answers"));
         assertFalse(JarvisSensitiveDataFilter.isSensitiveText("My current project is JARVIS"));
