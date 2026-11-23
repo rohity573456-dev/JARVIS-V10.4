@@ -26,7 +26,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
-      - name: Run final tests and build installable APK
+      - name: Run Python benchmark-tool tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+      - name: Run final Android tests and build installable APK
         run: |
           gradle testDebugUnitTest assembleDebug
           mkdir -p final-apk
