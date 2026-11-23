@@ -126,6 +126,10 @@ public final class JarvisAndroidToolAdapter {
                     return JarvisToolRegistry.ToolResult.failure("Reminder title must contain 1-160 characters.");
                 if (delay < 1 || delay > 10080)
                     return JarvisToolRegistry.ToolResult.failure("Reminder delay must be between 1 minute and 7 days.");
+                if (android.os.Build.VERSION.SDK_INT >= 33
+                        && activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                    return JarvisToolRegistry.ToolResult.failure("Notification permission is off. Enable JARVIS notifications in Android Settings; no reminder was saved.");
                 long dueAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(delay);
                 android.content.Context appContext = activity.getApplicationContext();
                 JarvisMemoryStore store = new JarvisMemoryStore(appContext);
