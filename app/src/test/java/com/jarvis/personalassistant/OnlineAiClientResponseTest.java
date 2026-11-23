@@ -2,8 +2,11 @@ package com.jarvis.personalassistant;
 
 import org.json.JSONObject;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
 import static org.junit.Assert.*;
 
+@RunWith(RobolectricTestRunner.class)
 public class OnlineAiClientResponseTest {
     @Test public void acceptsCompleteAssistantAnswer() throws Exception {
         JSONObject response = new JSONObject("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"Hello Boss.\"}}]}");
