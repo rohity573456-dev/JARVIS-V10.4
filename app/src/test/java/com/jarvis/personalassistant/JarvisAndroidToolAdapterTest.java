@@ -18,6 +18,7 @@ public class JarvisAndroidToolAdapterTest {
     @Test public void agentCanCreateAndListAReversibleLocalReminder() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
+        org.robolectric.Shadows.shadowOf(activity).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
         JarvisToolRegistry registry = new JarvisToolRegistry();
         new JarvisAndroidToolAdapter(activity).registerInto(registry);
         Map<String,String> args = new HashMap<>();
@@ -49,6 +50,7 @@ public class JarvisAndroidToolAdapterTest {
     @Test public void invalidReminderDelayDoesNotPersistATask() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         JarvisMemoryStore store = new JarvisMemoryStore(RuntimeEnvironment.getApplication());
+        org.robolectric.Shadows.shadowOf(activity).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS);
         JarvisToolRegistry registry = new JarvisToolRegistry();
         new JarvisAndroidToolAdapter(activity).registerInto(registry);
         Map<String,String> args = new HashMap<>();
