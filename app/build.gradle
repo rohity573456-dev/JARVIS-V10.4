@@ -20,10 +20,20 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            systemProperty "robolectric.dependency.repo.url",
+                "https://maven-central.storage-download.googleapis.com/maven2"
+            systemProperty "robolectric.dependency.repo.id", "google-maven-central"
+        }
+    }
+
 }
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.32.0'
     implementation 'com.google.ai.edge.litertlm:litertlm-android:0.16.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'

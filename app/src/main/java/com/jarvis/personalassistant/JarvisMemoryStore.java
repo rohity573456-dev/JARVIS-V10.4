@@ -150,15 +150,8 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     }
 
     private boolean isSensitiveContent(String value) {
-        if (value == null) return false;
-        String s = value.toLowerCase(Locale.ROOT);
-        String[] blocked = {"password", "passcode", "pin code", "otp", "one time password", "cvv",
-            "credit card number", "debit card number", "aadhaar number", "aadhar number",
-            "pan number", "passport number", "bank account number", "account number is"};
-        for (String term : blocked) if (s.contains(term)) return true;
-        return false;
+        return JarvisSensitiveDataFilter.isSensitiveText(value);
     }
-
     private long insertMemory(SQLiteDatabase db, String category, String type, String key,
             String content, double confidence, int importance, boolean pinned, String source) {
         long now = System.currentTimeMillis();
@@ -247,10 +240,16 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
                         edgeClose.put("is_active", 0);
                         edgeClose.put("valid_until", now);
                         db.update(EDGES, edgeClose, "memory_id=?", new String[]{String.valueOf(oldId)});
+                        db.delete("memory_embeddings", "memory_id=?", new String[]{String.valueOf(oldId)});
+                        db.delete("memory_local_vectors", "memory_id=?", new String[]{String.valueOf(oldId)});
                     }
                 }
             } finally { c.close(); }
-            if (result <= 0) result = insertMemory(db, category, type, memoryKey, clean, confidence, importance, pinned, source);
+            if (result <= 0) {
+                result = insertMemory(db, category, type, memoryKey, clean, confidence, importance, pinned, source);
+                if (result <= 0) return -1; // Roll back old-fact deactivation if replacement insertion fails.
+            }
+            pruneOrphanKnowledgeNodes(db);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
         return result;
@@ -258,23 +257,32 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
 
     public synchronized boolean updateMemory(long id, String category, String content) {
         if (id <= 0 || content == null || content.trim().isEmpty() || isSensitiveContent(content)) return false;
-        ContentValues v = new ContentValues();
-        v.put("category", category == null ? "general" : category);
-        v.put("content", content.trim());
-        v.put("updated_at", System.currentTimeMillis());
-        v.put("valid_until", 0);
-        v.put("is_active", 1);
-        v.put("source", "manual-edit");
+        String[] args = new String[]{String.valueOf(id)};
         SQLiteDatabase db = getWritableDatabase();
-        boolean changed = db.update(MEMORIES, v, "id=?", new String[]{String.valueOf(id)}) > 0;
-        if (changed) {
-            db.delete(EDGES, "memory_id=?", new String[]{String.valueOf(id)});
-            db.delete("memory_embeddings", "memory_id=?", new String[]{String.valueOf(id)});
-            db.delete("memory_local_vectors", "memory_id=?", new String[]{String.valueOf(id)});
-            indexMemoryGraph(db, id, content.trim());
-            putLocalVector(id, JarvisLocalVectorEngine.embed(content.trim()));
+        db.beginTransaction();
+        try {
+            ContentValues v = new ContentValues();
+            if (category != null && !category.trim().isEmpty()) v.put("category", category.trim());
+            v.put("content", content.trim());
+            v.put("updated_at", System.currentTimeMillis());
+            v.put("valid_until", 0);
+            v.put("is_active", 1);
+            v.put("source", "manual-edit");
+            boolean changed = db.update(MEMORIES, v, "id=?", args) > 0;
+            if (changed) {
+                db.delete(EDGES, "memory_id=?", args);
+                db.delete("memory_embeddings", "memory_id=?", args);
+                db.delete("memory_local_vectors", "memory_id=?", args);
+                db.delete("memory_feedback", "memory_id=?", args);
+                pruneOrphanKnowledgeNodes(db);
+                indexMemoryGraph(db, id, content.trim());
+                putLocalVector(id, JarvisLocalVectorEngine.embed(content.trim()));
+            }
+            db.setTransactionSuccessful();
+            return changed;
+        } finally {
+            db.endTransaction();
         }
-        return changed;
     }
 
     public synchronized boolean deleteMemory(long id) {
@@ -282,10 +290,13 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            db.delete(EDGES, "memory_id=?", new String[]{String.valueOf(id)});
-            db.delete("memory_embeddings", "memory_id=?", new String[]{String.valueOf(id)});
-            db.delete("memory_feedback", "memory_id=?", new String[]{String.valueOf(id)});
-            boolean deleted = db.delete(MEMORIES, "id=?", new String[]{String.valueOf(id)}) > 0;
+            String[] args = new String[]{String.valueOf(id)};
+            db.delete(EDGES, "memory_id=?", args);
+            db.delete("memory_embeddings", "memory_id=?", args);
+            db.delete("memory_local_vectors", "memory_id=?", args);
+            db.delete("memory_feedback", "memory_id=?", args);
+            boolean deleted = db.delete(MEMORIES, "id=?", args) > 0;
+            pruneOrphanKnowledgeNodes(db);
             db.setTransactionSuccessful();
             return deleted;
         } finally { db.endTransaction(); }
@@ -406,29 +417,34 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     public synchronized void addConversation(String speaker, String content) {
         if (content == null || content.trim().isEmpty() || isSensitiveContent(content)) return;
         SQLiteDatabase db = getWritableDatabase();
-        long now = System.currentTimeMillis();
-        String sessionId = null;
-        Cursor last = db.rawQuery("SELECT session_id,created_at FROM conversations ORDER BY created_at DESC LIMIT 1", null);
+        db.beginTransaction();
         try {
-            if (last.moveToFirst() && now - last.getLong(1) <= 30L * 60L * 1000L &&
-                    !"legacy".equals(last.getString(0))) sessionId = last.getString(0);
-        } finally { last.close(); }
-        if (sessionId == null) {
-            sessionId = UUID.randomUUID().toString();
-            ContentValues session = new ContentValues();
-            session.put("session_id", sessionId); session.put("started_at", now);
-            session.put("ended_at", now); session.put("turn_count", 0); session.put("summary", "");
-            db.insertWithOnConflict("memory_sessions", null, session, SQLiteDatabase.CONFLICT_IGNORE);
-        }
-        ContentValues v = new ContentValues();
-        v.put("speaker", speaker == null ? "unknown" : speaker);
-        v.put("content", content.trim());
-        v.put("created_at", now);
-        v.put("session_id", sessionId);
-        db.insert(CONVERSATIONS, null, v);
-        db.execSQL("UPDATE memory_sessions SET ended_at=?,turn_count=turn_count+1 WHERE session_id=?",
-            new Object[]{now, sessionId});
-        db.execSQL("DELETE FROM conversations WHERE id NOT IN (SELECT id FROM conversations ORDER BY created_at DESC LIMIT 3000)");
+            long now = System.currentTimeMillis();
+            String sessionId = null;
+            Cursor last = db.rawQuery("SELECT session_id,created_at FROM conversations ORDER BY created_at DESC,id DESC LIMIT 1", null);
+            try {
+                if (last.moveToFirst() && now - last.getLong(1) <= 30L * 60L * 1000L &&
+                        !"legacy".equals(last.getString(0))) sessionId = last.getString(0);
+            } finally { last.close(); }
+            if (sessionId == null) {
+                sessionId = UUID.randomUUID().toString();
+                ContentValues session = new ContentValues();
+                session.put("session_id", sessionId); session.put("started_at", now);
+                session.put("ended_at", now); session.put("turn_count", 0); session.put("summary", "");
+                db.insertWithOnConflict("memory_sessions", null, session, SQLiteDatabase.CONFLICT_IGNORE);
+            }
+            ContentValues v = new ContentValues();
+            v.put("speaker", speaker == null ? "unknown" : speaker);
+            v.put("content", content.trim());
+            v.put("created_at", now);
+            v.put("session_id", sessionId);
+            db.insert(CONVERSATIONS, null, v);
+            db.execSQL("UPDATE memory_sessions SET ended_at=?,turn_count=turn_count+1 WHERE session_id=?",
+                new Object[]{now, sessionId});
+            db.execSQL("DELETE FROM conversations WHERE id NOT IN (SELECT id FROM conversations ORDER BY created_at DESC,id DESC LIMIT 3000)");
+            pruneOrphanSessions(db);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
 
     private String buildExtractiveSummary(String sessionId) {
@@ -512,6 +528,15 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
             if(transcript.length()>0)out.add(new PendingSession(id,transcript.toString()));
         }
         return out;
+    }
+
+    /** Mark a sensitive session as reviewed/skipped without storing its contents or a summary. */
+    public synchronized void markAiSessionReflectionSkipped(String sessionId) {
+        if(sessionId==null||sessionId.trim().isEmpty())return;
+        ContentValues marker=new ContentValues();
+        marker.put("session_id",sessionId);
+        marker.put("created_at",System.currentTimeMillis());
+        getWritableDatabase().insertWithOnConflict("memory_ai_reflections",null,marker,SQLiteDatabase.CONFLICT_REPLACE);
     }
 
     public synchronized void saveAiSessionReflection(String sessionId,String summary) {
@@ -687,11 +712,39 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         int summaries = count(db, "SELECT COUNT(*) FROM memory_summaries");
         int turns = count(db, "SELECT COUNT(*) FROM conversations");
         int tasks = count(db, "SELECT COUNT(*) FROM tasks WHERE done=0");
+        int orphanCloud = count(db, "SELECT COUNT(*) FROM memory_embeddings e LEFT JOIN memories m ON m.id=e.memory_id WHERE m.id IS NULL");
+        int orphanLocal = count(db, "SELECT COUNT(*) FROM memory_local_vectors v LEFT JOIN memories m ON m.id=v.memory_id WHERE m.id IS NULL");
+        int orphanFeedback = count(db, "SELECT COUNT(*) FROM memory_feedback f LEFT JOIN memories m ON m.id=f.memory_id WHERE m.id IS NULL");
+        int orphanEdges = count(db, "SELECT COUNT(*) FROM knowledge_edges e LEFT JOIN memories m ON m.id=e.memory_id WHERE e.memory_id>0 AND m.id IS NULL");
+        int orphanSessions = count(db, "SELECT COUNT(*) FROM memory_sessions s LEFT JOIN conversations c ON c.session_id=s.session_id WHERE c.session_id IS NULL");
         return "JARVIS MEMORY HEALTH\nActive facts: "+active+"\nHistorical facts: "+historical+
             "\nPinned core facts: "+pinned+"\nCloud neural vectors: "+vectors+"\nOffline feature vectors (not neural): "+localVectors+
             "\nConversation turns: "+turns+"\nSessions: "+sessions+"\nSession digests: "+summaries+
             "\nOpen tasks/reminders: "+tasks+"\nTotal stored fact versions: "+total+
+            "\nOrphan indexes (cloud/local/feedback/edges): "+orphanCloud+"/"+orphanLocal+"/"+orphanFeedback+"/"+orphanEdges+
+            "\nSessions without conversation turns: "+orphanSessions+
             "\nStorage: on-device SQLite (offline-first)";
+    }
+
+    /** Safe repair for derived rows whose source records no longer exist. */
+    public synchronized int cleanupMemoryOrphans() {
+        expireTransientMemories();
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        int removed=0;
+        try{
+            removed+=db.delete("memory_embeddings","memory_id NOT IN (SELECT id FROM memories)",null);
+            removed+=db.delete("memory_local_vectors","memory_id NOT IN (SELECT id FROM memories)",null);
+            removed+=db.delete("memory_feedback","memory_id NOT IN (SELECT id FROM memories)",null);
+            removed+=db.delete(EDGES,"memory_id>0 AND memory_id NOT IN (SELECT id FROM memories)",null);
+            int before=count(db,"SELECT COUNT(*) FROM memory_sessions");
+            pruneOrphanSessions(db);
+            int after=count(db,"SELECT COUNT(*) FROM memory_sessions");
+            removed+=Math.max(0,before-after);
+            pruneOrphanKnowledgeNodes(db);
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+        return removed;
     }
 
     private int count(SQLiteDatabase db, String sql) {
@@ -749,7 +802,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
     public synchronized String getRecentConversation(int limit) {
         StringBuilder out = new StringBuilder();
         Cursor c = getReadableDatabase().rawQuery(
-            "SELECT speaker,content FROM conversations ORDER BY created_at DESC LIMIT ?",
+            "SELECT speaker,content FROM conversations ORDER BY created_at DESC,id DESC LIMIT ?",
             new String[]{String.valueOf(Math.max(1, Math.min(200, limit)))});
         try {
             while (c.moveToNext()) {
@@ -758,6 +811,45 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
             }
         } finally { c.close(); }
         return out.toString();
+    }
+
+    /** Returns source-attributed historical turns matching a query, in chronological order. */
+    public synchronized String getConversationEvidence(String query, int limit) {
+        StringBuilder out = new StringBuilder();
+        List<String> terms = new ArrayList<>();
+        if (query != null) {
+            for (String token : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+                String stem = token.endsWith("ies") && token.length() > 5 ? token.substring(0, token.length() - 3) + "y" : (token.endsWith("y") && token.length() > 4 ? token.substring(0, token.length() - 1) : token);
+                if (stem.length() >= 4 && !terms.contains(stem) && terms.size() < 8) terms.add(stem);
+            }
+        }
+        int safeLimit = Math.max(1, Math.min(30, limit));
+        StringBuilder sql = new StringBuilder(
+            "SELECT speaker,content,created_at FROM (SELECT speaker,content,created_at,id FROM conversations");
+        ArrayList<String> args = new ArrayList<>();
+        if (!terms.isEmpty()) {
+            sql.append(" WHERE ");
+            for (int i = 0; i < terms.size(); i++) {
+                if (i > 0) sql.append(" OR ");
+                sql.append("LOWER(content) LIKE ?");
+                args.add("%" + terms.get(i).replace("%", "").replace("_", "") + "%");
+            }
+        }
+        sql.append(" ORDER BY created_at DESC,id DESC LIMIT ?) ORDER BY created_at ASC");
+        args.add(String.valueOf(safeLimit));
+        Cursor c = getReadableDatabase().rawQuery(sql.toString(), args.toArray(new String[0]));
+        int index = 1;
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
+        try {
+            while (c.moveToNext()) {
+                if (out.length() > 4800) break;
+                out.append("[E").append(index++).append("] ")
+                    .append(c.getString(0)).append(" | ")
+                    .append(format.format(new Date(c.getLong(2)))).append(" | ")
+                    .append(c.getString(1)).append('\n');
+            }
+        } finally { c.close(); }
+        return out.toString().trim();
     }
 
     public synchronized String getMemoryContext(String query, int limit) {
@@ -773,7 +865,7 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         String pinned = getPinnedMemoriesText(6);
         String graph = getKnowledgeGraphText(query);
         String summaries = getSessionSummaryText(3);
-        String recent = getRecentConversation(6);
+        String recent = getRecentConversation(12);
         StringBuilder result = new StringBuilder(
             "JARVIS MEMORY CONTEXT. Treat explicit facts as evidence; do not invent missing personal details. " +
             "Prefer CURRENT facts over historical versions. If recall is uncertain, say you do not have that detail.\n");
@@ -783,12 +875,13 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         if (!graph.startsWith("No linked")) result.append("\n\nRELATED KNOWLEDGE GRAPH:\n").append(graph);
         if (!summaries.isEmpty()) result.append("\n\nPAST SESSION DIGESTS:\n").append(summaries);
         if (!recent.isEmpty()) result.append("\n\nRECENT EPISODIC CONTEXT:\n").append(recent);
-        if (result.length() > 8500) result.setLength(8500);
-        return result.toString();
+        // Keep the profile/relevant-fact prefix and newest conversation tail when trimming.
+        return JarvisPromptBudget.fit("", result.toString(), 8500).input;
     }
 
     public synchronized String getAllMemoriesText() { return searchMemories("", 100); }
 
+    /** Remove every fact and every dependent index atomically; chat history is a separate control. */
     public synchronized void clearMemories() {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -800,16 +893,35 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
             db.delete("memory_local_vectors", null, null);
             db.delete("memory_feedback", null, null);
             db.delete("memory_summaries", null, null);
+            db.delete("memory_ai_reflections", null, null);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
 
+    /** Conversation turns, session transcripts/digests and reflection markers form one retention unit. */
     public synchronized void clearConversationHistory() {
         SQLiteDatabase db = getWritableDatabase();
-        db.delete(CONVERSATIONS, null, null);
-        db.delete("memory_sessions", null, null);
-        db.delete("memory_ai_reflections",null,null);
-        db.delete("memory_summaries", "summary_type IN ('session','ai-session')", null);
+        db.beginTransaction();
+        try {
+            db.delete(CONVERSATIONS, null, null);
+            db.delete("memory_sessions", null, null);
+            db.delete("memory_ai_reflections", null, null);
+            db.delete("memory_summaries", "summary_type IN ('session','ai-session')", null);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
+    private void pruneOrphanSessions(SQLiteDatabase db) {
+        db.execSQL("DELETE FROM memory_sessions WHERE session_id NOT IN (SELECT DISTINCT session_id FROM conversations)");
+        db.execSQL("DELETE FROM memory_ai_reflections WHERE session_id NOT IN (SELECT session_id FROM memory_sessions)");
+        db.execSQL("DELETE FROM memory_summaries WHERE summary_type IN ('session','ai-session') " +
+            "AND summary_key NOT IN (SELECT 'session:'||session_id FROM memory_sessions) " +
+            "AND summary_key NOT IN (SELECT 'ai-session:'||session_id FROM memory_sessions)");
+    }
+
+    private void pruneOrphanKnowledgeNodes(SQLiteDatabase db) {
+        db.execSQL("DELETE FROM knowledge_nodes WHERE id NOT IN " +
+            "(SELECT source_id FROM knowledge_edges UNION SELECT target_id FROM knowledge_edges)");
     }
 
     public synchronized int getConversationCount() { return count(getReadableDatabase(), "SELECT COUNT(*) FROM conversations"); }
@@ -846,7 +958,17 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         v.put("memory_id", memoryId); v.put("model", model == null ? "unknown" : model);
         v.put("dimensions", vector.length); v.put("vector", buffer.array());
         v.put("updated_at", System.currentTimeMillis());
-        getWritableDatabase().insertWithOnConflict("memory_embeddings", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try{
+            Cursor exists=db.rawQuery("SELECT 1 FROM memories WHERE id=? AND is_active=1",
+                new String[]{String.valueOf(memoryId)});
+            boolean valid;
+            try{valid=exists.moveToFirst();}finally{exists.close();}
+            if(valid)db.insertWithOnConflict("memory_embeddings", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+            else db.delete("memory_embeddings","memory_id=?",new String[]{String.valueOf(memoryId)});
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
 
     private float[] decodeVector(byte[] blob) {
@@ -863,7 +985,17 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         for(float f:vector)b.putFloat(f);
         ContentValues v=new ContentValues();v.put("memory_id",memoryId);v.put("model",JarvisLocalVectorEngine.MODEL);
         v.put("dimensions",vector.length);v.put("vector",b.array());v.put("updated_at",System.currentTimeMillis());
-        getWritableDatabase().insertWithOnConflict("memory_local_vectors",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try{
+            Cursor exists=db.rawQuery("SELECT 1 FROM memories WHERE id=? AND is_active=1",
+                new String[]{String.valueOf(memoryId)});
+            boolean valid;
+            try{valid=exists.moveToFirst();}finally{exists.close();}
+            if(valid)db.insertWithOnConflict("memory_local_vectors",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+            else db.delete("memory_local_vectors","memory_id=?",new String[]{String.valueOf(memoryId)});
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
     public synchronized int indexMissingLocalVectors(int limit) {
         Cursor c=getReadableDatabase().rawQuery(
@@ -902,10 +1034,20 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
         SQLiteDatabase db=getWritableDatabase();long now=System.currentTimeMillis();
         Cursor c=db.rawQuery("SELECT id FROM memories WHERE memory_type='transient' AND expires_at>0 AND expires_at<=?",new String[]{String.valueOf(now)});
         List<String> ids=new ArrayList<>();try{while(c.moveToNext())ids.add(String.valueOf(c.getLong(0)));}finally{c.close();}
-        for(String id:ids){
-            db.delete(EDGES,"memory_id=?",new String[]{id});db.delete("memory_embeddings","memory_id=?",new String[]{id});
-            db.delete("memory_local_vectors","memory_id=?",new String[]{id});db.delete(MEMORIES,"id=?",new String[]{id});
-        }
+        if(ids.isEmpty())return 0;
+        db.beginTransaction();
+        try{
+            for(String id:ids){
+                String[] args=new String[]{id};
+                db.delete(EDGES,"memory_id=?",args);
+                db.delete("memory_embeddings","memory_id=?",args);
+                db.delete("memory_local_vectors","memory_id=?",args);
+                db.delete("memory_feedback","memory_id=?",args);
+                db.delete(MEMORIES,"id=?",args);
+            }
+            pruneOrphanKnowledgeNodes(db);
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
         return ids.size();
     }
 
