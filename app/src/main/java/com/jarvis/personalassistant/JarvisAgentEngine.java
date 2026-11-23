@@ -155,6 +155,7 @@ public final class JarvisAgentEngine {
         String summary = state == State.COMPLETED ? "Agent planning finished; every executed action was verified."
             : state == State.CANCELLED ? "Execution cancelled or approval denied; no further steps were started."
             : "Execution stopped safely. Review the step report before retrying.";
+        handle.finished.set(true);
         notifyState(listener, state, summary);
         if (listener != null) listener.onComplete(new AgentReport(objective, state, reports, summary));
     }
@@ -165,7 +166,9 @@ public final class JarvisAgentEngine {
 
     public static final class RunHandle {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicBoolean finished = new AtomicBoolean(false);
         public void cancel() { cancelled.set(true); }
         public boolean isCancelled() { return cancelled.get(); }
+        public boolean isFinished() { return finished.get(); }
     }
 }
