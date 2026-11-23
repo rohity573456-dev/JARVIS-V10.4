@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
     private JarvisToolRegistry agentToolRegistry;
     private JarvisAgentEngine.RunHandle activeAgentRun;
     private volatile AlertDialog activeAgentApprovalDialog;
-    private final JarvisResponseSequencer = new JarvisResponseSequencer();
+    private final JarvisResponseSequencer responseSequencer = new JarvisResponseSequencer();
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -541,7 +541,7 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isBluetoothSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),"Bluetooth settings"); answer="Bluetooth settings khol raha hoon."; }
         else if (JarvisIntentRouter.isGeneralSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_SETTINGS),"Settings"); answer="Phone settings khol raha hoon."; }
         else if (JarvisIntentRouter.isOpenYoutubeCommand(raw)) { open("https://www.youtube.com"); answer="YouTube khol raha hoon."; }
-        else if (q.startsWith("web search ") || q.startsWith("search web ")) { runAgent(raw, responseToken); return; }
+        else if (q.startsWith("web search ") || q.startsWith("search web ")) { searchWeb(raw.replaceFirst("(?i)^(web\\s+search|search\\s+web)\\s*","")); return; }
         else if (JarvisIntentRouter.isWebSearchCommand(raw)) { searchWeb(raw.replaceFirst("(?i)^(web\\s+)?search\\s*","")); return; }
         else if (JarvisIntentRouter.isOpenCameraCommand(raw)) { launch(new Intent("android.media.action.IMAGE_CAPTURE"),"Camera"); answer="Camera khol raha hoon."; }
         else if (JarvisIntentRouter.isMapsCommand(raw)) { open("https://maps.google.com/?q="+Uri.encode(raw)); answer="Maps khol raha hoon. Destination confirm kar lena."; }
