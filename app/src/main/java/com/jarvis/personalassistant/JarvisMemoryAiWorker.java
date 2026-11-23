@@ -137,20 +137,6 @@ public final class JarvisMemoryAiWorker {
             k.equals("goal.primary");
     }
     static boolean isSensitiveText(String value){return sensitive(value);}
-    private static boolean sensitive(String value){
-        if(value==null||value.isEmpty())return false;
-        String q=value.toLowerCase(java.util.Locale.ROOT);
-        String[] bad={"password","passcode","pass phrase","otp","one time password","cvv","cvc",
-            "aadhaar","aadhar","pan number","pan card number","passport number","driving licence number",
-            "social security number","bank account","account number","ifsc","credit card","debit card",
-            "diagnosis","medical condition","medical history","prescription","medication","medicine",
-            "diabetes","cancer","hiv","blood pressure","mental health","depression","anxiety disorder",
-            "religion","religious belief","political party","political belief","sexual orientation",
-            "sex life","sexual activity","criminal record","criminal history","fingerprint","face id"};
-        for(String b:bad)if(q.contains(b))return true;
-        if(java.util.regex.Pattern.compile("\\b[0-9]{12}\\b").matcher(q).find())return true;
-        if(java.util.regex.Pattern.compile("\\b[A-Z]{5}[0-9]{4}[A-Z]\\b",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(value).find())return true;
-        if(java.util.regex.Pattern.compile("\\b[0-9]{4}\\s?[0-9]{4}\\s?[0-9]{4}\\b").matcher(q).find())return true;
-        return false;
-    }
-}
+    private static boolean sensitive(String value) {
+        return JarvisSensitiveDataFilter.isSensitiveText(value);
+    }}
