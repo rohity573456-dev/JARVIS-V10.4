@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
     private LinearLayout conversationList;
     private ScrollView conversationScroll;
     private JarvisOrbView orbView;
+    private SiriEdgeGlowView edgeGlowView;
     private TextToSpeech tts;
     private SpeechRecognizer recognizer;
     private SharedPreferences memory;
@@ -115,11 +116,11 @@ public class MainActivity extends Activity {
                 String command = intent.getStringExtra(WakeWordService.EXTRA_COMMAND);
                 if (command == null || command.trim().isEmpty()) {
                     if (status != null) status.setText("● JARVIS ACTIVATED");
-                    if (orbView != null) orbView.setState("LISTENING");
+                    setAssistantVisualState("LISTENING");
                     // Wake acknowledgement is spoken by the foreground service to avoid duplicates.
                 } else {
                     if (status != null) status.setText("● COMMAND RECEIVED");
-                    if (orbView != null) orbView.setState("THINKING");
+                    setAssistantVisualState("THINKING");
                     handle(command);
                 }
             }
@@ -170,6 +171,15 @@ public class MainActivity extends Activity {
                 tts.setPitch(0.78f);
                 tts.setSpeechRate(0.88f);
                 ttsReady = true;
+                tts.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
+                    @Override public void onStart(String utteranceId) {}
+                    @Override public void onDone(String utteranceId) {
+                        voiceHandler.post(() -> setAssistantVisualState("STANDBY"));
+                    }
+                    @Override public void onError(String utteranceId) {
+                        voiceHandler.post(() -> setAssistantVisualState("STANDBY"));
+                    }
+                });
                 if (pendingSpeech != null) { String queued = pendingSpeech; pendingSpeech = null; speak(queued); }
             }
         });
@@ -184,6 +194,11 @@ public class MainActivity extends Activity {
         d.setCornerRadius(radiusDp * getResources().getDisplayMetrics().density);
         d.setStroke(Math.max(1, (int)getResources().getDisplayMetrics().density), stroke);
         return d;
+    }
+
+    private void setAssistantVisualState(String state) {
+        if (orbView != null) orbView.setState(state);
+        if (edgeGlowView != null) edgeGlowView.setState(state);
     }
 
     private void buildUi() {
@@ -209,12 +224,12 @@ public class MainActivity extends Activity {
         commandInput.setOnEditorActionListener((v,actionId,event)->{if(actionId==EditorInfo.IME_ACTION_SEND||actionId==EditorInfo.IME_ACTION_DONE||actionId==EditorInfo.IME_ACTION_GO){submitTypedCommand();return true;}return false;}); composer.addView(commandInput,new LinearLayout.LayoutParams(0,(int)(44*d),1f));
         TextView mic=new TextView(this); mic.setText("♩"); mic.setTextColor(Color.rgb(151,213,246)); mic.setTextSize(19); mic.setGravity(Gravity.CENTER); composer.addView(mic,new LinearLayout.LayoutParams((int)(30*d),(int)(42*d))); mic.setOnClickListener(v->{switchTab(1);listen();});
         TextView send=new TextView(this); send.setText("➤"); send.setTextColor(Color.rgb(1,16,30)); send.setTextSize(19); send.setGravity(Gravity.CENTER); android.graphics.drawable.GradientDrawable sendBg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(155,241,255),Color.rgb(64,169,239)}); sendBg.setCornerRadius(24*d); send.setBackground(sendBg); composer.addView(send,new LinearLayout.LayoutParams((int)(42*d),(int)(42*d))); send.setOnClickListener(v->submitTypedCommand());
-        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(54*d)); composerLp.topMargin=(int)(7*d); root.addView(composer,composerLp); buildNavigation(d); root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(54*d))); setContentView(root); switchTab(0);
+        LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(54*d)); composerLp.topMargin=(int)(7*d); root.addView(composer,composerLp); buildNavigation(d); root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(54*d))); setContentView(root); edgeGlowView=new SiriEdgeGlowView(this); addContentView(edgeGlowView,new android.view.ViewGroup.LayoutParams(-1,-1)); edgeGlowView.setState("STANDBY"); switchTab(0);
     }
     private void buildHomeScreen(float d) {
         ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false); scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         homeScreen=new LinearLayout(this); homeScreen.setOrientation(LinearLayout.VERTICAL); homeScreen.setGravity(Gravity.CENTER_HORIZONTAL); homeScreen.setPadding((int)(2*d),(int)(8*d),(int)(2*d),(int)(12*d));
-        orbView=new JarvisOrbView(this); orbView.setState("STANDBY"); LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(124*d)); orbLp.topMargin=(int)d; orbLp.bottomMargin=(int)(2*d); homeScreen.addView(orbView,orbLp);
+        orbView=new JarvisOrbView(this); setAssistantVisualState("STANDBY"); LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(124*d)); orbLp.topMargin=(int)d; orbLp.bottomMargin=(int)(2*d); homeScreen.addView(orbView,orbLp);
         TextView greeting=new TextView(this); greeting.setText("Hello, I am JARVIS"); greeting.setTextColor(Color.WHITE); greeting.setTextSize(21); greeting.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL)); greeting.setGravity(Gravity.CENTER); homeScreen.addView(greeting,new LinearLayout.LayoutParams(-1,-2));
         TextView subtitle=new TextView(this); subtitle.setText("How can I help you?"); subtitle.setTextColor(Color.rgb(177,203,226)); subtitle.setTextSize(13); subtitle.setGravity(Gravity.CENTER); LinearLayout.LayoutParams subLp=new LinearLayout.LayoutParams(-1,-2); subLp.topMargin=(int)(2*d); subLp.bottomMargin=(int)(9*d); homeScreen.addView(subtitle,subLp);
         LinearLayout quick=new LinearLayout(this); quick.setOrientation(LinearLayout.HORIZONTAL); quick.setGravity(Gravity.CENTER);
@@ -552,10 +567,10 @@ public class MainActivity extends Activity {
             if (recognizer != null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} }
             recognizer = SpeechRecognizer.createSpeechRecognizer(this);
             recognizer.setRecognitionListener(new RecognitionListener() {
-                public void onReadyForSpeech(Bundle p) { status.setText("● LISTENING... "+language); }
+                public void onReadyForSpeech(Bundle p) { setAssistantVisualState("LISTENING"); status.setText("● LISTENING... "+language); }
                 public void onBeginningOfSpeech() { status.setText("● HEARING YOU..."); }                public void onRmsChanged(float r) {}
                 public void onBufferReceived(byte[] b) {}
-                public void onEndOfSpeech() { status.setText("● ANALYSING..."); }
+                public void onEndOfSpeech() { setAssistantVisualState("THINKING"); status.setText("● ANALYSING..."); }
                 public void onError(int error) {
                     // Error 11 is ERROR_SERVER_DISCONNECTED. Recreate the service once,
                     // after the callback has returned, instead of immediately re-entering it.
@@ -581,7 +596,7 @@ public class MainActivity extends Activity {
                 }
                 public void onResults(Bundle b) {
                     ArrayList<String> matches=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                    if(matches==null || matches.isEmpty()) { status.setText("● CORE ONLINE"); voiceHandler.postDelayed(() -> startAlwaysOnWakeService(), 700); return; }
+                    if(matches==null || matches.isEmpty()) { setAssistantVisualState("STANDBY"); status.setText("● CORE ONLINE"); voiceHandler.postDelayed(() -> startAlwaysOnWakeService(), 700); return; }
                     String spoken=matches.get(0).trim();
                     serviceRetryUsed = false;
                     status.setText("● CORE ONLINE");
@@ -1106,7 +1121,7 @@ public class MainActivity extends Activity {
 
     private boolean launch(Intent i) { return JarvisActionResultGuard.run(() -> startActivity(i)); }
     private boolean open(String url) { return JarvisActionResultGuard.run(() -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)))); }
-    private void respondEphemeral(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); speak(s); status.setText("● CORE ONLINE"); }
+    private void respondEphemeral(String s) { setAssistantVisualState("SPEAKING"); lastResponse=s; show("JARVIS",s); speak(s); status.setText("● CORE ONLINE"); }
     private void respond(String s) { if (orbView != null) orbView.setState("SPEAKING"); lastResponse=s; show("JARVIS",s); if (longTermMemory != null && JarvisPrivacyPolicy.shouldPersistConversation(memory.getBoolean("memory_private_mode", false))) longTermMemory.addConversation("JARVIS", s); persistLastResponse(s); speak(s); status.setText("● CORE ONLINE"); }
 
     /** Private Mode must not leave a persisted copy of the latest response. */
