@@ -454,7 +454,7 @@ Every project report must label each capability as:
 
 **Verification state**
 - A GitHub Actions run completed successfully on the immediately preceding branch revision, executing `gradle testDebugUnitTest` and reporting `BUILD SUCCESSFUL`.
-- A newer run is validating the latest memory-prompt and agent retry changes; its result must be checked before treating the current branch as green.
+- The latest GitHub Actions run for the agent retry regression test completed successfully. It executed `gradle testDebugUnitTest`; the job and all setup/cleanup steps completed with success. The current source and test changes are therefore CI-green.
 - Robolectric validates Android SQLite behavior in CI, but it does not replace real-device validation of process death, app lifecycle, concurrent provider requests or OS permission behavior.
 - No physical-device validation is claimed.
 
@@ -468,6 +468,6 @@ Every project report must label each capability as:
 - REVERSIBLE, SENSITIVE and EXTERNAL tools are never automatically retried after failure. They stop and return a failure report for user-directed recovery.
 - Added a regression test proving an EXTERNAL send-like tool is invoked exactly once when it returns a failure after a simulated lost response.
 
-**Remaining verification**
-- Latest CI is pending for this change.
+**Verification**
+- GitHub Actions completed successfully for the latest agent retry source and regression-test changes using `gradle testDebugUnitTest`.
 - Device tests remain necessary for activity destruction during approval, delayed Android main-thread dispatch, and cancellation while a platform action is already executing.
