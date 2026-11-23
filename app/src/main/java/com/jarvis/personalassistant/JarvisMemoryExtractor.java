@@ -19,7 +19,11 @@ public final class JarvisMemoryExtractor {
         return s.length() > 48 ? s.substring(0, 48) : s;
     }
 
-    private static boolean sensitive(String s) {
+    static boolean sensitive(String s) {
+        if (s == null || s.trim().isEmpty()) return false;
+        // Apply the same comprehensive identifier/credential/financial and sensitive-topic
+        // filter used by AI memory extraction before any local automatic learning.
+        if (JarvisSensitiveDataFilter.isSensitiveText(s)) return true;
         String q = s.toLowerCase(Locale.ROOT);
         String[] blocked = {"password","passcode","otp","cvv","aadhaar","aadhar","pan number",
             "bank account","credit card","debit card","diagnosis","medicine","medical condition",
