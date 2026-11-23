@@ -709,3 +709,17 @@ Every project report must label each capability as:
 - A scheduler interface allows deterministic unit testing without relying on device AlarmManager timing.
 - GitHub Actions passed reminder adapter, permission and approval tests (runs 45114121316, 45114124419, 45114129572 and 45114305863). The adapter test also verifies completion and deletion with the correct approval-risk labels.
 - Exact alarm behavior, OEM battery restrictions and notification delivery still require physical-device validation.
+
+
+### Audit pass 22 — approval-gated task lifecycle controls
+
+**Capability added**
+- The agent can mark an existing task/reminder complete or permanently delete it by its stored positive numeric ID.
+- Both actions are classified as SENSITIVE, so the agent must obtain a fresh one-time approval before changing task state.
+- Completing a reminder cancels its pending AlarmManager event; deleting a reminder removes the task and cancels its scheduled event.
+- Invalid IDs and missing tasks fail closed with no reported success.
+
+**Verification**
+- Robolectric coverage now creates and lists a reminder, verifies the risk classifications, completes it and confirms it no longer appears among open tasks, then deletes it and confirms it is absent from all tasks.
+- GitHub Actions passed the task lifecycle and approval-gate regression suite (run 45114295989).
+- Physical-device approval-dialog interaction and alarm cancellation timing remain pending.
