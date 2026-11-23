@@ -125,6 +125,40 @@ public final class JarvisAndroidToolAdapter {
         ));
 
         registry.register(new JarvisToolRegistry.ToolSpec(
+            "complete_task", "Mark one saved reminder or task as complete.",
+            JarvisToolRegistry.Risk.SENSITIVE, setOf("id"), none(), "", args -> {
+                long id;
+                try { id = Long.parseLong(args.get("id")); }
+                catch (Exception e) { return JarvisToolRegistry.ToolResult.failure("Task ID must be a positive integer."); }
+                if (id <= 0) return JarvisToolRegistry.ToolResult.failure("Task ID must be a positive integer.");
+                android.content.Context appContext = activity.getApplicationContext();
+                JarvisMemoryStore store = new JarvisMemoryStore(appContext);
+                try {
+                    if (!store.completeTask(id)) return JarvisToolRegistry.ToolResult.failure("Task ID not found.");
+                    JarvisReminderScheduler.cancel(appContext, id);
+                    return JarvisToolRegistry.ToolResult.success("Task #" + id + " marked complete.");
+                } finally { store.close(); }
+            }
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
+            "delete_task", "Delete one saved reminder or task permanently.",
+            JarvisToolRegistry.Risk.SENSITIVE, setOf("id"), none(), "", args -> {
+                long id;
+                try { id = Long.parseLong(args.get("id")); }
+                catch (Exception e) { return JarvisToolRegistry.ToolResult.failure("Task ID must be a positive integer."); }
+                if (id <= 0) return JarvisToolRegistry.ToolResult.failure("Task ID must be a positive integer.");
+                android.content.Context appContext = activity.getApplicationContext();
+                JarvisMemoryStore store = new JarvisMemoryStore(appContext);
+                try {
+                    if (!store.deleteTask(id)) return JarvisToolRegistry.ToolResult.failure("Task ID not found.");
+                    JarvisReminderScheduler.cancel(appContext, id);
+                    return JarvisToolRegistry.ToolResult.success("Task #" + id + " deleted.");
+                } finally { store.close(); }
+            }
+        ));
+
+        registry.register(new JarvisToolRegistry.ToolSpec(
             "create_reminder", "Create a local reminder after an explicit user request.",
             JarvisToolRegistry.Risk.REVERSIBLE, setOf("title", "delay_minutes"), none(), "", args -> {
                 String title = args.get("title");
