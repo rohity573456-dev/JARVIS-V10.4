@@ -47,6 +47,17 @@ public class JarvisIntentRouterTest {
         assertTrue(JarvisIntentRouter.isVolumeDownCommand("volume down"));
     }
 
+    @Test public void greetingsAndMemoryOverviewRequireClearIntent() {
+        assertTrue(JarvisIntentRouter.isGreeting("Namaste"));
+        assertTrue(JarvisIntentRouter.isGreeting("Hello JARVIS"));
+        assertFalse(JarvisIntentRouter.isGreeting("Explain the Hello World program in Java"));
+        assertFalse(JarvisIntentRouter.isGreeting("How does hello protocol work?"));
+        assertTrue(JarvisIntentRouter.isMemoryOverviewQuery("show my memory"));
+        assertTrue(JarvisIntentRouter.isMemoryOverviewQuery("Meri memory dikhao"));
+        assertFalse(JarvisIntentRouter.isMemoryOverviewQuery("How do I show memory in Android?"));
+        assertFalse(JarvisIntentRouter.isMemoryOverviewQuery("Explain memory architecture"));
+    }
+
     @Test public void privateModeTransitionsAreExplicitLocalCommands() {
         assertTrue(JarvisIntentRouter.isPrivateModeEnableCommand("memory privacy on"));
         assertTrue(JarvisIntentRouter.isPrivateModeEnableCommand("Private mode ON"));
