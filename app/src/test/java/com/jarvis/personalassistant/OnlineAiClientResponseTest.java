@@ -24,6 +24,22 @@ public class OnlineAiClientResponseTest {
         assertNull(OnlineAiClient.completionErrorForFinishReason(null));
     }
 
+    @Test public void astraIncompleteResponsesTriggerFallback() {
+        String error = OpenAiResponsesClient.incompleteResponseError("incomplete", "max_output_tokens");
+        assertNotNull(error);
+        assertTrue(error.startsWith("ERROR:"));
+        assertTrue(error.contains("truncated"));
+    }
+
+    @Test public void astraFailedResponsesAreRejected() {
+        assertNotNull(OpenAiResponsesClient.incompleteResponseError("failed", ""));
+    }
+
+    @Test public void completedAstraResponsesRemainValid() {
+        assertNull(OpenAiResponsesClient.incompleteResponseError("completed", ""));
+        assertNull(OpenAiResponsesClient.incompleteResponseError("", ""));
+    }
+
     @Test public void finishReasonMatchingIsCaseInsensitive() {
         assertNotNull(OnlineAiClient.completionErrorForFinishReason("LENGTH"));
         assertNotNull(OnlineAiClient.completionErrorForFinishReason("CONTENT_FILTER"));
