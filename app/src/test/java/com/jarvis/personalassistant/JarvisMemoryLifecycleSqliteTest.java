@@ -76,6 +76,9 @@ public class JarvisMemoryLifecycleSqliteTest {
         store.putLocalVector(id, JarvisLocalVectorEngine.embed("I prefer detailed answers"));
         store.putEmbedding(id, new float[]{0.1f, 0.2f}, "test-model");
         store.recordMemoryFeedback(id, 1, "detailed answers");
+        assertEquals(1, count("memory_local_vectors", id));
+        assertEquals(1, count("memory_embeddings", id));
+        assertEquals(1, count("memory_feedback", id));
         assertTrue(store.updateMemory(id, null, "I prefer concise answers"));
 
         android.database.Cursor fact = store.getWritableDatabase().rawQuery(
