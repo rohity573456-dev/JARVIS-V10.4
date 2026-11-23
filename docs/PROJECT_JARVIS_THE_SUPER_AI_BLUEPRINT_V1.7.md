@@ -806,3 +806,15 @@ Every project report must label each capability as:
 - Robolectric tests confirm unsafe schemes and embedded credentials fail closed and that browser navigation is EXTERNAL.
 - GitHub Actions passed URL validation, external approval classification and planner schema tests (runs 45115012034, 45115020311, 45115027990 and 45115052635).
 - Browser resolution and navigation behavior still require device testing with installed browsers.
+
+
+### Audit pass 27 — reminder scheduling rollback regression
+
+**Issue checked**
+- Reminder creation persists a local task before asking Android to schedule its alarm. If the scheduler reports failure, the task must be rolled back so JARVIS cannot claim a reminder exists when no alarm is scheduled.
+
+**Verification added**
+- Added a Robolectric regression test with an injected scheduler that deliberately returns failure.
+- The test asserts the tool reports failure and the reminder is absent from both upcoming reminders and the complete task listing.
+- This extends coverage of the existing fail-closed implementation; no production reminder behavior or ONNX assets were changed.
+- GitHub Actions validation is pending for this audit pass. Real-device alarm delivery and OEM battery restrictions remain separate release checks.
