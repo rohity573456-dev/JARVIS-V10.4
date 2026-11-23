@@ -22,7 +22,7 @@ public final class JarvisHybridBrain {
 
     public static Specialist classify(String text) {
         String q = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        if (containsAny(q, "github", "code", "coding", "debug", "debugging", "compile", "compiled", "build app", "program", "programming", "java", "kotlin", "python"))
+        if (containsAny(q, "github", "code", "coding", "debug", "debugging", "compile", "compiled", "build app", "program", "programming", "java", "javascript", "typescript", "kotlin", "python", "android studio", "react native"))
             return Specialist.CODING;
         if (containsAny(q, "excel", "csv", "spreadsheet", "data analysis", "analyse data", "analyze data", "chart", "forecast", "statistics", "profit margin"))
             return Specialist.DATA_ANALYSIS;
