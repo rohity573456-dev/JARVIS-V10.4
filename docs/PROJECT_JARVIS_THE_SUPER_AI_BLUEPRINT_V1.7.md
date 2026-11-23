@@ -963,3 +963,16 @@ Every project report must label each capability as:
 **Verification**
 - Added unit tests for successful launches, platform exceptions and null actions. Android compile/unit-test validation passed in run 45128413797.
 - No new Android permissions, background services or ONNX changes were introduced.
+
+
+### Audit pass 42 — cap provider HTTP response-body memory use
+
+**Issue found**
+- The Gemini/Groq-compatible and Astra HTTP clients streamed provider response bodies into unbounded `StringBuilder` instances. A malformed proxy/provider response or unexpectedly large error body could grow app memory without a ceiling.
+
+**Correction committed**
+- Added a shared UTF-8 response reader with strict character ceilings: 1 MiB for compatible free-provider responses and 2 MiB for Astra Responses API replies. Oversized bodies fail closed and are handled by the existing provider fallback/error path.
+
+**Verification**
+- Added tests for UTF-8 decoding, null streams and rejection of oversized bodies. Android unit-test/compile validation is pending.
+- Request payloads, model routing, conversation storage and the existing ONNX wake-word assets are unchanged.
