@@ -751,3 +751,17 @@ Every project report must label each capability as:
 - Robolectric test confirms the tool is registered as READ_ONLY and returns the device-status and Android-version fields.
 - GitHub Actions passed the device-status implementation and test (run 45114813433).
 - OEM-specific values and real-device storage/RAM reporting remain to be checked on hardware.
+
+
+### Audit pass 25 — natural app launching and stricter agent argument schemas
+
+**Capability added**
+- Added `open_app_by_name` so the agent can open an installed app using its exact visible launcher label instead of requiring the model to know Android package names.
+- App matching is case-insensitive but exact; ambiguous duplicate labels fail closed and require package-name disambiguation. Unknown labels do not launch anything.
+- The planner system prompt forbids guessing app aliases, and the function schema bounds the visible app name.
+- Structured argument schemas now bound reminder titles and delay strings, constrain task IDs to positive numeric strings, and enumerate supported notification settings panels.
+
+**Verification**
+- Robolectric confirms unknown app labels fail closed and the tool is classified REVERSIBLE.
+- GitHub Actions passed app-launch, schema, device-status and planner regression suites (runs 45114794236, 45114812250, 45114816874, 45114823370 and 45114829250).
+- Exact launcher labels, duplicate labels and app visibility differences still require testing across real OEM launchers.
