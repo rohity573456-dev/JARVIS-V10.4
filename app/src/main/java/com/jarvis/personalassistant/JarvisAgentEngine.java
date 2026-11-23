@@ -5,8 +5,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Bounded plan/execute/verify agent with verified tool-result feedback between turns. */
@@ -75,7 +78,18 @@ public final class JarvisAgentEngine {
         }
     }
 
-    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2);
+    // Bound both active work and queued work: a burst of requests must not grow an
+    // unbounded backlog of provider calls, plans or approval dialogs.
+    private static final ThreadPoolExecutor EXECUTOR = new ThreadPoolExecutor(
+        2, 2, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(8),
+        new ThreadFactory() {
+            private int nextId = 1;
+            @Override public synchronized Thread newThread(Runnable task) {
+                Thread thread = new Thread(task, "Jarvis-Agent-" + nextId++);
+                thread.setDaemon(true);
+                return thread;
+            }
+        }, new ThreadPoolExecutor.AbortPolicy());
     private final Planner planner;
     private final JarvisToolRegistry registry;
     private final ApprovalGate approvalGate;
@@ -88,7 +102,15 @@ public final class JarvisAgentEngine {
     public RunHandle submit(String objective, Listener listener) {
         if (objective == null || objective.trim().isEmpty()) throw new IllegalArgumentException("Objective is required");
         RunHandle handle = new RunHandle();
-        EXECUTOR.execute(() -> run(objective.trim(), listener, handle));
+        try {
+            EXECUTOR.execute(() -> run(objective.trim(), listener, handle));
+        } catch (RejectedExecutionException rejected) {
+            handle.finished.set(true);
+            String detail = "JARVIS is busy with other agent tasks. Please try again shortly.";
+            notifyState(listener, State.FAILED, detail);
+            notifyComplete(listener, new AgentReport(objective.trim(), State.FAILED,
+                Collections.<StepReport>emptyList(), detail));
+        }
         return handle;
     }
 
@@ -161,11 +183,23 @@ public final class JarvisAgentEngine {
             : "Execution stopped safely. Review the step report before retrying.";
         handle.finished.set(true);
         notifyState(listener, state, summary);
-        if (listener != null) listener.onComplete(new AgentReport(objective, state, reports, summary));
+        notifyComplete(listener, new AgentReport(objective, state, reports, summary));
     }
 
     private static void notifyState(Listener listener, State state, String detail) {
-        if (listener != null) listener.onState(state, detail);
+        if (listener == null) return;
+        try { listener.onState(state, detail); }
+        catch (RuntimeException callbackFailure) {
+            // UI callback failures must not turn a successful Android action into a retry.
+        }
+    }
+
+    private static void notifyComplete(Listener listener, AgentReport report) {
+        if (listener == null) return;
+        try { listener.onComplete(report); }
+        catch (RuntimeException callbackFailure) {
+            // The execution result remains final even if the UI has already been destroyed.
+        }
     }
 
     public static final class RunHandle {
