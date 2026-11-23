@@ -19,16 +19,18 @@ public class JarvisHybridBrainTest {
     @Test public void specialistDirectiveDoesNotClaimTools() {
         assertTrue(JarvisHybridBrain.systemDirective("build my app").contains("Never invent tool results"));
     }
-    @Test public void complexTasksUseAstraOnlyWhenConfigured() {
-        assertTrue(JarvisHybridBrain.shouldUseAstra("Help me debug this Java compile error", true));
-        assertTrue(JarvisHybridBrain.shouldUseAstra("Research the latest battery technology", true));
+    @Test public void specialistTasksNeverSilentlyTriggerPaidAstra() {
+        assertFalse(JarvisHybridBrain.shouldUseAstra("Help me debug this Java compile error", true));
+        assertFalse(JarvisHybridBrain.shouldUseAstra("Research the latest battery technology", true));
         assertFalse(JarvisHybridBrain.shouldUseAstra("Hello JARVIS", true));
         assertFalse(JarvisHybridBrain.shouldUseAstra("Help me debug this Java compile error", false));
     }
 
     @Test public void explicitAstraPrefixRequestsAstraForGeneralQuestions() {
         assertTrue(JarvisHybridBrain.shouldUseAstra("Astra explain relativity simply", true));
+        assertTrue(JarvisHybridBrain.shouldUseAstra("  ASTRA debug this code", true));
         assertFalse(JarvisHybridBrain.shouldUseAstra("Explain relativity simply", true));
+        assertFalse(JarvisHybridBrain.shouldUseAstra("Astra explain relativity simply", false));
     }
 
     @Test public void onlyComplexAstraTasksTriggerSecondPassVerification() {
