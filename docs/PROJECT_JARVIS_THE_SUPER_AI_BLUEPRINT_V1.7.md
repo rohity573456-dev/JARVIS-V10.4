@@ -817,7 +817,7 @@ Every project report must label each capability as:
 - Added a Robolectric regression test with an injected scheduler that deliberately returns failure.
 - The test asserts the tool reports failure and the reminder is absent from both upcoming reminders and the complete task listing.
 - This extends coverage of the existing fail-closed implementation; no production reminder behavior or ONNX assets were changed.
-- GitHub Actions validation is pending for this audit pass. Real-device alarm delivery and OEM battery restrictions remain separate release checks.
+- GitHub Actions Android unit tests and compile passed in run 45127481740. Real-device alarm delivery and OEM battery restrictions remain separate release checks.
 
 
 ### Audit pass 28 — prevent silent premium Astra usage
@@ -832,14 +832,14 @@ Every project report must label each capability as:
 
 **Verification**
 - Updated routing tests cover specialist requests staying off Astra, explicit prefix opt-in, case-insensitive matching, leading whitespace and missing-key fallback.
-- GitHub Actions validation is pending. No ONNX assets or Android wake-word behavior were changed.
+- GitHub Actions Android unit tests and compile passed in run 45127481740. No ONNX assets or Android wake-word behavior were changed.
 
 
 ### Audit pass 29 — remove stale hard-coded salutation
 
 - Replaced the obsolete hard-coded “Pratik Boss” salutation in startup, microphone-permission, greeting and setup responses with the neutral “Boss” address.
 - This prevents JARVIS from addressing its owner by an unrelated legacy name. No voice recognition, wake-word model or action behavior changed.
-- Android compile/unit-test validation is pending.
+- Android compile/unit-test validation passed in run 45127481740.
 
 
 ### Audit pass 30 — protect free-tier agent token limits
@@ -853,7 +853,7 @@ Every project report must label each capability as:
 
 **Verification**
 - Added a regression test for the smaller agent budget and preservation of the latest action request.
-- GitHub Actions validation is pending. This change does not modify provider keys, pricing or ONNX assets.
+- GitHub Actions validation passed in run 45127481740. This change does not modify provider keys, pricing or ONNX assets.
 
 
 ### Audit pass 31 — keep background memory maintenance free-first
@@ -880,7 +880,7 @@ Every project report must label each capability as:
 - Complete `stop` responses remain unchanged; missing and empty content remain errors.
 
 **Verification**
-- Added unit tests for complete answers, token truncation, content filtering, missing choices and empty content. CI validation is pending.
+- Added unit tests for complete answers, token truncation, content filtering, missing choices and empty content. CI Android unit tests and compile passed in run 45127481740.
 - No provider credentials, ONNX assets or wake-word behavior changed.
 
 
