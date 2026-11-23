@@ -22,13 +22,13 @@ public final class JarvisHybridBrain {
 
     public static Specialist classify(String text) {
         String q = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        if (containsAny(q, "github", "code", "coding", "debug", "compile", "build app", "program", "java", "kotlin", "python"))
+        if (containsAny(q, "github", "code", "coding", "debug", "debugging", "compile", "compiled", "build app", "program", "programming", "java", "kotlin", "python"))
             return Specialist.CODING;
         if (containsAny(q, "excel", "csv", "spreadsheet", "data analysis", "analyse data", "analyze data", "chart", "forecast", "statistics", "profit margin"))
             return Specialist.DATA_ANALYSIS;
         if (containsAny(q, "search web", "research", "latest", "sources", "compare online", "find information"))
             return Specialist.RESEARCH;
-        if (containsAny(q, "plan", "strategy", "steps", "roadmap", "schedule", "organize"))
+        if (containsAny(q, "plan", "plans", "planned", "planning", "strategy", "steps", "roadmap", "schedule", "organize"))
             return Specialist.PLANNING;
         return Specialist.GENERAL;
     }
@@ -146,7 +146,22 @@ public final class JarvisHybridBrain {
     }
     private static boolean empty(String value) { return value == null || value.trim().isEmpty(); }
     private static boolean containsAny(String text, String... terms) {
-        for (String term : terms) if (text.contains(term)) return true;
+        if (text == null || text.isEmpty()) return false;
+        for (String term : terms) {
+            if (term == null || term.isEmpty()) continue;
+            int from = 0;
+            while (true) {
+                int start = text.indexOf(term, from);
+                if (start < 0) break;
+                int end = start + term.length();
+                boolean leftBoundary = start == 0
+                    || !Character.isLetterOrDigit(text.codePointBefore(start));
+                boolean rightBoundary = end == text.length()
+                    || !Character.isLetterOrDigit(text.codePointAt(end));
+                if (leftBoundary && rightBoundary) return true;
+                from = start + 1;
+            }
+        }
         return false;
     }
 }
