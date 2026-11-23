@@ -601,8 +601,10 @@ public class MainActivity extends Activity {
                     if (!responseSequencer.isCurrent(responseToken)) return;
                     float[] queryVector = useCloudVector ? JarvisEmbeddingClient.embed(geminiKey, raw, true) : null;
                     if (!responseSequencer.isCurrent(responseToken)) return;
-                    final String memoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
+                    String baseMemoryContext = longTermMemory == null || privateContext ? "No saved memory context. Respect privacy." :
                         (queryVector == null ? longTermMemory.getMemoryContext(raw, 10) : longTermMemory.getMemoryContext(raw, 10, queryVector));
+                    final String memoryContext = privateContext || longTermMemory == null ? baseMemoryContext :
+                        JarvisHistoryVerifier.attachEvidence(baseMemoryContext, longTermMemory.getConversationEvidence(raw, 18));
                     final String legacyNote = privateContext ? "none" : memory.getString("note", "none");
                     final String prompt = JarvisConversationContext.compose(memoryContext, legacyNote,
                         lastResponse, raw, privateContext);
