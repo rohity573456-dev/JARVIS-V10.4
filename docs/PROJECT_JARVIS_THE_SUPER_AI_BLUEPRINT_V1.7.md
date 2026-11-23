@@ -1003,3 +1003,16 @@ Every project report must label each capability as:
 **Verification**
 - Added a regression test proving a throwing state callback does not interrupt a verified tool action. GitHub Actions Android unit-test/compile validation is pending.
 - Existing approval gates, cancellation checks, eight-step execution ceiling and no-retry rule for side-effecting tools remain unchanged.
+
+
+### Audit pass 45 — cap queued background memory maintenance
+
+**Issue found**
+- Automatic fact extraction and session reflection shared a single worker thread but used an unbounded executor queue. A slow/offline provider combined with frequent conversation turns could accumulate pending background work and retain unnecessary transcript data in memory.
+
+**Correction committed**
+- Replaced the unbounded queue with a single daemon worker and a maximum of 16 pending memory jobs. When saturated, new maintenance work is skipped with a diagnostic log; local memory and the foreground conversation are unaffected.
+- The existing consent checks and sensitive-transcript revalidation still run inside each accepted task immediately before provider use and storage.
+
+**Verification**
+- This is a queue/resource-bound change; Android unit-test/compile validation is pending. No database schema, stored memory, provider priority or ONNX asset changed.
