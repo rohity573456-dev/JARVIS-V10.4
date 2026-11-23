@@ -251,23 +251,32 @@ public final class JarvisMemoryStore extends SQLiteOpenHelper {
 
     public synchronized boolean updateMemory(long id, String category, String content) {
         if (id <= 0 || content == null || content.trim().isEmpty() || isSensitiveContent(content)) return false;
-        ContentValues v = new ContentValues();
-        v.put("category", category == null ? "general" : category);
-        v.put("content", content.trim());
-        v.put("updated_at", System.currentTimeMillis());
-        v.put("valid_until", 0);
-        v.put("is_active", 1);
-        v.put("source", "manual-edit");
+        String[] args = new String[]{String.valueOf(id)};
         SQLiteDatabase db = getWritableDatabase();
-        boolean changed = db.update(MEMORIES, v, "id=?", new String[]{String.valueOf(id)}) > 0;
-        if (changed) {
-            db.delete(EDGES, "memory_id=?", new String[]{String.valueOf(id)});
-            db.delete("memory_embeddings", "memory_id=?", new String[]{String.valueOf(id)});
-            db.delete("memory_local_vectors", "memory_id=?", new String[]{String.valueOf(id)});
-            indexMemoryGraph(db, id, content.trim());
-            putLocalVector(id, JarvisLocalVectorEngine.embed(content.trim()));
+        db.beginTransaction();
+        try {
+            ContentValues v = new ContentValues();
+            if (category != null && !category.trim().isEmpty()) v.put("category", category.trim());
+            v.put("content", content.trim());
+            v.put("updated_at", System.currentTimeMillis());
+            v.put("valid_until", 0);
+            v.put("is_active", 1);
+            v.put("source", "manual-edit");
+            boolean changed = db.update(MEMORIES, v, "id=?", args) > 0;
+            if (changed) {
+                db.delete(EDGES, "memory_id=?", args);
+                db.delete("memory_embeddings", "memory_id=?", args);
+                db.delete("memory_local_vectors", "memory_id=?", args);
+                db.delete("memory_feedback", "memory_id=?", args);
+                pruneOrphanKnowledgeNodes(db);
+                indexMemoryGraph(db, id, content.trim());
+                putLocalVector(id, JarvisLocalVectorEngine.embed(content.trim()));
+            }
+            db.setTransactionSuccessful();
+            return changed;
+        } finally {
+            db.endTransaction();
         }
-        return changed;
     }
 
     public synchronized boolean deleteMemory(long id) {
