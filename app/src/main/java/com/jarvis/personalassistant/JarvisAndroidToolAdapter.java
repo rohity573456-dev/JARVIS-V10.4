@@ -132,7 +132,7 @@ public final class JarvisAndroidToolAdapter {
                 try {
                     long id = store.addTask(title.trim(), dueAt);
                     if (id <= 0) return JarvisToolRegistry.ToolResult.failure("Reminder could not be saved.");
-                    if (!JarvisReminderScheduler.schedule(appContext, id, title.trim(), dueAt))
+                    if (!JarvisReminderScheduler.schedule(appContext, id, title.trim(), dueAt)) {
                         store.deleteTask(id);
                         return JarvisToolRegistry.ToolResult.failure("Reminder alarm could not be scheduled; no task was kept.");
                     }
