@@ -53,14 +53,7 @@ public final class OnlineAiClient {
                 while ((line = r.readLine()) != null) raw.append(line);
             }
             if (code < 200 || code >= 300) return "ERROR " + code + ": " + raw;
-            JSONObject response = new JSONObject(raw.toString());
-            JSONArray choices = response.optJSONArray("choices");
-            if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
-            JSONObject message = choices.getJSONObject(0).optJSONObject("message");
-            if (message == null) return "ERROR: Provider response format was unexpected.";
-            Object content = message.opt("content");
-            if (content instanceof String && !((String) content).trim().isEmpty()) return ((String) content).trim();
-            return "ERROR: Provider returned an empty answer.";
+            return extractAssistantAnswer(new JSONObject(raw.toString()));
         } catch (Exception e) {
             return "ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage();
         } finally {
@@ -71,6 +64,26 @@ public final class OnlineAiClient {
      * Calls an OpenAI-compatible model with native tool schemas. Returns only
      * normalized tool-call requests; this method never executes a tool.
      */
+    /** Reject incomplete or filtered completions so the router can use its bounded fallback. */
+    static String extractAssistantAnswer(JSONObject response) {
+        if (response == null) return "ERROR: Provider response was empty.";
+        JSONArray choices = response.optJSONArray("choices");
+        if (choices == null || choices.length() == 0) return "ERROR: Provider returned no choices.";
+        JSONObject choice = choices.optJSONObject(0);
+        if (choice == null) return "ERROR: Provider response format was unexpected.";
+        String finishReason = choice.optString("finish_reason", "");
+        if ("length".equalsIgnoreCase(finishReason))
+            return "ERROR: Provider response was truncated by its token limit.";
+        if ("content_filter".equalsIgnoreCase(finishReason))
+            return "ERROR: Provider filtered the response.";
+        JSONObject message = choice.optJSONObject("message");
+        if (message == null) return "ERROR: Provider response format was unexpected.";
+        Object content = message.opt("content");
+        if (content instanceof String && !((String) content).trim().isEmpty())
+            return ((String) content).trim();
+        return "ERROR: Provider returned an empty answer.";
+    }
+
     public static String askForToolCalls(String endpoint, String apiKey, String model,
             String prompt, String systemPrompt, JSONArray tools) {
         HttpURLConnection c = null;
