@@ -209,97 +209,61 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams composerLp=new LinearLayout.LayoutParams(-1,(int)(54*d)); composerLp.topMargin=(int)(7*d); root.addView(composer,composerLp); buildNavigation(d); root.addView(navigationBar,new LinearLayout.LayoutParams(-1,(int)(54*d))); setContentView(root); switchTab(0);
     }
     private void buildHomeScreen(float d) {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setVerticalScrollBarEnabled(false);
-        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        homeScreen = new LinearLayout(this);
-        homeScreen.setOrientation(LinearLayout.VERTICAL);
-        homeScreen.setGravity(Gravity.CENTER_HORIZONTAL);
-        homeScreen.setPadding((int)(2*d),(int)(8*d),(int)(2*d),(int)(12*d));
+        ScrollView scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false); scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        homeScreen=new LinearLayout(this); homeScreen.setOrientation(LinearLayout.VERTICAL); homeScreen.setGravity(Gravity.CENTER_HORIZONTAL); homeScreen.setPadding((int)(2*d),(int)(8*d),(int)(2*d),(int)(12*d));
+        orbView=new JarvisOrbView(this); orbView.setState("STANDBY"); LinearLayout.LayoutParams orbLp=new LinearLayout.LayoutParams(-1,(int)(124*d)); orbLp.topMargin=(int)d; orbLp.bottomMargin=(int)(2*d); homeScreen.addView(orbView,orbLp);
+        TextView greeting=new TextView(this); greeting.setText("Hello, I am JARVIS"); greeting.setTextColor(Color.WHITE); greeting.setTextSize(21); greeting.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL)); greeting.setGravity(Gravity.CENTER); homeScreen.addView(greeting,new LinearLayout.LayoutParams(-1,-2));
+        TextView subtitle=new TextView(this); subtitle.setText("How can I help you?"); subtitle.setTextColor(Color.rgb(177,203,226)); subtitle.setTextSize(13); subtitle.setGravity(Gravity.CENTER); LinearLayout.LayoutParams subLp=new LinearLayout.LayoutParams(-1,-2); subLp.topMargin=(int)(2*d); subLp.bottomMargin=(int)(9*d); homeScreen.addView(subtitle,subLp);
+        LinearLayout quick=new LinearLayout(this); quick.setOrientation(LinearLayout.HORIZONTAL); quick.setGravity(Gravity.CENTER);
+        addQuickChip(quick,"▧  Image edit",()->pickImage(),d); addQuickChip(quick,"✧  Generate prompt",()->{switchTab(1);handle("Help me generate a detailed prompt");},d); addQuickChip(quick,"⌕  Deep research",()->{switchTab(1);searchWeb("");},d);
+        HorizontalScrollView quickScroll=new HorizontalScrollView(this); quickScroll.setHorizontalScrollBarEnabled(false); quickScroll.addView(quick,new HorizontalScrollView.LayoutParams(-2,(int)(36*d))); homeScreen.addView(quickScroll,new LinearLayout.LayoutParams(-1,(int)(40*d)));
+        TextView toolsTitle=sectionTitle("Discover AI tools",d); LinearLayout.LayoutParams titleLp=new LinearLayout.LayoutParams(-1,-2); titleLp.topMargin=(int)(12*d); titleLp.bottomMargin=(int)(5*d); homeScreen.addView(toolsTitle,titleLp);
+        HorizontalScrollView toolsScroll=new HorizontalScrollView(this); toolsScroll.setHorizontalScrollBarEnabled(false); LinearLayout cards=new LinearLayout(this); cards.setOrientation(LinearLayout.HORIZONTAL);
+        addVisualToolCard(cards,"Image Generator","Create images",new int[]{0xff12466c,0xff071c35},()->pickImage(),d);
+        addVisualToolCard(cards,"Homework Helper","Solve and explain",new int[]{0xff24566c,0xff102b43},()->{switchTab(1);handle("Help me with homework");},d);
+        addVisualToolCard(cards,"Generate Prompt","Create better prompts",new int[]{0xff173f52,0xff0b2037},()->{switchTab(1);handle("Generate a prompt");},d);
+        toolsScroll.addView(cards); homeScreen.addView(toolsScroll,new LinearLayout.LayoutParams(-1,(int)(126*d)));
+        scroll.addView(homeScreen,new ScrollView.LayoutParams(-1,-2)); homeScreen.setTag(scroll);
+    }
 
-        orbView = new JarvisOrbView(this);
-        orbView.setState("STANDBY");
-        LinearLayout.LayoutParams orbLp = new LinearLayout.LayoutParams(-1,(int)(205*d));
-        orbLp.topMargin = (int)(2*d);
-        orbLp.bottomMargin = (int)(1*d);
-        homeScreen.addView(orbView,orbLp);
+    private void addQuickChip(LinearLayout row,String label,Runnable action,float d) {
+        TextView chip=new TextView(this); chip.setText(label); chip.setTextColor(Color.rgb(220,239,255)); chip.setTextSize(9); chip.setGravity(Gravity.CENTER); chip.setPadding((int)(9*d),(int)(6*d),(int)(9*d),(int)(6*d)); chip.setBackground(panel(Color.rgb(14,34,54),Color.rgb(69,111,148),20));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,(int)(30*d)); lp.setMargins((int)(3*d),0,(int)(3*d),0); row.addView(chip,lp); chip.setOnClickListener(v->action.run());
+    }
 
-        TextView greeting = new TextView(this);
-        greeting.setText("Hello, Boss");
-        greeting.setTextColor(Color.WHITE);
-        greeting.setTextSize(23);
-        greeting.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        greeting.setGravity(Gravity.CENTER);
-        homeScreen.addView(greeting,new LinearLayout.LayoutParams(-1,-2));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText("How can I help you today?");
-        subtitle.setTextColor(Color.rgb(172,203,228));
-        subtitle.setTextSize(13);
-        subtitle.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1,-2);
-        subLp.topMargin = (int)(2*d);
-        subLp.bottomMargin = (int)(3*d);
-        homeScreen.addView(subtitle,subLp);
-
-        TextView toolsTitle = sectionTitle("Discover AI tools",d);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1,-2);
-        titleLp.topMargin = (int)(7*d);
-        homeScreen.addView(toolsTitle,titleLp);
-
-        LinearLayout rowOne = new LinearLayout(this);
-        rowOne.setOrientation(LinearLayout.HORIZONTAL);
-        rowOne.setGravity(Gravity.CENTER);
-        addFeatureCard(rowOne,"◈","Image tools","Create or analyze images",() -> pickImage(),d);
-        addFeatureCard(rowOne,"⌕","Web research","Search information online",() -> searchWeb(""),d);
-        addFeatureCard(rowOne,"✧","Mission planner","Plan a task with JARVIS",() -> { switchTab(1); handle("mission plan"); },d);
-        homeScreen.addView(rowOne,new LinearLayout.LayoutParams(-1,(int)(112*d)));
-
-        LinearLayout rowTwo = new LinearLayout(this);
-        rowTwo.setOrientation(LinearLayout.HORIZONTAL);
-        rowTwo.setGravity(Gravity.CENTER);
-        addFeatureCard(rowTwo,"◉","Voice assistant","Talk to JARVIS",() -> { switchTab(1); listen(); },d);
-        addFeatureCard(rowTwo,"⌘","Memory center","Open saved memories",() -> memoryDialog(),d);
-        addFeatureCard(rowTwo,"⚙","System status","View device status",() -> systemReport(),d);
-        homeScreen.addView(rowTwo,new LinearLayout.LayoutParams(-1,(int)(112*d)));
-
-        scroll.addView(homeScreen,new ScrollView.LayoutParams(-1,-2));
-        homeScreen.setTag(scroll);
+    private void addVisualToolCard(LinearLayout row,String title,String subtitle,int[] colors,Runnable action,float d) {
+        LinearLayout card=new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setGravity(Gravity.BOTTOM); card.setPadding((int)(10*d),(int)(8*d),(int)(10*d),(int)(9*d));
+        android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,colors); bg.setCornerRadius(17*d); bg.setStroke((int)Math.max(1,d),0xff345d7b); card.setBackground(bg);
+        TextView art=new TextView(this); art.setText("✦"); art.setTextColor(0xffa8e8ff); art.setTextSize(25); art.setGravity(Gravity.CENTER); card.addView(art,new LinearLayout.LayoutParams(-1,0,1f));
+        TextView name=new TextView(this); name.setText(title); name.setTextColor(Color.WHITE); name.setTextSize(12); name.setTypeface(Typeface.DEFAULT_BOLD); card.addView(name);
+        TextView detail=new TextView(this); detail.setText(subtitle); detail.setTextColor(0xffb7d0e3); detail.setTextSize(9); card.addView(detail);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams((int)(126*d),(int)(116*d)); lp.setMargins((int)(3*d),0,(int)(7*d),0); row.addView(card,lp); card.setOnClickListener(v->action.run());
     }
 
     private void buildChatScreen(float d) {
-        chatScreen = new LinearLayout(this);        chatScreen.setOrientation(LinearLayout.VERTICAL);
-        conversationScroll = new ScrollView(this);
-        conversationScroll.setFillViewport(true);
-        conversationScroll.setVerticalScrollBarEnabled(false);
-        conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        conversationScroll.setClipToPadding(false);
-        conversationList = new LinearLayout(this);
-        conversationList.setOrientation(LinearLayout.VERTICAL);
-        conversationList.setPadding((int)(2*d),(int)(6*d),(int)(2*d),(int)(12*d));
-        conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
-        chatScreen.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f));
-        chatScreen.setBackgroundColor(Color.TRANSPARENT);
+        chatScreen=new LinearLayout(this); chatScreen.setOrientation(LinearLayout.VERTICAL);
+        chatWelcomePanel=new LinearLayout(this); chatWelcomePanel.setOrientation(LinearLayout.VERTICAL); chatWelcomePanel.setGravity(Gravity.CENTER_HORIZONTAL); chatWelcomePanel.setPadding((int)(4*d),(int)(10*d),(int)(4*d),(int)(8*d));
+        TextView project=new TextView(this); project.setText("New Project  ▾"); project.setTextColor(Color.WHITE); project.setTextSize(14); project.setGravity(Gravity.CENTER); project.setBackground(panel(Color.rgb(10,28,47),Color.rgb(46,86,119),18)); chatWelcomePanel.addView(project,new LinearLayout.LayoutParams((int)(150*d),(int)(34*d)));
+        TextView welcome=new TextView(this); welcome.setText("How can I help you today?"); welcome.setTextColor(Color.WHITE); welcome.setTextSize(19); welcome.setGravity(Gravity.CENTER); LinearLayout.LayoutParams welcomeLp=new LinearLayout.LayoutParams(-1,-2); welcomeLp.topMargin=(int)(9*d); chatWelcomePanel.addView(welcome,welcomeLp);
+        LinearLayout suggestions=new LinearLayout(this); suggestions.setOrientation(LinearLayout.HORIZONTAL); suggestions.setGravity(Gravity.CENTER);
+        addQuickChip(suggestions,"▧ Image edit",()->pickImage(),d); addQuickChip(suggestions,"✧ Generate prompt",()->handle("Generate a prompt"),d); addQuickChip(suggestions,"⌕ Deep research",()->searchWeb(""),d);
+        HorizontalScrollView suggestionScroll=new HorizontalScrollView(this); suggestionScroll.setHorizontalScrollBarEnabled(false); suggestionScroll.addView(suggestions); LinearLayout.LayoutParams suggestionLp=new LinearLayout.LayoutParams(-1,(int)(40*d)); suggestionLp.topMargin=(int)(8*d); chatWelcomePanel.addView(suggestionScroll,suggestionLp);
+        chatScreen.addView(chatWelcomePanel,new LinearLayout.LayoutParams(-1,-2));
+        conversationScroll=new ScrollView(this); conversationScroll.setFillViewport(true); conversationScroll.setVerticalScrollBarEnabled(false); conversationScroll.setOverScrollMode(View.OVER_SCROLL_NEVER); conversationScroll.setClipToPadding(false);
+        conversationList=new LinearLayout(this); conversationList.setOrientation(LinearLayout.VERTICAL); conversationList.setPadding((int)(2*d),(int)(6*d),(int)(2*d),(int)(12*d)); conversationScroll.addView(conversationList,new ScrollView.LayoutParams(-1,-2));
+        chatScreen.addView(conversationScroll,new LinearLayout.LayoutParams(-1,0,1f)); chatScreen.setBackgroundColor(Color.TRANSPARENT);
     }
 
     private void buildExploreScreen(float d) {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setVerticalScrollBarEnabled(false);
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding((int)(3*d),(int)(12*d),(int)(3*d),(int)(20*d));
-        TextView title = sectionTitle("Explore JARVIS",d);
-        list.addView(title);
-        addExploreRow(list,"Image studio","Analyze a photo with your configured vision AI",() -> pickImage(),d);
-        addExploreRow(list,"Deep research","Search the web and investigate a topic",() -> searchWeb(""),d);
-        addExploreRow(list,"Memory center","Review, search and manage long-term memory",() -> memoryDialog(),d);
-        addExploreRow(list,"Tasks & reminders","Create and manage your tasks",() -> taskDialog(),d);
-        addExploreRow(list,"AI brain & models","Configure online providers or local model",() -> aiBrainDialog(),d);
-        addExploreRow(list,"System diagnostics","Check battery, storage and JARVIS status",() -> systemReport(),d);
-        scroll.addView(list,new ScrollView.LayoutParams(-1,-2));
-        exploreScreen = list;
-        exploreScreen.setTag(scroll);
+        ScrollView scroll=new ScrollView(this); scroll.setVerticalScrollBarEnabled(false); LinearLayout list=new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); list.setPadding((int)(3*d),(int)(12*d),(int)(3*d),(int)(20*d));
+        list.addView(sectionTitle("Explore JARVIS",d));
+        addExploreRow(list,"Image studio","Create or analyze images with your configured vision AI",()->pickImage(),d);
+        addExploreRow(list,"Deep research","Search the web and investigate a topic",()->{switchTab(1);searchWeb("");},d);
+        addExploreRow(list,"Memory center","Review, search and manage long-term memory",()->memoryDialog(),d);
+        addExploreRow(list,"Tasks & reminders","Create and manage your tasks",()->taskDialog(),d);
+        addExploreRow(list,"AI brain & models","Configure online providers or local model",()->aiBrainDialog(),d);
+        addExploreRow(list,"System diagnostics","Check battery, storage and JARVIS status",()->systemReport(),d);
+        scroll.addView(list,new ScrollView.LayoutParams(-1,-2)); exploreScreen=list; exploreScreen.setTag(scroll);
     }
 
     private TextView sectionTitle(String text,float d) {
