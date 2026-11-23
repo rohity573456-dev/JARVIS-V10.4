@@ -989,3 +989,17 @@ Every project report must label each capability as:
 **Verification**
 - Added a regression test proving an overlong web-search query is rejected before the tool handler runs. Android unit tests and compile passed in GitHub Actions run 45130113592.
 - No additional tool permissions or automatic side effects were introduced.
+
+
+### Audit pass 44 — bound concurrent agent workload and isolate UI callbacks
+
+**Issue found**
+- The agent executor used a fixed worker count but an unbounded task queue. Repeated requests could accumulate pending provider calls and memory usage. A UI callback exception could also interrupt the agent control flow even after a tool had completed.
+
+**Correction committed**
+- Replaced the unbounded executor queue with a two-worker, eight-pending-task bounded queue. Saturation returns a clear failed report instead of accumulating unlimited work.
+- Listener callback exceptions are isolated from planning/execution results, preventing a detached Activity/UI failure from converting an already completed side effect into a retry or a false failure.
+
+**Verification**
+- Added a regression test proving a throwing state callback does not interrupt a verified tool action. GitHub Actions Android unit-test/compile validation is pending.
+- Existing approval gates, cancellation checks, eight-step execution ceiling and no-retry rule for side-effecting tools remain unchanged.
