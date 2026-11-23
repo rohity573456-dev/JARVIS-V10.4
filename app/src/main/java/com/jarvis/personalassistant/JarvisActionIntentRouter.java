@@ -23,6 +23,10 @@ public final class JarvisActionIntentRouter {
         if (input == null) return false;
         String q = input.trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty()) return false;
+        // Explicit premium-provider prefix must not prevent a real Android action
+        // from reaching the structured planner; the planner still sees the prefix.
+        if (q.startsWith("astra ")) q = q.substring("astra ".length()).trim();
+        if (q.isEmpty()) return false;
         if (q.startsWith("web search ") || q.startsWith("search web ") ||
             q.startsWith("search the web ") || q.startsWith("internet par search ") ||
             q.startsWith("internet pe search ") || q.startsWith("google par search ")) return true;
