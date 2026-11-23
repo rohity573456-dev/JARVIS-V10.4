@@ -765,3 +765,16 @@ Every project report must label each capability as:
 - Robolectric confirms unknown app labels fail closed and the tool is classified REVERSIBLE.
 - GitHub Actions passed app-launch, schema, device-status and planner regression suites (runs 45114794236, 45114812250, 45114816874, 45114823370 and 45114829250).
 - Exact launcher labels, duplicate labels and app visibility differences still require testing across real OEM launchers.
+
+
+### Audit pass 24 — safer app launch and device-status tools
+
+**Capabilities added**
+- The agent can open an installed app by its exact visible launcher name. Unknown names fail closed; duplicate visible names from different packages are reported as ambiguous instead of guessing. Exact package-name launch remains available as a separate tool.
+- Added a READ_ONLY device-status tool that reports only non-identifying battery percentage, available/total RAM, internal storage and Android version.
+- Structured planner schemas now bound visible app names, reminder titles, delay values and numeric task IDs. The app-notification settings panel is included in the planner's allowed enum.
+
+**Verification**
+- Robolectric tests cover unknown app-name failure, device-status output and read-only risk.
+- GitHub Actions passed the app-name, device-status and planner-schema source/tests (runs 45114816874, 45114823370, 45114829250 and 45114862701).
+- Installed-app visibility and launch behavior must still be tested on the user's actual Android launcher/OEM.
