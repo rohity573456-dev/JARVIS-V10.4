@@ -70,7 +70,8 @@ public class MainActivity extends Activity {
     private JarvisMemoryStore longTermMemory;
     private JarvisToolRegistry agentToolRegistry;
     private JarvisAgentEngine.RunHandle activeAgentRun;
-    private final JarvisResponseSequencer responseSequencer = new JarvisResponseSequencer();
+    private volatile AlertDialog activeAgentApprovalDialog;
+    private final JarvisResponseSequencer = new JarvisResponseSequencer();
     private boolean ttsReady = false;
     private boolean commandRetryUsed = false;
     private boolean serviceRetryUsed = false;
@@ -531,6 +532,8 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isCancelAgentCommand(raw)) {
             if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
                 activeAgentRun.cancel();
+                AlertDialog approval = activeAgentApprovalDialog;
+                if (approval != null && approval.isShowing()) approval.cancel();
                 answer="Agent cancellation requested. The current platform call will finish safely, then no further steps will run.";
             } else answer="No active agent task to cancel.";
         }
@@ -696,7 +699,12 @@ public class MainActivity extends Activity {
                 .setOnCancelListener(d -> {
                     if (resolved.compareAndSet(false, true)) latch.countDown();
                 })
+                .setOnDismissListener(d -> {
+                    if (resolved.compareAndSet(false, true)) latch.countDown();
+                    if (activeAgentApprovalDialog == dialog[0]) activeAgentApprovalDialog = null;
+                })
                 .create();
+            activeAgentApprovalDialog = dialog[0];
             dialog[0].show();
         });
         try {
@@ -1064,5 +1072,5 @@ public class MainActivity extends Activity {
         refreshUiStatus();
     }
     @Override protected void onPause() { wakeReceiverActive = false; super.onPause(); }
-    @Override protected void onDestroy() { responseSequencer.invalidate(); if(activeAgentRun!=null) activeAgentRun.cancel(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { responseSequencer.invalidate(); if(activeAgentRun!=null) activeAgentRun.cancel(); if(activeAgentApprovalDialog!=null) activeAgentApprovalDialog.dismiss(); wakeReceiverActive=false; if(wakeReceiverRegistered && wakeReceiver!=null) { try { unregisterReceiver(wakeReceiver); } catch(Exception ignored) {} wakeReceiverRegistered=false; } if(recognizer!=null) { try { recognizer.cancel(); recognizer.destroy(); } catch(Exception ignored) {} } if(tts!=null) tts.shutdown(); super.onDestroy(); }
 }
