@@ -21,6 +21,36 @@ public class JarvisAgentEngineTest {
         assertFalse(registry.invoke("read_status", invalid).success);
     }
 
+    @Test public void listenerStateCallbackFailureDoesNotInterruptAgentExecution() throws Exception {
+        JarvisToolRegistry registry = new JarvisToolRegistry();
+        AtomicInteger calls = new AtomicInteger();
+        registry.register(new JarvisToolRegistry.ToolSpec("read_status", "Read status",
+            JarvisToolRegistry.Risk.READ_ONLY, Collections.<String>emptySet(),
+            Collections.<String>emptySet(), "", args -> {
+                calls.incrementAndGet();
+                return JarvisToolRegistry.ToolResult.success("ok");
+            }));
+        JarvisAgentEngine engine = new JarvisAgentEngine(
+            objective -> new JarvisAgentEngine.AgentPlan(objective, Collections.singletonList(
+                new JarvisAgentEngine.AgentStep("s1", "read_status",
+                    Collections.<String,String>emptyMap(), "Read"))),
+            registry, step -> true);
+        CountDownLatch done = new CountDownLatch(1);
+        final JarvisAgentEngine.AgentReport[] report = new JarvisAgentEngine.AgentReport[1];
+        engine.submit("read status", new JarvisAgentEngine.Listener() {
+            public void onState(JarvisAgentEngine.State state, String detail) {
+                throw new IllegalStateException("activity was detached");
+            }
+            public void onComplete(JarvisAgentEngine.AgentReport value) {
+                report[0] = value;
+                done.countDown();
+            }
+        });
+        assertTrue(done.await(3, TimeUnit.SECONDS));
+        assertEquals(JarvisAgentEngine.State.COMPLETED, report[0].finalState);
+        assertEquals(1, calls.get());
+    }
+
     @Test public void registryRejectsOversizedToolArgumentsBeforeHandler() {
         JarvisToolRegistry registry = new JarvisToolRegistry();
         AtomicInteger calls = new AtomicInteger();
