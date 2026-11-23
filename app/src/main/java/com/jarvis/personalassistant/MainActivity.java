@@ -530,7 +530,7 @@ public class MainActivity extends Activity {
         else if (JarvisIntentRouter.isBrightnessSettingsCommand(raw)) { launch(new Intent(Settings.ACTION_DISPLAY_SETTINGS),"Display settings"); answer="Display settings khol raha hoon. Android permission ke bina brightness directly change nahi kar sakta."; }
         else if (JarvisIntentRouter.isSystemReportQuery(raw)) { systemReport(); return; }
         else if (JarvisIntentRouter.isCancelAgentCommand(raw)) {
-            if (activeAgentRun != null && !activeAgentRun.isCancelled()) {
+            if (activeAgentRun != null && !activeAgentRun.isFinished()) {
                 activeAgentRun.cancel();
                 AlertDialog approval = activeAgentApprovalDialog;
                 if (approval != null && approval.isShowing()) approval.cancel();
