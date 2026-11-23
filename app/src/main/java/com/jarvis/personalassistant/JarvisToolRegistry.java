@@ -66,10 +66,31 @@ public final class JarvisToolRegistry {
         public List<String> argumentErrors(Map<String, String> args) {
             List<String> errors = new ArrayList<>();
             Map<String, String> safe = args == null ? Collections.<String, String>emptyMap() : args;
+            if (safe.size() > 32) errors.add("Too many tool arguments");
             for (String key : requiredArguments) if (blank(safe.get(key))) errors.add("Missing required argument: " + key);
-            for (String key : safe.keySet())
-                if (!requiredArguments.contains(key) && !optionalArguments.contains(key)) errors.add("Unexpected argument: " + key);
+            for (Map.Entry<String, String> entry : safe.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+                if (key == null || key.length() > 64) {
+                    errors.add("Invalid argument name");
+                    continue;
+                }
+                if (!requiredArguments.contains(key) && !optionalArguments.contains(key))
+                    errors.add("Unexpected argument: " + key);
+                if (value != null && value.length() > maxArgumentLength(key))
+                    errors.add("Argument exceeds the allowed length: " + key);
+            }
             return errors;
+        }
+        private static int maxArgumentLength(String key) {
+            if ("query".equals(key)) return 300;
+            if ("app_name".equals(key)) return 80;
+            if ("title".equals(key)) return 160;
+            if ("url".equals(key)) return 2048;
+            if ("delay_minutes".equals(key)) return 5;
+            if ("id".equals(key)) return 19;
+            if ("package".equals(key)) return 255;
+            return 1024;
         }
         private static boolean blank(String value) { return value == null || value.trim().isEmpty(); }
     }
