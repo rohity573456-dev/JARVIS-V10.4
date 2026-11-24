@@ -210,14 +210,25 @@ public final class AstraCognitiveKernel {
         return candidate;
     }
 
-    /** Runs planning, primary inference, then a genuinely different configured reviewer. */
+    /** Backwards-compatible entry point when no memory adapter is supplied. */
     public static void ask(String geminiKey, String geminiModel, String groqKey,
             String groqModel, String nebiusKey, String localModelPath,
             String contextPrompt, String userText, String openAiKey,
             boolean privateMode, Callback callback) {
+        ask(geminiKey, geminiModel, groqKey, groqModel, nebiusKey, localModelPath,
+                contextPrompt, userText, openAiKey, privateMode, null, callback);
+    }
+
+    /** Runs memory retrieval, planning, primary inference, then independent review. */
+    public static void ask(String geminiKey, String geminiModel, String groqKey,
+            String groqModel, String nebiusKey, String localModelPath,
+            String contextPrompt, String userText, String openAiKey,
+            boolean privateMode, JarvisMemoryStore memoryStore, Callback callback) {
         Mission mission = analyze(userText);
         CognitivePlan cognitivePlan = plan(mission);
-        String cognitivePrompt = buildCognitivePrompt(contextPrompt, cognitivePlan, privateMode);
+        String enrichedContext = enrichMemoryContext(contextPrompt, userText, mission,
+                privateMode, memoryStore);
+        String cognitivePrompt = buildCognitivePrompt(enrichedContext, cognitivePlan, privateMode);
         JarvisHybridBrain.ask(geminiKey, geminiModel, groqKey, groqModel,
                 nebiusKey, localModelPath, cognitivePrompt, userText, openAiKey, draft -> {
             if (!shouldReview(mission, draft)) {
@@ -229,11 +240,36 @@ public final class AstraCognitiveKernel {
                     !empty(nebiusKey), !empty(geminiKey), !empty(groqKey));
             MultiBrainRouter.Provider excluded = primaryIsAstra || order.isEmpty() ? null : order.get(0);
             String auditSystem = "You are an independent JARVIS answer auditor. Check the supplied draft for material errors; preserve supported facts, do not invent evidence, and return only the corrected complete answer.";
-            String auditPrompt = buildReviewPrompt(contextPrompt, userText, draft);
+            String auditPrompt = buildReviewPrompt(enrichedContext, userText, draft);
             String reviewed = MultiBrainRouter.askExcluding(nebiusKey, geminiKey, geminiModel,
                     groqKey, groqModel, auditPrompt, userText, auditSystem, excluded);
             callback.onResult(acceptReview(draft, reviewed));
         });
+    }
+
+    /** Pulls only selected existing memory layers; Private Mode is a hard no-read boundary. */
+    static String enrichMemoryContext(String base, String query, Mission mission,
+            boolean privateMode, JarvisMemoryStore store) {
+        if (privateMode || store == null) return base == null ? "" : base;
+        StringBuilder context = new StringBuilder(base == null ? "" : base);
+        appendMemory(context, "PROFILE SUMMARY", store.getProfileSummaryText(), 1800);
+        appendMemory(context, "PINNED MEMORIES", store.getPinnedMemoriesText(5), 1400);
+        appendMemory(context, "RECENT SESSION SUMMARIES", store.getSessionSummaryText(3), 1600);
+        if (mission != null && mission.type == MissionType.PLANNING) {
+            appendMemory(context, "OPEN TASKS", store.getTasksText(false), 1200);
+        }
+        if (mission != null && (mission.type == MissionType.RESEARCH
+                || mission.type == MissionType.ANALYSIS || mission.type == MissionType.ENGINEERING)) {
+            appendMemory(context, "RELATED KNOWLEDGE GRAPH", store.getKnowledgeGraphText(query), 1200);
+        }
+        return context.toString();
+    }
+
+    private static void appendMemory(StringBuilder target, String label, String value, int maxChars) {
+        if (value == null || value.trim().isEmpty()) return;
+        String text = value.trim();
+        if (text.length() > maxChars) text = text.substring(0, maxChars) + "…";
+        target.append("\\n\\n").append(label).append(":\\n").append(text);
     }
 
     private static String safe(String value) { return value == null ? "" : value.trim(); }
