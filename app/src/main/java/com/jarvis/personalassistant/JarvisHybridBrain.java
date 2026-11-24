@@ -111,7 +111,7 @@ public final class JarvisHybridBrain {
                 return;
             }
             callback.onResult("JARVIS AI providers unavailable. " + result
-                    + ". Configure Gemini/Groq, optional GPT-6.2 Astra, or load a compatible offline model.");
+                    + ". Configure Nebius/Gemini/Groq, optional GPT-6.2 Astra, or load a compatible offline model.");
         });
     }
 
