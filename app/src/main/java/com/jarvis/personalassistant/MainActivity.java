@@ -720,9 +720,10 @@ public class MainActivity extends Activity {
                     final String prompt = JarvisConversationContext.compose(memoryContext, legacyNote,
                         lastResponse, raw, privateContext);
                     if (!responseSequencer.isCurrent(responseToken)) return;
-                    JarvisHybridBrain.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
+                    AstraCognitiveKernel.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
-                        nebiusKey, localModelPath, prompt, raw, openAiKey, result -> runOnUiThread(() -> {
+                        nebiusKey, localModelPath, prompt, raw, openAiKey, privateContext,
+                        result -> runOnUiThread(() -> {
                         if (!isFinishing() && responseSequencer.isCurrent(responseToken)) respond(result);
                     }));
                 }, "Jarvis-HybridBrain").start();
