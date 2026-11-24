@@ -76,6 +76,36 @@ public final class MultiBrainRouter {
         return "ERROR: All configured AI providers failed. " + lastError;
     }
 
+    public static String askForToolCalls(String nebiusKey, String geminiKey, String geminiModel,
+            String groqKey, String groqModel, String prompt, String userText,
+            String systemPrompt, org.json.JSONArray tools) {
+        List<Provider> order = route(userText, !empty(nebiusKey), !empty(geminiKey), !empty(groqKey));
+        if (order.isEmpty()) return "ERROR: No cloud AI provider configured.";
+        String lastError = "ERROR: No provider attempted.";
+        for (Provider provider : order) {
+            String result;
+            switch (provider) {
+                case NEBIUS:
+                    result = OnlineAiClient.askForToolCalls(NEBIUS_ENDPOINT, nebiusKey,
+                            "openai/gpt-oss-120b", prompt, systemPrompt, tools);
+                    break;
+                case GEMINI:
+                    result = OnlineAiClient.askForToolCalls(GEMINI_ENDPOINT, geminiKey,
+                            empty(geminiModel) ? "gemini-2.5-flash" : geminiModel,
+                            prompt, systemPrompt, tools);
+                    break;
+                default:
+                    result = OnlineAiClient.askForToolCalls(GROQ_ENDPOINT, groqKey,
+                            empty(groqModel) ? "openai/gpt-oss-120b" : groqModel,
+                            prompt, systemPrompt, tools);
+                    break;
+            }
+            if (!isError(result)) return result;
+            lastError = provider.name() + " failed: " + result;
+        }
+        return "ERROR: All configured AI planners failed. " + lastError;
+    }
+
     private static void add(List<Provider> list, Provider provider, boolean enabled) {
         if (enabled && !list.contains(provider)) list.add(provider);
     }
