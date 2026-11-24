@@ -66,6 +66,13 @@ public final class JarvisHybridBrain {
     public static void ask(String geminiKey, String geminiModel, String groqKey, String groqModel,
             String localModelPath, String contextPrompt, String userText,
             String openAiKey, Callback callback) {
+        ask(geminiKey, geminiModel, groqKey, groqModel, "", localModelPath,
+                contextPrompt, userText, openAiKey, callback);
+    }
+
+    public static void ask(String geminiKey, String geminiModel, String groqKey, String groqModel,
+            String nebiusKey, String localModelPath, String contextPrompt, String userText,
+            String openAiKey, Callback callback) {
         ROUTER.execute(() -> {
             String directive = systemDirective(userText);
             String result = "ERROR: No AI provider configured.";
@@ -77,20 +84,9 @@ public final class JarvisHybridBrain {
                 result = OpenAiResponsesClient.ask(openAiKey, OpenAiResponsesClient.DEFAULT_MODEL,
                         directive, contextPrompt, effort);
             }
-            String preferred = preferredCloudProvider(specialist, !empty(geminiKey), !empty(groqKey));
-            if (isError(result) && "GROQ".equals(preferred)) {
-                result = OnlineAiClient.ask(GROQ_ENDPOINT, groqKey,
-                    empty(groqModel) ? "openai/gpt-oss-120b" : groqModel, contextPrompt, directive);
-            } else if (isError(result) && "GEMINI".equals(preferred)) {
-                result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
-                    empty(geminiModel) ? "gemini-2.5-flash" : geminiModel, contextPrompt, directive);
-            }
-            if (isError(result) && "GROQ".equals(preferred) && !empty(geminiKey)) {
-                result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
-                    empty(geminiModel) ? "gemini-2.5-flash" : geminiModel, contextPrompt, directive);
-            } else if (isError(result) && "GEMINI".equals(preferred) && !empty(groqKey)) {
-                result = OnlineAiClient.ask(GROQ_ENDPOINT, groqKey,
-                    empty(groqModel) ? "openai/gpt-oss-120b" : groqModel, contextPrompt, directive);
+            if (isError(result)) {
+                result = MultiBrainRouter.ask(nebiusKey, geminiKey, geminiModel,
+                        groqKey, groqModel, contextPrompt, userText, directive);
             }
             if (!isError(result)) {
                 if (useAstra && shouldVerifyAstraAnswer(userText, true)) {
