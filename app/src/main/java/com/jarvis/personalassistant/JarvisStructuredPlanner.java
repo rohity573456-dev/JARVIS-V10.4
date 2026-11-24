@@ -67,7 +67,7 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
         AstraCognitiveKernel.Mission mission = AstraCognitiveKernel.analyze(objective);
         String cognitivePolicy = AstraCognitiveKernel.buildCognitivePrompt("",
                 AstraCognitiveKernel.plan(mission), false);
-        String system = cognitivePolicy + "\\n\\nAGENT TOOL POLICY: " +
+        String system = cognitivePolicy + "\n\nAGENT TOOL POLICY: " +
             "You are JARVIS action planner. Use native function calls, never write executable code. " +
             "Call only a tool that directly helps fulfil the user's explicit request. " +
             "If the request is a question or cannot be completed by the available tools, do not call any tool. " +
