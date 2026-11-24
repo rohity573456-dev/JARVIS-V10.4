@@ -742,7 +742,7 @@ public class MainActivity extends Activity {
         String nebiusKey = secureStore.get("nebius_key");
         String openAiKey = secureStore.get("openai_key");
         if (geminiKey.isEmpty() && groqKey.isEmpty() && nebiusKey.isEmpty() && openAiKey.isEmpty()) {
-            respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
+            respond("Android agent actions ke liye Nebius, Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
             return;
         }
         if (activeAgentRun != null && !activeAgentRun.isFinished()) {
