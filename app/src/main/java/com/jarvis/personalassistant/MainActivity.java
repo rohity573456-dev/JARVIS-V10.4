@@ -739,8 +739,9 @@ public class MainActivity extends Activity {
     private void runAgent(String objective, long responseToken) {
         String geminiKey = secureStore.get("gemini_key");
         String groqKey = secureStore.get("groq_key");
+        String nebiusKey = secureStore.get("nebius_key");
         String openAiKey = secureStore.get("openai_key");
-        if (geminiKey.isEmpty() && groqKey.isEmpty() && openAiKey.isEmpty()) {
+        if (geminiKey.isEmpty() && groqKey.isEmpty() && nebiusKey.isEmpty() && openAiKey.isEmpty()) {
             respond("Android agent actions ke liye Gemini ya Groq API key configure karo. Local chat brain se direct phone actions enabled nahi hain.");
             return;
         }
@@ -752,7 +753,7 @@ public class MainActivity extends Activity {
         JarvisAgentEngine engine = new JarvisAgentEngine(
             new JarvisStructuredPlanner(agentToolRegistry, geminiKey,
                 memory.getString("gemini_model", "gemini-2.5-flash"),
-                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"), openAiKey),
+                groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"), nebiusKey, openAiKey),
             agentToolRegistry, this::requestAgentApproval);
         final JarvisAgentEngine.RunHandle[] submittedRun = new JarvisAgentEngine.RunHandle[1];
         submittedRun[0] = engine.submit(objective, new JarvisAgentEngine.Listener() {
