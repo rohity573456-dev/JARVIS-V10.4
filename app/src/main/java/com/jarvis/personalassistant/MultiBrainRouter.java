@@ -76,6 +76,39 @@ public final class MultiBrainRouter {
         return "ERROR: All configured AI providers failed. " + lastError;
     }
 
+    /** Uses a different configured provider for an independent review pass. */
+    public static String askExcluding(String nebiusKey, String geminiKey, String geminiModel,
+            String groqKey, String groqModel, String prompt, String userText,
+            String systemPrompt, Provider excluded) {
+        List<Provider> order = route(userText, !empty(nebiusKey), !empty(geminiKey), !empty(groqKey));
+        String lastError = "ERROR: No independent reviewer configured.";
+        boolean attempted = false;
+        for (Provider provider : order) {
+            if (provider == excluded) continue;
+            attempted = true;
+            String result;
+            switch (provider) {
+                case NEBIUS:
+                    result = OnlineAiClient.ask(NEBIUS_ENDPOINT, nebiusKey,
+                            "openai/gpt-oss-120b", prompt, systemPrompt);
+                    break;
+                case GEMINI:
+                    result = OnlineAiClient.ask(GEMINI_ENDPOINT, geminiKey,
+                            empty(geminiModel) ? "gemini-2.5-flash" : geminiModel,
+                            prompt, systemPrompt);
+                    break;
+                default:
+                    result = OnlineAiClient.ask(GROQ_ENDPOINT, groqKey,
+                            empty(groqModel) ? "openai/gpt-oss-120b" : groqModel,
+                            prompt, systemPrompt);
+                    break;
+            }
+            if (!isError(result)) return result;
+            lastError = provider.name() + " reviewer failed: " + result;
+        }
+        return attempted ? "ERROR: All independent reviewers failed. " + lastError : lastError;
+    }
+
     public static String askForToolCalls(String nebiusKey, String geminiKey, String geminiModel,
             String groqKey, String groqModel, String prompt, String userText,
             String systemPrompt, org.json.JSONArray tools) {
