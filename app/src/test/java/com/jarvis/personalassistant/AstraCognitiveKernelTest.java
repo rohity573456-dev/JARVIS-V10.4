@@ -14,11 +14,26 @@ public class AstraCognitiveKernelTest {
                 AstraCognitiveKernel.analyze("Help me understand a medical diagnosis").type);
     }
 
+    @Test public void identifiesHindiEngineeringMission() {
+        assertEquals(AstraCognitiveKernel.MissionType.ENGINEERING,
+                AstraCognitiveKernel.analyze("JARVIS ka poora brain develop karo").type);
+    }
+
     @Test public void complexMissionRequiresIndependentReview() {
         AstraCognitiveKernel.Mission mission = AstraCognitiveKernel.analyze(
                 "Design the full production architecture and integrate all modules step by step");
         assertTrue(mission.complexity >= 3);
         assertTrue(mission.requiresIndependentReview);
+    }
+
+    @Test public void plannerCreatesOrderedEngineeringSubgoals() {
+        AstraCognitiveKernel.CognitivePlan plan = AstraCognitiveKernel.plan(
+                AstraCognitiveKernel.analyze("Build a complete Android software architecture"));
+        assertTrue(plan.subgoals.size() >= 5);
+        for (int i = 0; i < plan.subgoals.size(); i++) {
+            assertEquals(i + 1, plan.subgoals.get(i).index);
+            assertFalse(plan.subgoals.get(i).completionCheck.isEmpty());
+        }
     }
 
     @Test public void simpleConversationDoesNotRequireReview() {
@@ -31,6 +46,19 @@ public class AstraCognitiveKernelTest {
         String prompt = AstraCognitiveKernel.buildCognitivePrompt("isolated request",
                 AstraCognitiveKernel.analyze("Hello"), true);
         assertTrue(prompt.contains("Private Mode is active"));
+    }
+
+    @Test public void normalModeUsesOnlySuppliedMemory() {
+        String prompt = AstraCognitiveKernel.buildCognitivePrompt("memory excerpt",
+                AstraCognitiveKernel.analyze("Hello"), false);
+        assertTrue(prompt.contains("only memory/history explicitly included"));
+        assertTrue(prompt.contains("memory excerpt"));
+    }
+
+    @Test public void highStakesPlanUsesConservativePolicy() {
+        AstraCognitiveKernel.CognitivePlan plan = AstraCognitiveKernel.plan(
+                AstraCognitiveKernel.analyze("Help me understand a medical diagnosis"));
+        assertTrue(plan.riskPolicy.contains("High-impact"));
     }
 
     @Test public void failedReviewPreservesOriginalAnswer() {
