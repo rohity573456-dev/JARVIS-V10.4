@@ -11,7 +11,7 @@ import java.util.Locale;
  * that an action happened.
  */
 public final class MultiBrainRouter {
-    private static final String NEBIUS_ENDPOINT = "https://api.tokenfactory.nebius.com/v1";
+    private static final String NEBIUS_ENDPOINT = "https://api.tokenfactory.nebius.com";
     private static final String GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai";
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1";
 
