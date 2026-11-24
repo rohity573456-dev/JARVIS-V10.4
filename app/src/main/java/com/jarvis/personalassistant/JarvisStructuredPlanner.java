@@ -14,7 +14,7 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
     private static final String GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai";
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1";
     private final JarvisToolRegistry registry;
-    private final String geminiKey, geminiModel, groqKey, groqModel, openAiKey;
+    private final String geminiKey, geminiModel, groqKey, groqModel, nebiusKey, openAiKey;
 
     public JarvisStructuredPlanner(JarvisToolRegistry registry, String geminiKey, String geminiModel,
             String groqKey, String groqModel) {
@@ -23,12 +23,18 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
 
     public JarvisStructuredPlanner(JarvisToolRegistry registry, String geminiKey, String geminiModel,
             String groqKey, String groqModel, String openAiKey) {
+        this(registry, geminiKey, geminiModel, groqKey, groqModel, "", openAiKey);
+    }
+
+    public JarvisStructuredPlanner(JarvisToolRegistry registry, String geminiKey, String geminiModel,
+            String groqKey, String groqModel, String nebiusKey, String openAiKey) {
         if (registry == null) throw new IllegalArgumentException("Tool registry required");
         this.registry = registry;
         this.geminiKey = clean(geminiKey);
         this.geminiModel = clean(geminiModel).isEmpty() ? "gemini-2.5-flash" : geminiModel;
         this.groqKey = clean(groqKey);
         this.groqModel = clean(groqModel).isEmpty() ? "openai/gpt-oss-120b" : groqModel;
+        this.nebiusKey = clean(nebiusKey);
         this.openAiKey = clean(openAiKey);
     }
 
@@ -72,10 +78,9 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
         if (shouldUseAstraForPlanning(objective, !openAiKey.isEmpty()))
             result = OpenAiResponsesClient.askForToolCalls(openAiKey, OpenAiResponsesClient.DEFAULT_MODEL,
                 system, prompt, "high", schemas);
-        if (isError(result) && !geminiKey.isEmpty())
-            result = OnlineAiClient.askForToolCalls(GEMINI_ENDPOINT, geminiKey, geminiModel, prompt, system, schemas);
-        if (isError(result) && !groqKey.isEmpty())
-            result = OnlineAiClient.askForToolCalls(GROQ_ENDPOINT, groqKey, groqModel, prompt, system, schemas);
+        if (isError(result))
+            result = MultiBrainRouter.askForToolCalls(nebiusKey, geminiKey, geminiModel,
+                    groqKey, groqModel, prompt, objective, system, schemas);
         if (isError(result)) throw new IllegalStateException(result);
         JSONArray calls = new JSONArray(result);
         if (calls.length() == 0) return new JarvisAgentEngine.AgentPlan(objective, Collections.<JarvisAgentEngine.AgentStep>emptyList());
