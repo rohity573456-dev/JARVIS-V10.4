@@ -64,7 +64,11 @@ public final class JarvisStructuredPlanner implements JarvisAgentEngine.Planner 
         if (clean(objective).isEmpty()) throw new IllegalArgumentException("Objective is empty");
         JSONArray schemas = buildToolSchemas();
         if (schemas.length() == 0) throw new IllegalStateException("No Android tools are registered");
-        String system = "You are JARVIS action planner. Use native function calls, never write executable code. " +
+        AstraCognitiveKernel.Mission mission = AstraCognitiveKernel.analyze(objective);
+        String cognitivePolicy = AstraCognitiveKernel.buildCognitivePrompt("",
+                AstraCognitiveKernel.plan(mission), false);
+        String system = cognitivePolicy + "\\n\\nAGENT TOOL POLICY: " +
+            "You are JARVIS action planner. Use native function calls, never write executable code. " +
             "Call only a tool that directly helps fulfil the user's explicit request. " +
             "If the request is a question or cannot be completed by the available tools, do not call any tool. " +
             "Never guess package names. For open_app, use a package name only when the user clearly identified an installed app and you know its exact Android package; otherwise do not call it. " +
