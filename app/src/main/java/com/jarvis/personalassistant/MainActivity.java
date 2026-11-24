@@ -723,7 +723,7 @@ public class MainActivity extends Activity {
                     AstraCognitiveKernel.ask(geminiKey, memory.getString("gemini_model", "gemini-2.5-flash"),
                         groqKey, memory.getString("groq_model", "openai/gpt-oss-120b"),
                         nebiusKey, localModelPath, prompt, raw, openAiKey, privateContext,
-                        result -> runOnUiThread(() -> {
+                        longTermMemory, result -> runOnUiThread(() -> {
                         if (!isFinishing() && responseSequencer.isCurrent(responseToken)) respond(result);
                     }));
                 }, "Jarvis-HybridBrain").start();
