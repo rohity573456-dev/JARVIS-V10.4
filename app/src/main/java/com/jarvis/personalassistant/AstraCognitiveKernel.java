@@ -130,6 +130,30 @@ public final class AstraCognitiveKernel {
         return candidate;
     }
 
+    /**
+     * Runs the JARVIS-owned mission cycle: local analysis, provider execution,
+     * then an independent cross-provider audit for complex/high-impact work.
+     */
+    public static void ask(String geminiKey, String geminiModel, String groqKey,
+            String groqModel, String nebiusKey, String localModelPath,
+            String contextPrompt, String userText, String openAiKey,
+            boolean privateMode, Callback callback) {
+        Mission mission = analyze(userText);
+        String cognitivePrompt = buildCognitivePrompt(contextPrompt, mission, privateMode);
+        JarvisHybridBrain.ask(geminiKey, geminiModel, groqKey, groqModel,
+                nebiusKey, localModelPath, cognitivePrompt, userText, openAiKey, draft -> {
+            if (!shouldReview(mission, draft)) {
+                callback.onResult(draft == null ? "ERROR: Brain returned no response." : draft);
+                return;
+            }
+            String auditSystem = "You are an independent JARVIS answer auditor. Check the supplied draft for material errors; preserve supported facts, do not invent evidence, and return only the corrected complete answer.";
+            String auditPrompt = buildReviewPrompt(contextPrompt, userText, draft);
+            String reviewed = MultiBrainRouter.ask(nebiusKey, geminiKey, geminiModel,
+                    groqKey, groqModel, auditPrompt, userText, auditSystem);
+            callback.onResult(acceptReview(draft, reviewed));
+        });
+    }
+
     private static String safe(String value) { return value == null ? "" : value.trim(); }
     private static String clean(String value) { return value == null ? "" : value.trim(); }
 
